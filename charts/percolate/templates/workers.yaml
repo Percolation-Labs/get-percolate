@@ -9,7 +9,7 @@
   get_task_context, complete_task, fail_task. That is what makes "bring your
   own worker" safe to offer -- a compromised one can claim and complete tasks,
   and nothing else.
-*/ -}}
+*/}}
 {{- $anyAutoscale := false }}
 {{- range .Values.workers }}
   {{- if and .autoscaling .autoscaling.enabled }}{{ $anyAutoscale = true }}{{ end }}
@@ -49,7 +49,7 @@ spec:
       # in-flight HTTP call finish and call complete_task; not so long that a
       # rollout stalls. The engine is correct either way -- this only decides
       # whether the work is redone.
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: {{ $w.drainSeconds | default 60 }}
       containers:
         - name: worker
           image: {{ include "percolate.image" $root | quote }}
@@ -80,14 +80,31 @@ spec:
       {{- end }}
 {{- if and $w.autoscaling $w.autoscaling.enabled }}
 ---
-{{- /*
-  KEDA, not an HPA. The honest measure of "is there work" is the number of
-  tasks READY TO BE CLAIMED on this queue, which is a SQL query -- not CPU, and
-  not the row count of workflow.tasks: a pending task blocked on a dependency
-  is not work anyone can do, and counting it scales up pods that will find
-  nothing. An HPA cannot ask that question; KEDA's postgresql scaler can, and
-  it can also scale to zero, which a queue that is empty most of the day should.
-*/ -}}
+{{/*
+  KEDA, not an HPA. The honest measure of "is there work" is a SQL query, not
+  CPU -- and an HPA cannot ask it. KEDA's postgresql scaler can, and it can
+  also scale to zero, which a queue that is empty most of the day should.
+
+  THE QUERY COUNTS `running` AS WELL AS CLAIMABLE-`ready`, and that is not
+  belt and braces. Counting only `ready` is the subtle wrong version: it is
+  correct for `pending` (a task blocked on a dependency is not work anyone can
+  do) and wrong for `running`, because a pool of pods three minutes into a
+  task then reports depth 0. KEDA reads that as idle and scales the pods out
+  from under work in flight.
+
+  Measured, on a queue holding 2 claimable-ready, 1 ready backing off, 2
+  running, 1 done and 1 failed: this query returns 4, the `ready`-only version
+  returns 2. It undercounts by exactly the in-flight tasks.
+
+  The arithmetic still works because KEDA's target is PER REPLICA: N pods each
+  holding one task report depth N against a target of N-per-pod, which
+  resolves to N. Work drains, both counts fall to zero, and the pool scales to
+  zero with no special case anywhere.
+
+  `run_after <= now()` is equally deliberate: a task backing off between
+  retries is not work anyone can do yet, and holding a pod for it burns money
+  until the backoff expires.
+*/}}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -99,27 +116,46 @@ spec:
   minReplicaCount: {{ $w.autoscaling.minReplicas | default 0 }}
   maxReplicaCount: {{ $w.autoscaling.maxReplicas | default 10 }}
   pollingInterval: 15
-  cooldownPeriod: 120
+  # The same number as the pod's terminationGracePeriodSeconds below, because
+  # they answer the SAME question -- how long is a pod allowed to finish what
+  # it is holding? Two independent numbers drift, and the direction that hurts
+  # is a scaler more impatient than the drain it is waiting for.
+  cooldownPeriod: {{ $w.drainSeconds | default 60 }}
+  # Not decoration. Without it, a database the scaler cannot reach reads as
+  # "no metric", and a pool that should be draining a backlog sits at zero
+  # while Postgres is the thing having the outage.
+  fallback:
+    failureThreshold: 3
+    replicas: 1
   triggers:
     - type: postgresql
       metadata:
         query: >-
           select count(*)::int from workflow.tasks
-          where queue = '{{ $w.queue }}' and status = 'ready' and run_after <= now()
+          where queue = '{{ $w.queue }}'
+            and (status = 'running'
+                 or (status = 'ready' and run_after <= now()))
         targetQueryValue: "{{ $w.autoscaling.queueDepthPerPod | default 20 }}"
+        # Gates 0 -> 1, and it is a DIFFERENT question from targetQueryValue --
+        # "is there any work?" not "how much work per pod?". The failure mode
+        # is setting them to the same number: with both at 20, a queue holding
+        # three tasks never activates and sits at zero with work waiting,
+        # reporting no error. Written explicitly because a field that is
+        # invisible when correct is a field nobody checks when it is wrong.
+        activationTargetQueryValue: "0"
       authenticationRef:
         name: {{ include "percolate.fullname" $root }}-keda
 {{- end }}
 {{- end }}
 {{- if $anyAutoscale }}
 ---
-{{- /*
+{{/*
   ONE connection secret and ONE TriggerAuthentication for every pool, not one
   each: the query differs per queue, the credential does not. KEDA reads
   workflow.tasks as `worker`, which is a role with no table grants -- so this
   is granted SELECT on that one table and nothing else by
   workflow-engine/integration-rbac.sql.
-*/ -}}
+*/}}
 apiVersion: v1
 kind: Secret
 metadata:

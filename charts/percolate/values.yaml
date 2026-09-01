@@ -110,6 +110,11 @@ workers:
   - name: http
     queue: http
     replicas: 1
+    # Feeds BOTH the pod's terminationGracePeriodSeconds and KEDA's
+    # cooldownPeriod, from this one key, so the two cannot drift apart. They
+    # answer the same question: how long is a pod allowed to finish what it is
+    # holding? Set it above your longest task.
+    drainSeconds: 60
     resources:
       requests: {cpu: 100m, memory: 256Mi}
       limits: {memory: 1Gi}
@@ -117,8 +122,16 @@ workers:
       enabled: false
       minReplicas: 0        # 0 is legitimate: no queued task, no pod
       maxReplicas: 10
-      # Tasks ready to be claimed on this queue. Not "rows in the table":
-      # a pending task blocked on a dependency is not work anyone can do.
+      # Tasks per pod. The scaler counts work that is RUNNING as well as work
+      # waiting to be claimed -- see templates/workers.yaml for why counting
+      # only `ready` scales pods out from under tasks in flight.
+      #
+      # Note what minReplicas: 0 buys and what it costs. Scaling to zero is
+      # done by the KEDA operator directly, so it happens cooldownPeriod after
+      # the queue empties. Set minReplicas to 1 and the drop from N to 1 goes
+      # through the HPA instead, which applies its own downscale stabilization
+      # window -- 300s by default, a kube-controller-manager flag no value in
+      # this file can reach.
       queueDepthPerPod: 20
 
 # ---------------------------------------------------------------------------

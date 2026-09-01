@@ -26,25 +26,58 @@ assembled from registered facets, derived from the catalog where that is
 possible and verified by running it where it is not, and it is what an agent
 reads before writing its first query.
 
-## Why `SEMANTIC` and `SEARCH` take two steps
+## `SEMANTIC` and `SEARCH` take two steps, and you write one
 
 A `sql` step cannot embed text — that is a model call, and the database makes no
-outbound calls. So those modes compose as two steps:
+outbound calls. So those modes are two tasks, and that does not change:
 
 ```yaml
-  - id: embed
-    rest: {url: '{{env.LLM_URL}}/api/embeddings', jsonpath: embedding}
   - id: retrieve
-    needs: [embed]
-    sql: {function: p8ql_vec, args: ['SEARCH "…" FROM chunks', '{{steps.embed.result}}']}
+    p8ql: 'SEARCH "…" FROM chunks'
 ```
 
-The architecture shows up in the syntax here rather than being hidden by it, and
-the two-step shape puts the fact that this step leaves the machine right where
-you are writing it.
+compiles to an `http_call` keyed `retrieve__embed` and the query step keyed
+`retrieve` that depends on it. Your id stays on the query — the step that
+produces the result — so anything downstream still says `needs: [retrieve]` and
+still reads `{{steps.retrieve.result}}`. The embed is a hidden predecessor
+rather than a child, and nothing else in the document moves.
 
-The in-database resolver substitutes whole-string references and keeps their
-native type, so the embedding arrives as an array rather than a string.
+You never write the endpoint. It comes from `aiq.embedding_models`, along with
+the request body's shape and the path to the vector in the response, so a url
+does not end up in a document that outlives the deployment it was written on.
+The hand-written pair is still legal and compiles to exactly the same rows:
+
+```yaml
+  - id: q
+    embed: '{{run.question}}'
+  - id: retrieve
+    needs: [q]
+    sql: {function: p8ql_vec, args: ['SEARCH "…" FROM chunks', '{{steps.q.result}}']}
+```
+
+### The model is pinned into both halves
+
+This is the part that is not about typing. An embedding is only comparable
+inside the space of the model that produced it, and nothing downstream can
+notice when it is not: the dimension check passes whenever two models are the
+same width, so searching one space with another's vector returns a number
+rather than an error. Writing the pair by hand meant naming the model twice —
+once on the embed call, once as `USING` on the query, or not at all — with
+nothing checking that the two agreed.
+
+So the model is resolved once, when the workflow is defined, and written into
+both halves. Naming a different one on each is refused while you are authoring:
+
+```
+step 'retrieve' searches the 'nomic-embed-text' space but is handed a vector
+produced by 'other-768'.
+```
+
+The in-database resolver substitutes a whole-string reference as a value, so an
+embedding arrives as an array rather than a string, and interpolates one that
+sits inside a longer string as text — which is what makes
+`SEARCH "{{run.question}}"` search for the question rather than for the
+braces.
 
 ## Identity: what becomes a node
 

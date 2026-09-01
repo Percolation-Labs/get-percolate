@@ -1,6 +1,6 @@
 # Authoring in YAML
 
-One document, five step kinds and three template namespaces. The compiler is a
+One document, six step kinds and three template namespaces. The compiler is a
 Rust extension rather than a service, so nothing needs to be running for you to
 define a workflow.
 {: .lede }
@@ -15,6 +15,7 @@ the step.
 | `sql` | a registered function, in the database | no |
 | `p8ql` | a query in the P8QL dialect | no |
 | `rest` | an outbound HTTP call | the generic worker |
+| `embed` | text becomes a vector, at an endpoint from the model registry | the generic worker |
 | `agent` | a row in `agentic.agents` | the Agent Runtime |
 | `work` | code you wrote | your worker |
 
@@ -45,9 +46,38 @@ in with `{{steps.<id>.result.<path>}}`.
 because credentials and endpoints live in its environment.
 
 `sql` steps are resolved inside the database and have no `{{env.*}}` at all,
-since the database has no business reading the deployment's environment. Only
-whole-string references are substituted and they keep their native type, so an
-embedding arrives as an array rather than as a string.
+since the database has no business reading the deployment's environment. A
+whole-string reference is a value and keeps its native type, so an embedding
+arrives as an array rather than as a string; one that sits inside a longer
+string is interpolated as text, the same way the worker fills in a url.
+
+## Embedding, without an endpoint in your document
+
+`embed` is the one action whose url you do not write:
+
+```yaml
+  - id: q
+    embed: '{{run.question}}'                      # the deployment's default model
+  - id: q2
+    embed: {text: 'battery safety', model: nomic-embed-text}
+```
+
+The endpoint, the request body's shape and the path to the vector in the
+response are rows in `aiq.embedding_models` and `aiq.embedding_providers`, and
+`define_yaml` writes them into the step. The endpoint may itself be
+`'{{env.LLM_URL}}/api/embeddings'`, so one registration serves dev, staging and
+production. After that expansion it is an ordinary `rest` step: same worker,
+same queue, same retries.
+
+A `p8ql` step in `SEMANTIC` or `SEARCH` mode compiles to one of these plus the
+query, so most of the time you write neither. See
+[Querying](query.html#semantic-and-search-take-two-steps-and-you-write-one).
+
+The compiled parser and the SQL schema ship as separate artifacts and can be
+out of step, so if a document using `embed:` is refused, ask rather than guess:
+`select workflow.compiler_capabilities()` reports what the installed build
+actually accepts, and lists `embed` and `p8ql_vector_desugar` under `missing`
+when it predates them.
 
 ## Credentials are names
 

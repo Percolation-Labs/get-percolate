@@ -18,11 +18,8 @@ Here is a small one:
 ```yaml
 name: triage
 steps:
-  - id: embed
-    rest: {url: '{{env.LLM_URL}}/api/embeddings', jsonpath: embedding}
   - id: retrieve
-    needs: [embed]
-    sql: {function: p8ql_vec, args: ['SEARCH "outage" FROM chunks LIMIT 3', '{{steps.embed.result}}']}
+    p8ql: 'SEARCH "outage" FROM chunks LIMIT 3'
   - id: classify
     needs: [retrieve]
     agent: triage_bot
@@ -33,9 +30,13 @@ steps:
       properties: {verdict: {type: string, enum: [SAFETY, FINANCE, OTHER]}}
 ```
 
-`define_yaml` compiles that into rows and `start_workflow` runs it. `retrieve`
-executes inside the database, while `embed` and `classify` become queued tasks
-that a worker picks up.
+`define_yaml` compiles that into rows and `start_workflow` runs it. Three rows,
+not two: `SEARCH` ranks against a vector, and producing one is a model call. So
+`retrieve` becomes a queued task that embeds the question and a query step that
+consumes it, and only the query step runs inside the database. `classify` is
+queued too. Nobody writes the embed step — the endpoint comes from the model
+registry, and the model is written into the query so the vector and the space
+being searched cannot be two different models.
 
 ## Three ideas everything else follows from
 

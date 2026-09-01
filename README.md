@@ -12,11 +12,8 @@ only outbound HTTP needs a worker.
 
 ```yaml
 steps:
-  - id: embed
-    rest: {url: '{{env.LLM_URL}}/api/embeddings', jsonpath: embedding}
   - id: retrieve
-    needs: [embed]
-    sql: {function: p8ql_vec, args: ['SEARCH "outage causes" FROM chunks', '{{steps.embed.result}}']}
+    p8ql: 'SEARCH "outage causes" FROM chunks'
   - id: triage
     needs: [retrieve]
     agent: classifier
@@ -27,8 +24,14 @@ steps:
 ```
 
 That is a complete workflow. `define_yaml` compiles it to rows; `start_workflow`
-runs it. The `sql` step executes the moment its dependency completes, in the
+runs it. The query step executes the moment its dependency completes, in the
 transaction that completes it.
+
+`SEARCH` ranks against a vector and the database makes no model calls, so
+`retrieve` compiles to two tasks — one that embeds the text at an endpoint the
+model registry supplies, and the query that consumes it. You do not write the
+first one, and the model is pinned into both so the vector cannot come from a
+different space than the one being searched.
 
 **Documentation: <https://percolating-sirsh.github.io/get-percolate>**
 

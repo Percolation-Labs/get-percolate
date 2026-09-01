@@ -1,0 +1,172 @@
+# Percolate — defaults that come up on an empty cluster, and every knob a real
+# deployment has to turn.
+#
+# Read the `secrets` block first. Everything else has a defensible default.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ---------------------------------------------------------------------------
+# Credentials.
+#
+# The chart will NOT generate these. A generated password is a password that
+# differs between `helm template` and `helm install`, and between a GitOps dry
+# run and the apply that follows -- which is how a rendered manifest and a live
+# cluster end up disagreeing about the database password with nothing saying
+# so. Provide them, or point `existingSecret` at something you already manage
+# (External Secrets, Sealed Secrets, SOPS).
+# ---------------------------------------------------------------------------
+secrets:
+  # Name of a Secret you manage. When set, every value below is ignored and the
+  # keys are read from it: postgres-password, authenticator-password,
+  # worker-password, jwt-secret, s3-key, s3-secret, llm-api-key.
+  existingSecret: ""
+
+  postgresPassword: ""
+  authenticatorPassword: ""
+  workerPassword: ""
+  # HS256, so at least 32 bytes: openssl rand -base64 48
+  jwtSecret: ""
+  # Resolved by NAME when a step names it as credential_ref. Empty is fine if
+  # no step calls a model.
+  llmApiKey: ""
+
+# ---------------------------------------------------------------------------
+# The database. One instance, because this chart is the getting-started path,
+# not an HA Postgres operator -- if you already run CloudNativePG or Crunchy,
+# set `enabled: false` and point `externalDatabase` at it.
+# ---------------------------------------------------------------------------
+postgres:
+  enabled: true
+  image:
+    repository: percolationlabs/percolate-postgres
+    tag: "19"
+    pullPolicy: IfNotPresent
+  user: p8
+  database: percolate
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 4Gi}
+  # pg_cron is a background worker: it must be preloaded at startup, and
+  # cron.database_name must name the database the jobs run in. Without this
+  # every scheduled workflow, the stale-task reaper and every timer step
+  # silently never fires.
+  extraArgs:
+    - -c
+    - shared_preload_libraries=pg_cron
+    - -c
+    - cron.database_name=percolate
+
+externalDatabase:
+  host: ""
+  port: 5432
+  database: percolate
+
+# ---------------------------------------------------------------------------
+# The services. All three are the same image with a different command.
+# ---------------------------------------------------------------------------
+image:
+  repository: percolationlabs/percolate-core
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+postgrest:
+  enabled: true
+  image: {repository: postgrest/postgrest, tag: v12.2.8}
+  replicas: 2
+  schemas: "content, aiq, rbac, workflow, agentic, public"
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+content:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+agent:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: {cpu: 200m, memory: 512Mi}
+    limits: {memory: 2Gi}
+
+# ---------------------------------------------------------------------------
+# Worker pools. A LIST, not a single deployment, because `queue` is the only
+# signal both claim_task and an autoscaler see: one pool per queue is how a
+# slow model endpoint stops starving a fast ingestion queue.
+#
+# Scale by replicas here, or install KEDA and let queue depth drive it --
+# `autoscaling.enabled` emits a ScaledObject whose trigger is a SQL query
+# against workflow.tasks, which is the honest measure of "is there work".
+# ---------------------------------------------------------------------------
+workers:
+  - name: http
+    queue: http
+    replicas: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 1Gi}
+    autoscaling:
+      enabled: false
+      minReplicas: 0        # 0 is legitimate: no queued task, no pod
+      maxReplicas: 10
+      # Tasks ready to be claimed on this queue. Not "rows in the table":
+      # a pending task blocked on a dependency is not work anyone can do.
+      queueDepthPerPod: 20
+
+# ---------------------------------------------------------------------------
+# Object storage. Required: an oversized step output is offloaded to it and
+# refd from the task, and the Content Server keeps every uploaded byte there.
+# The bundled MinIO is for getting started; point `external` at S3, R2, GCS or
+# your own MinIO for anything you care about.
+# ---------------------------------------------------------------------------
+minio:
+  enabled: true
+  image: {repository: minio/minio, tag: latest}
+  persistence: {enabled: true, size: 50Gi, storageClass: ""}
+
+objectStorage:
+  external:
+    endpoint: ""       # e.g. https://s3.eu-west-1.amazonaws.com
+    region: us-east-1
+  bucket: p8-content
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []            # [{host: percolate.example.com, service: agent, port: 8080}]
+  tls: []
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  # NUMERIC, and it has to be. The percolate-core image declares `USER percolate`
+  # by name; with runAsNonRoot the kubelet cannot verify a non-numeric user and
+  # refuses the container outright -- CreateContainerConfigError, "image has
+  # non-numeric user (percolate), cannot verify user is non-root". Found by
+  # deploying it. 10001 is the uid that Dockerfile creates.
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile: {type: RuntimeDefault}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

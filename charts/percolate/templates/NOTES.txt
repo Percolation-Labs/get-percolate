@@ -1,0 +1,54 @@
+Percolate {{ .Chart.AppVersion }} is installing into namespace {{ .Release.Namespace }}.
+
+The database installs ITSELF on first start -- the extension bootstrap is baked
+into the image -- so the first pod takes a minute or two longer than you expect.
+Watch it land:
+
+  kubectl -n {{ .Release.Namespace }} rollout status statefulset/{{ include "percolate.fullname" . }}-postgres
+
+Then check that the system is actually there, rather than that a pod is running:
+
+  kubectl -n {{ .Release.Namespace }} exec -it statefulset/{{ include "percolate.fullname" . }}-postgres -- \
+    psql -U {{ .Values.postgres.user }} -d {{ include "percolate.dbName" . }} \
+    -c "select * from workflow.compiler_capabilities()"
+
+`missing` should be empty. If it lists features, the SQL schema and the compiled
+parser in the image disagree -- which is a real thing that happens, and is why
+that function exists rather than being inferred from a version string.
+
+{{ if .Values.postgrest.enabled -}}
+The REST surface:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "percolate.fullname" . }}-postgrest 3000:3000
+  curl localhost:3000/ | head        # the OpenAPI document, generated from the schema
+{{- end }}
+
+{{ if .Values.agent.enabled -}}
+The agent surface (AG-UI event stream on POST /chat):
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "percolate.fullname" . }}-agent 8080:8080
+{{- end }}
+
+Run something:
+
+  select workflow.define_yaml($$
+  name: hello
+  steps:
+    - id: now
+      sql: {function: p8ql, args: ['SELECT now()']}
+  $$);
+  select workflow.start_workflow('hello', '{}'::jsonb);
+
+That workflow completes with no worker involved: a `sql` step runs inside
+Postgres the moment it becomes ready.
+
+{{ if not .Values.postgres.extraArgs -}}
+WARNING: postgres.extraArgs is empty, so pg_cron is not preloaded. Scheduled
+workflows, the stale-task reaper and every timer step will silently never fire.
+{{- end }}
+{{ if and .Values.minio.enabled (not .Values.objectStorage.external.endpoint) -}}
+NOTE: using the bundled single-replica MinIO. Fine to start with; point
+objectStorage.external at real object storage before you rely on it.
+{{- end }}
+
+Docs: https://docs.percolationlabs.ai

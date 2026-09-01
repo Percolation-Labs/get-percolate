@@ -1,0 +1,285 @@
+/* Percolate docs.
+ *
+ * Cool blue-slate ink on cool paper, verdigris as the accent -- oxidation, a
+ * nod to leases that expire -- and the neutrals biased green-cool so they read
+ * chosen rather than defaulted. The brand aubergine is the logo's own #350748,
+ * used sparingly: the masthead rule, the active nav marker, the mark itself.
+ * The site's brighter purple is deliberately absent; at documentation density
+ * it competes with the accent instead of supporting it.
+ *
+ * Archivo for headings and labels -- industrial and sturdy. Newsreader for
+ * prose, which inverts the usual sans-body and gives a reference document some
+ * gravity. JetBrains Mono is a first-class voice, not a fallback: the real
+ * artifacts here are psql output and YAML.
+ */
+
+:root {
+  --ink:        #101519;
+  --ink-2:      #38424a;   /* secondary prose, captions */
+  --ink-3:      #6a757c;   /* labels, metadata */
+  --paper:      #F5F7F6;
+  --paper-2:    #EAEEEC;   /* evidence blocks, table stripes */
+  --rule:       #D3DAD7;
+
+  --accent:     #1B7A6E;   /* verdigris: links, proven */
+  --accent-dim: #E4EFEC;
+  --amber:      #9C6206;   /* designed, not run */
+  --amber-dim:  #F6EEDF;
+  --brick:      #A33A32;   /* absent */
+  --brick-dim:  #F7E7E5;
+  --brand:      #350748;   /* the logo's aubergine */
+  --gold:       #9A7B1F;   /* darkened from the site's #d4af37 for AA on paper */
+
+  --measure:    66ch;
+  --wide:       96ch;
+
+  --sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink:        #E2E8E6;
+    --ink-2:      #A9B4B1;
+    --ink-3:      #7C8784;
+    --paper:      #0E1315;
+    --paper-2:    #171E21;
+    --rule:       #2A3438;
+    --accent:     #4FB3A4;
+    --accent-dim: #12292A;
+    --amber:      #D69A3C;
+    --amber-dim:  #2A2114;
+    --brick:      #D97A70;
+    --brick-dim:  #2C1A19;
+    --brand:      #B98BD4;   /* the aubergine lifted; #350748 is invisible here */
+    --gold:       #D4AF37;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #E2E8E6; --ink-2: #A9B4B1; --ink-3: #7C8784;
+  --paper: #0E1315; --paper-2: #171E21; --rule: #2A3438;
+  --accent: #4FB3A4; --accent-dim: #12292A;
+  --amber: #D69A3C; --amber-dim: #2A2114;
+  --brick: #D97A70; --brick-dim: #2C1A19;
+  --brand: #B98BD4; --gold: #D4AF37;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 18px;
+  line-height: 1.65;
+  font-variant-numeric: oldstyle-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- masthead */
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+}
+.masthead::before {           /* the one place the brand colour is structural */
+  content: ""; display: block; height: 3px;
+  background: linear-gradient(90deg, var(--brand) 0%, var(--brand) 38%, var(--accent) 38%, var(--accent) 100%);
+}
+.masthead-inner {
+  max-width: var(--wide); margin: 0 auto; padding: 14px 24px;
+  display: flex; align-items: center; gap: 12px;
+}
+.masthead img { width: 26px; height: 26px; display: block; }
+.masthead a.wordmark {
+  font-family: var(--sans); font-weight: 600; font-size: 17px;
+  letter-spacing: -0.01em; color: var(--ink); text-decoration: none;
+}
+.masthead .tagline {
+  font-family: var(--sans); font-size: 13px; color: var(--ink-3);
+  border-left: 1px solid var(--rule); padding-left: 12px;
+}
+.masthead .spacer { flex: 1; }
+.masthead .ext {
+  font-family: var(--sans); font-size: 13px; color: var(--ink-2);
+  text-decoration: none; border-bottom: 1px solid var(--rule);
+}
+.masthead .ext:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ------------------------------------------------------------------ layout */
+.shell {
+  max-width: var(--wide); margin: 0 auto; padding: 0 24px;
+  display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px;
+}
+@media (max-width: 900px) { .shell { grid-template-columns: 1fr; gap: 0; } }
+
+nav.toc { padding: 36px 0; align-self: start; position: sticky; top: 0; }
+@media (max-width: 900px) {
+  nav.toc { position: static; border-bottom: 1px solid var(--rule); padding-bottom: 20px; }
+}
+nav.toc .group {
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
+  margin: 22px 0 8px;
+}
+nav.toc .group:first-child { margin-top: 0; }
+nav.toc a {
+  display: block; font-family: var(--sans); font-size: 14.5px;
+  color: var(--ink-2); text-decoration: none;
+  padding: 3px 0 3px 12px; border-left: 2px solid var(--rule);
+}
+nav.toc a:hover { color: var(--accent); border-left-color: var(--accent); }
+nav.toc a.here {
+  color: var(--ink); font-weight: 600;
+  border-left-color: var(--brand);      /* the brand marks WHERE YOU ARE */
+}
+
+/* Prose at 66ch; evidence breaks out wider. A grid rather than negative
+ * margins, so a wide table centres against the text column instead of
+ * overhanging one side of it. */
+main {
+  padding: 40px 0 80px;
+  display: grid;
+  grid-template-columns: [full-start] 1fr [text-start] minmax(0, var(--measure)) [text-end] 1fr [full-end];
+}
+main > * { grid-column: text; min-width: 0; }
+main > pre,
+main > table,
+main > .evidence,
+main > .wide { grid-column: full; justify-self: stretch; }
+
+/* ------------------------------------------------------------------- type */
+h1, h2, h3, h4 {
+  font-family: var(--sans); font-weight: 600; letter-spacing: -0.015em;
+  line-height: 1.2; color: var(--ink);
+}
+h1 { font-size: 34px; margin: 0 0 6px; }
+h2 { font-size: 23px; margin: 44px 0 12px; padding-top: 18px; border-top: 1px solid var(--rule); }
+h3 { font-size: 18px; margin: 30px 0 8px; }
+h4 { font-size: 15px; margin: 24px 0 6px; color: var(--ink-2); }
+p, ul, ol { margin: 0 0 18px; }
+li { margin-bottom: 6px; }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-dim); }
+a:hover { border-bottom-color: var(--accent); }
+strong { font-weight: 600; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 36px 0; }
+
+blockquote {
+  margin: 0 0 18px; padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--brand); color: var(--ink-2);
+}
+
+.lede { font-size: 20px; color: var(--ink-2); margin-bottom: 26px; }
+
+/* ------------------------------------------------------------------ chips */
+.chip {
+  display: inline-block; font-family: var(--sans); font-size: 11px;
+  font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 2px; vertical-align: 2px;
+  border: 1px solid currentColor;
+}
+.chip-proven   { color: var(--accent); background: var(--accent-dim); }
+.chip-designed { color: var(--amber);  background: var(--amber-dim); }
+.chip-absent   { color: var(--brick);  background: var(--brick-dim); }
+h1 .chip { margin-left: 10px; }
+
+/* -------------------------------------------------------------- evidence */
+pre {
+  font-family: var(--mono); font-size: 13.5px; line-height: 1.55;
+  background: var(--paper-2); border: 1px solid var(--rule);
+  border-radius: 3px; padding: 14px 16px; overflow-x: auto;
+  margin: 0 0 20px; tab-size: 2;
+}
+code {
+  font-family: var(--mono); font-size: 0.86em;
+  background: var(--paper-2); padding: 1px 5px; border-radius: 2px;
+}
+pre code { background: none; padding: 0; font-size: inherit; }
+
+/* A captured terminal session, as opposed to a code sample. Different thing,
+ * so it looks different: this is output, not something you type. */
+.evidence {
+  margin: 0 0 22px; border: 1px solid var(--rule); border-radius: 3px;
+  overflow: hidden; background: var(--paper-2);
+}
+.evidence > .label {
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+  padding: 7px 14px; border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+}
+.evidence pre { border: 0; border-radius: 0; margin: 0; background: none; }
+
+table {
+  border-collapse: collapse; width: 100%; margin: 0 0 22px;
+  font-family: var(--sans); font-size: 14.5px;
+}
+th, td {
+  text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+th {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.07em;
+  text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--ink-3);
+}
+tbody tr:nth-child(even) { background: var(--paper-2); }
+td code { background: none; padding: 0; }
+
+/* ------------------------------------------------------------------ steps */
+/* Numbered markers, for the rare list that is genuinely sequential. */
+ol.steps { list-style: none; counter-reset: step; padding: 0; }
+ol.steps > li {
+  counter-increment: step; position: relative;
+  padding-left: 40px; margin-bottom: 18px;
+}
+ol.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: 1px;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--brand); color: #fff;
+  font-family: var(--mono); font-size: 13px; font-weight: 500;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ----------------------------------------------------------------- footer */
+.pager {
+  display: flex; justify-content: space-between; gap: 16px;
+  margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--rule);
+  font-family: var(--sans); font-size: 14px;
+}
+.pager a { border: 0; }
+.pager .dir {
+  display: block; font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+footer.site {
+  border-top: 1px solid var(--rule); margin-top: 60px;
+  font-family: var(--sans); font-size: 13px; color: var(--ink-3);
+}
+footer.site .inner {
+  max-width: var(--wide); margin: 0 auto; padding: 20px 24px;
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+}
+footer.site a { color: var(--ink-2); border: 0; }
+footer.site a:hover { color: var(--accent); }
+footer.site .dot { color: var(--gold); }
+
+/* ------------------------------------------------------- syntax highlight */
+/* Pygments, restrained: three weights of ink plus the accent. Colour here
+ * competes with the status chips, which carry real meaning, so it stays quiet. */
+.hl .k, .hl .kd, .hl .kn, .hl .kr, .hl .kt { color: var(--brand); font-weight: 600; }
+.hl .s, .hl .s1, .hl .s2, .hl .sb, .hl .sd { color: var(--accent); }
+.hl .c, .hl .c1, .hl .cm, .hl .ch          { color: var(--ink-3); font-style: italic; }
+.hl .mi, .hl .mf, .hl .m                   { color: var(--gold); }
+.hl .nf, .hl .nb                           { color: var(--ink); font-weight: 600; }
+.hl .nt                                    { color: var(--brand); }
+.hl .na                                    { color: var(--ink-2); }
+.hl .o, .hl .p                             { color: var(--ink-2); }
+.hl .err                                   { color: var(--brick); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hl .k { font-weight: 500; }
+}

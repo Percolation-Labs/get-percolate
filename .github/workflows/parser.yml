@@ -1,0 +1,124 @@
+# Build the extension release assets: the SQL extension (one file, every
+# platform) and percolate_parser.so (one file PER platform).
+#
+# Natively, not under emulation. Cross-building the Rust toolchain with QEMU
+# works and takes the better part of an hour per architecture; a native runner
+# does it in minutes and is the difference between "CI builds the matrix" and
+# "someone builds it on their laptop when they remember".
+name: extension
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: p8-subsystems ref to build from
+        default: main
+
+permissions:
+  contents: write        # to create the release and upload assets
+
+jobs:
+  sql:
+    # Architecture-independent, so it is built once and not in the matrix.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: percolating-sirsh/p8-subsystems
+          ref: ${{ inputs.ref || 'main' }}
+      - name: Generate the extension SQL from specs/
+        # Generated rather than committed: the spec files are what get reviewed
+        # and tested, and a hand-copied extension script would be a second copy
+        # to drift. build-sql.py also refuses to build a spec file that defines
+        # the same function twice, which is a real thing that happened.
+        run: python3 extension/percolate/build-sql.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sql
+          path: |
+            extension/percolate/sql/percolate--0.1.0.sql
+            extension/percolate/percolate.control
+
+  parser:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest,  platform: linux-amd64}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64}
+          - {os: macos-14,       platform: macos-arm64}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: percolating-sirsh/p8-subsystems
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Install PostgreSQL 19 headers
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install postgresql@19 || brew install postgresql
+            echo "PG_CONFIG=$(brew --prefix)/opt/postgresql@19/bin/pg_config" >> "$GITHUB_ENV"
+          else
+            sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+            sudo apt-get update
+            sudo apt-get install -y postgresql-server-dev-19 clang libclang-dev
+            echo "PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config" >> "$GITHUB_ENV"
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo-pgrx
+        # Pinned. pgrx generates the FFI shims against a specific PG ABI, so
+        # "whatever is latest" is a silent correctness dependency.
+        run: cargo install --locked cargo-pgrx --version 0.19.2
+
+      - name: Build
+        working-directory: extension/percolate_parser
+        run: |
+          cargo pgrx init --pg19 "$PG_CONFIG"
+          cargo pgrx package --features pg19 --no-default-features --pg-config "$PG_CONFIG"
+
+      - name: Collect
+        working-directory: extension/percolate_parser
+        run: |
+          mkdir -p out
+          find target -name 'percolate_parser.so' -o -name 'percolate_parser.dylib' \
+            | head -1 | xargs -I{} cp {} "out/percolate_parser-${{ matrix.platform }}.so"
+          # The glob must catch percolate_parser--0.1.0.sql, whose name has no
+          # dot immediately after the stem: "percolate_parser.*" misses it.
+          find target -path '*extension/percolate_parser*' \
+            \( -name 'percolate_parser.control' -o -name 'percolate_parser--*.sql' \) \
+            -exec cp {} out/ \;
+          ls -la out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parser-${{ matrix.platform }}
+          path: extension/percolate_parser/out/*
+
+  release:
+    needs: [sql, parser]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {path: assets}
+      - name: Flatten
+        run: |
+          mkdir -p out && find assets -type f -exec cp -n {} out/ \;
+          ls -la out/
+          # install.sh downloads by exact name; a missing one is a broken
+          # install path that nothing else would notice until someone ran it.
+          for f in percolate.control percolate--0.1.0.sql \
+                   percolate_parser.control percolate_parser--0.1.0.sql \
+                   percolate_parser-linux-amd64.so percolate_parser-linux-arm64.so \
+                   percolate_parser-macos-arm64.so; do
+            [ -f "out/$f" ] || { echo "missing release asset: $f" >&2; exit 1; }
+          done
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true

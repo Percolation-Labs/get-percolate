@@ -1,0 +1,36 @@
+{{- if .Values.ingress.enabled }}
+{{- /*
+  One Ingress, N rules, each naming which SERVICE it routes to -- because the
+  three surfaces are genuinely different audiences: PostgREST is the data API,
+  the Content Server takes uploads, the Agent Runtime streams. Exposing all
+  three on one host by accident is how the anonymous role ends up reachable
+  from the internet.
+*/ -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "percolate.fullname" . }}
+  labels: {{- include "percolate.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          - path: {{ .path | default "/" }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "percolate.fullname" $ }}-{{ required "each ingress host needs a `service` (postgrest | content | agent)" .service }}
+                port: {number: {{ .port }}}
+    {{- end }}
+{{- end }}

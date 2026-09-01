@@ -1,0 +1,153 @@
+{{- /*
+  One Deployment per worker pool, because `queue` is the only signal that both
+  claim_task and an autoscaler see. One pool per queue is how a slow model
+  endpoint stops starving a fast ingestion queue -- a single pool draining a
+  mixed queue gives you neither isolation nor a meaningful scale metric.
+
+  A worker holds NO table grants. It connects as `worker`, whose entire
+  capability is calling SECURITY DEFINER functions: claim_task,
+  get_task_context, complete_task, fail_task. That is what makes "bring your
+  own worker" safe to offer -- a compromised one can claim and complete tasks,
+  and nothing else.
+*/ -}}
+{{- $anyAutoscale := false }}
+{{- range .Values.workers }}
+  {{- if and .autoscaling .autoscaling.enabled }}{{ $anyAutoscale = true }}{{ end }}
+{{- end }}
+{{- range $w := .Values.workers }}
+{{- $root := $ }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "percolate.fullname" $root }}-worker-{{ $w.name }}
+  labels:
+    {{- include "percolate.labels" $root | nindent 4 }}
+    percolate.ai/queue: {{ $w.queue | quote }}
+spec:
+  {{- if not (and $w.autoscaling $w.autoscaling.enabled) }}
+  replicas: {{ $w.replicas | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: worker
+      percolate.ai/queue: {{ $w.queue | quote }}
+  template:
+    metadata:
+      labels:
+        {{- include "percolate.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: worker
+        percolate.ai/queue: {{ $w.queue | quote }}
+    spec:
+      securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      {{- if $root.Values.serviceAccount.create }}
+      serviceAccountName: {{ $root.Values.serviceAccount.name | default (include "percolate.fullname" $root) }}
+      {{- end }}
+      # A worker in the middle of a task has a LEASE, and the engine's reaper
+      # will requeue its task once the lease goes stale. Long enough to let an
+      # in-flight HTTP call finish and call complete_task; not so long that a
+      # rollout stalls. The engine is correct either way -- this only decides
+      # whether the work is redone.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: {{ include "percolate.image" $root | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          securityContext: {{- toYaml $root.Values.securityContext | nindent 12 }}
+          args: ["worker", "--queue", {{ $w.queue | quote }}]
+          env:
+            - name: P8_WORKER_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: worker-password}}
+            - name: P8_DSN
+              value: {{ include "percolate.workerDsn" $root | quote }}
+            # The worker identifies itself by pod name, so a reaped lease names
+            # a pod you can actually go and look at.
+            - name: P8_WORKER_ID
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+            - name: LLM_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key}}
+            {{- include "percolate.commonEnv" $root | nindent 12 }}
+            {{- with $w.env }}{{- toYaml . | nindent 12 }}{{- end }}
+          resources: {{- toYaml ($w.resources | default dict) | nindent 12 }}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if and $w.autoscaling $w.autoscaling.enabled }}
+---
+{{- /*
+  KEDA, not an HPA. The honest measure of "is there work" is the number of
+  tasks READY TO BE CLAIMED on this queue, which is a SQL query -- not CPU, and
+  not the row count of workflow.tasks: a pending task blocked on a dependency
+  is not work anyone can do, and counting it scales up pods that will find
+  nothing. An HPA cannot ask that question; KEDA's postgresql scaler can, and
+  it can also scale to zero, which a queue that is empty most of the day should.
+*/ -}}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "percolate.fullname" $root }}-worker-{{ $w.name }}
+  labels: {{- include "percolate.labels" $root | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ include "percolate.fullname" $root }}-worker-{{ $w.name }}
+  minReplicaCount: {{ $w.autoscaling.minReplicas | default 0 }}
+  maxReplicaCount: {{ $w.autoscaling.maxReplicas | default 10 }}
+  pollingInterval: 15
+  cooldownPeriod: 120
+  triggers:
+    - type: postgresql
+      metadata:
+        query: >-
+          select count(*)::int from workflow.tasks
+          where queue = '{{ $w.queue }}' and status = 'ready' and run_after <= now()
+        targetQueryValue: "{{ $w.autoscaling.queueDepthPerPod | default 20 }}"
+      authenticationRef:
+        name: {{ include "percolate.fullname" $root }}-keda
+{{- end }}
+{{- end }}
+{{- if $anyAutoscale }}
+---
+{{- /*
+  ONE connection secret and ONE TriggerAuthentication for every pool, not one
+  each: the query differs per queue, the credential does not. KEDA reads
+  workflow.tasks as `worker`, which is a role with no table grants -- so this
+  is granted SELECT on that one table and nothing else by
+  workflow-engine/integration-rbac.sql.
+*/ -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "percolate.fullname" . }}-keda
+  labels: {{- include "percolate.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  # Connection coordinates only. The PASSWORD is deliberately not here: it is
+  # read from whichever secret already holds it -- this chart's, or the
+  # existingSecret you manage -- so enabling autoscaling never forces a second
+  # copy of a credential into a second object that then has to be rotated too.
+  host: {{ include "percolate.dbHost" . | quote }}
+  port: {{ include "percolate.dbPort" . | quote }}
+  dbName: {{ include "percolate.dbName" . | quote }}
+  userName: worker
+  sslmode: {{ .Values.postgres.enabled | ternary "disable" "require" | quote }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "percolate.fullname" . }}-keda
+  labels: {{- include "percolate.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - {parameter: host,     name: {{ include "percolate.fullname" . }}-keda, key: host}
+    - {parameter: port,     name: {{ include "percolate.fullname" . }}-keda, key: port}
+    - {parameter: dbName,   name: {{ include "percolate.fullname" . }}-keda, key: dbName}
+    - {parameter: userName, name: {{ include "percolate.fullname" . }}-keda, key: userName}
+    - {parameter: password, name: {{ include "percolate.secretName" . }}, key: worker-password}
+    - {parameter: sslmode,  name: {{ include "percolate.fullname" . }}-keda, key: sslmode}
+{{- end }}

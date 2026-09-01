@@ -1,0 +1,99 @@
+# Build the docs and the Helm chart repository, publish both to GitHub Pages.
+#
+# One site, two things on it: the pages at the root and the chart index under
+# /charts. That is why `helm repo add percolate https://docs.percolationlabs.ai/charts`
+# works without a second host or a second DNS record to keep alive.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "charts/**", ".github/workflows/docs.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  packages: write        # to push the chart to GHCR
+
+# A queued run must not overtake the one publishing. Not cancel-in-progress:
+# cancelling a half-finished deploy leaves the live site mid-swap.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}   # tomllib is stdlib from 3.11
+
+      - name: Build the site
+        run: |
+          pip install "markdown==3.7" "pygments==2.19.1"
+          python docs/build.py
+
+      - uses: azure/setup-helm@v4
+        with: {version: v3.16.3}
+
+      - name: Lint and package the chart
+        run: |
+          helm lint charts/percolate \
+            --set secrets.postgresPassword=x \
+            --set secrets.authenticatorPassword=y \
+            --set secrets.workerPassword=z \
+            --set secrets.jwtSecret=abcdefghijklmnopqrstuvwxyz012345
+          mkdir -p docs/_site/charts
+          helm package charts/percolate -d docs/_site/charts
+          # --merge, so previously published versions stay resolvable. Without
+          # it every publish rewrites index.yaml with only the current chart,
+          # and a pinned `targetRevision: 0.1.0` in somebody's Argo Application
+          # stops resolving the moment 0.1.1 ships.
+          if curl -fsSL https://docs.percolationlabs.ai/charts/index.yaml -o old-index.yaml; then
+            helm repo index docs/_site/charts \
+              --url https://docs.percolationlabs.ai/charts --merge old-index.yaml
+          else
+            helm repo index docs/_site/charts --url https://docs.percolationlabs.ai/charts
+          fi
+
+      - name: Check the chart renders
+        # `helm lint` accepts templates that produce invalid Kubernetes objects.
+        # Rendering and parsing every document is the cheap check that catches
+        # a bad indent or a nil deref before it is a broken install.
+        run: |
+          helm template p charts/percolate \
+            --set secrets.postgresPassword=x \
+            --set secrets.authenticatorPassword=y \
+            --set secrets.workerPassword=z \
+            --set secrets.jwtSecret=abcdefghijklmnopqrstuvwxyz012345 \
+            | python3 -c "import sys,yaml; print(len([d for d in yaml.safe_load_all(sys.stdin) if d]), 'objects parse')"
+
+      - name: Publish the chart to GHCR as an OCI artifact
+        # THE PRIMARY DISTRIBUTION. An OCI registry needs no index.yaml, no
+        # Pages build and -- the reason it is primary rather than an extra --
+        # NO DNS. A classic Helm repo is a URL, so it inherits every failure of
+        # the domain in front of it; a chart nobody can install because a CNAME
+        # is missing is a worse outcome than one extra command to learn.
+        # Helm >= 3.8, Flux OCIRepository and Argo all consume this directly.
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io \
+            -u ${{ github.actor }} --password-stdin
+          helm push docs/_site/charts/percolate-*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+      - uses: actions/upload-pages-artifact@v3
+        with: {path: docs/_site}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

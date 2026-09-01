@@ -1,0 +1,80 @@
+# The docs, in order. One place: the site nav, the llms.txt index and the
+# page-to-page footer links are all generated from this file, so a page that is
+# added here cannot be missing from one of the three.
+#
+# status is real information, not decoration:
+#   proven   -- executed against a live database, and there is an assertion for it
+#   designed -- specified and reviewed, not yet run end to end
+#   absent   -- named here because it is missing, and silence would read as done
+
+site_name = "Percolate"
+site_tagline = "An AI workflow engine in Postgres"
+site_url = "https://docs.percolationlabs.ai"
+description = """
+Percolate puts workflow state, agent conversations, identity and semantic \
+query inside PostgreSQL. Workflows are declarative documents compiled to rows; \
+steps written as SQL or P8QL execute inside the database with no process \
+anywhere, and only outbound HTTP needs a worker."""
+
+[[section]]
+name = "Start"
+
+  [[section.page]]
+  file = "index.md"
+  title = "What Percolate is"
+  status = "proven"
+  summary = "Postgres as the system rather than the backing store: what that buys, and what it costs."
+
+  [[section.page]]
+  file = "install.md"
+  title = "Install"
+  status = "proven"
+  summary = "Docker Compose, Helm, or the extension in a Postgres 19 you already run."
+
+  [[section.page]]
+  file = "first-workflow.md"
+  title = "Your first workflow"
+  status = "proven"
+  summary = "A four-step pipeline, walked end to end, with the output each step actually produced."
+
+[[section]]
+name = "Workflows"
+
+  [[section.page]]
+  file = "authoring.md"
+  title = "Authoring in YAML"
+  status = "proven"
+  summary = "The five step kinds, the template namespaces, and what the compiler refuses."
+
+  [[section.page]]
+  file = "outputs.md"
+  title = "What a step leaves behind"
+  status = "proven"
+  summary = "The four output classes: an inline payload, rows, a validated assistant message, or a registered artifact."
+
+  [[section.page]]
+  file = "failure.md"
+  title = "Failure and retry"
+  status = "proven"
+  summary = "Which failures retry, which are terminal, and why that is the worker's decision to make."
+
+[[section]]
+name = "Beyond workflows"
+
+  [[section.page]]
+  file = "agents.md"
+  title = "Agents"
+  status = "designed"
+  summary = "An agent is a row. Prompt, tools and delegation are data, and tools are discovered rather than declared."
+
+  [[section.page]]
+  file = "query.md"
+  title = "Querying"
+  status = "proven"
+  summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
+
+  [[section.page]]
+  file = "operating.md"
+  title = "Operating it"
+  status = "proven"
+  summary = "Scaling worker pools on queue depth, what to watch, and the audits that fail loudly."

@@ -1,0 +1,126 @@
+# Percolate, whole, on one machine.
+#
+#   docker compose up -d
+#   psql postgres://p8:p8@localhost:5432/percolate -c "select workflow.compiler_capabilities()"
+#
+# Two images and nothing to build. The database installs itself at first start
+# -- the extension bootstrap is baked into the image, so there is no init
+# directory to fetch alongside this file.
+#
+# Every service here holds NO table grants. Each connects as a role that can
+# only call SECURITY DEFINER functions, or as `authenticator`, which owns no
+# privileges of its own and SET ROLEs per request so RLS sees the caller rather
+# than the service.
+name: percolate
+
+services:
+  db:
+    image: percolationlabs/percolate-postgres:19
+    restart: unless-stopped
+    # pg_cron is a background worker, so it must be preloaded at startup --
+    # there is no CREATE EXTENSION that can add it later. cron.database_name
+    # must name the database the jobs run in, and it can only be one; leaving
+    # it at the default ('postgres') is the usual reason a correctly created
+    # schedule never fires.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=percolate
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-p8}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-p8}
+      POSTGRES_DB: percolate
+      # The two service roles. Defaulted so `docker compose up` works with no
+      # .env; override both for anything reachable by anyone else.
+      P8_AUTHENTICATOR_PASSWORD: ${P8_AUTHENTICATOR_PASSWORD:-authpass}
+      P8_WORKER_PASSWORD: ${P8_WORKER_PASSWORD:-workerpass}
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-p8} -d percolate"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # The REST interface. Not a hand-rolled CRUD layer: every function in the
+  # client API is already an RPC endpoint here, so any HTTP-capable language is
+  # a full client with no generated SDK.
+  postgrest:
+    image: postgrest/postgrest:v12.2.8
+    restart: unless-stopped
+    depends_on: {db: {condition: service_healthy}}
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
+      # The FIRST schema is the default; every other is selected per request
+      # with Accept-Profile.
+      PGRST_DB_SCHEMAS: content, aiq, rbac, workflow, agentic, public
+      PGRST_DB_ANON_ROLE: web_anon
+      PGRST_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
+    ports: ["3000:3000"]
+
+  # The only process a workflow needs, and only for steps that leave the
+  # machine. p8ql and sql steps run inside Postgres with nothing running here.
+  worker:
+    image: percolationlabs/percolate-core:0.1.3
+    restart: unless-stopped
+    depends_on: {db: {condition: service_healthy}}
+    command: ["worker", "--queue", "http"]
+    environment:
+      P8_DSN: postgres://worker:${P8_WORKER_PASSWORD:-workerpass}@db:5432/percolate
+      P8_WORKER_ID: worker-1
+      # Object storage, so an oversized step output is offloaded and refd
+      # rather than failing the task.
+      P8_S3_ENDPOINT: http://minio:9000
+      P8_S3_KEY: ${MINIO_USER:-p8admin}
+      P8_S3_SECRET: ${MINIO_PASSWORD:-p8password}
+      P8_BUCKET: p8-content
+      # Credentials named by http_call tasks are resolved from HERE, by name.
+      # The database stores only the reference, so a dump of workflow.tasks
+      # never contains a secret and a task stays replayable.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+
+  content:
+    image: percolationlabs/percolate-core:0.1.3
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      minio: {condition: service_started}
+    command: ["content", "serve"]
+    environment:
+      P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
+      P8_S3_ENDPOINT: http://minio:9000
+      P8_S3_KEY: ${MINIO_USER:-p8admin}
+      P8_S3_SECRET: ${MINIO_PASSWORD:-p8password}
+      P8_BUCKET: p8-content
+      P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
+    ports: ["8081:8081"]
+
+  agent:
+    image: percolationlabs/percolate-core:0.1.3
+    restart: unless-stopped
+    depends_on: {db: {condition: service_healthy}}
+    command: ["agent", "serve"]
+    environment:
+      P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
+      P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
+      # An agent is a row; the model it uses is a column. This is only the
+      # key that column's provider needs.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    ports: ["8080:8080"]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-p8admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-p8password}
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["miniodata:/data"]
+
+volumes:
+  pgdata:
+  miniodata:

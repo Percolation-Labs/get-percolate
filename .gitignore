@@ -1,0 +1,16 @@
+# The built site. CI publishes it; a local build is for looking at it.
+docs/_site/
+
+# Packaged charts land in the gh-pages branch, not here.
+*.tgz
+
+# Release assets are downloaded, never committed -- a 900KB .so per
+# architecture in git history is how a "getting started" repo becomes a slow
+# clone.
+extension/*.so
+extension/*.sql
+extension/*.control
+
+.DS_Store
+__pycache__/
+.venv/

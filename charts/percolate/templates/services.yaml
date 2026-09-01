@@ -1,0 +1,101 @@
+{{- /*
+  The three HTTP surfaces. One image, three commands -- so this is one template
+  with a range rather than three near-identical files that drift.
+*/ -}}
+{{- $svcs := list }}
+{{- if .Values.postgrest.enabled }}{{ $svcs = append $svcs (dict "name" "postgrest" "port" 3000 "cfg" .Values.postgrest) }}{{ end }}
+{{- if .Values.content.enabled }}{{ $svcs = append $svcs (dict "name" "content" "port" 8081 "cfg" .Values.content "cmd" (list "content" "serve")) }}{{ end }}
+{{- if .Values.agent.enabled }}{{ $svcs = append $svcs (dict "name" "agent" "port" 8080 "cfg" .Values.agent "cmd" (list "agent" "serve")) }}{{ end }}
+{{- range $s := $svcs }}
+{{- $root := $ }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "percolate.fullname" $root }}-{{ $s.name }}
+  labels: {{- include "percolate.labels" $root | nindent 4 }}
+spec:
+  ports: [{port: {{ $s.port }}, targetPort: http, name: http}]
+  selector:
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: {{ $s.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "percolate.fullname" $root }}-{{ $s.name }}
+  labels: {{- include "percolate.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $s.cfg.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $s.name }}
+  template:
+    metadata:
+      labels:
+        {{- include "percolate.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $s.name }}
+    spec:
+      securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      {{- if $root.Values.serviceAccount.create }}
+      serviceAccountName: {{ $root.Values.serviceAccount.name | default (include "percolate.fullname" $root) }}
+      {{- end }}
+      containers:
+        - name: {{ $s.name }}
+          securityContext: {{- toYaml $root.Values.securityContext | nindent 12 }}
+          {{- if eq $s.name "postgrest" }}
+          image: "{{ $s.cfg.image.repository }}:{{ $s.cfg.image.tag }}"
+          env:
+            - name: P8_AUTHENTICATOR_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: authenticator-password}}
+            # $(VAR) interpolation, so the password is never a rendered literal
+            # in the manifest -- a DSN built by the chart would put it straight
+            # into `kubectl get deploy -o yaml` and into every GitOps diff.
+            - name: PGRST_DB_URI
+              value: {{ include "percolate.serviceDsn" $root | quote }}
+            - name: PGRST_DB_SCHEMAS
+              value: {{ $s.cfg.schemas | quote }}
+            - name: PGRST_DB_ANON_ROLE
+              value: web_anon
+            - name: PGRST_JWT_SECRET
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: jwt-secret}}
+          {{- else }}
+          image: {{ include "percolate.image" $root | quote }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args: {{- toYaml $s.cmd | nindent 12 }}
+          env:
+            - name: P8_AUTHENTICATOR_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: authenticator-password}}
+            - name: P8_DSN
+              value: {{ include "percolate.serviceDsn" $root | quote }}
+            {{- if eq $s.name "agent" }}
+            # The Agent Runtime reads P8_DATABASE_URL; the worker and Content
+            # Server read P8_DSN. Both are set rather than only the one that
+            # works, because the divergence is in percolate-core and a chart
+            # that silently depends on which name a given release happens to
+            # honour is a chart that breaks on upgrade. Found by deploying it:
+            # the agent ignored P8_DSN and fell back to localhost:5500.
+            - name: P8_DATABASE_URL
+              value: {{ include "percolate.serviceDsn" $root | quote }}
+            - name: LLM_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key}}
+            {{- end }}
+            {{- include "percolate.commonEnv" $root | nindent 12 }}
+          {{- end }}
+          ports: [{containerPort: {{ $s.port }}, name: http}]
+          resources: {{- toYaml $s.cfg.resources | nindent 12 }}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      # readOnlyRootFilesystem is on, so anything that writes needs a real
+      # volume. /tmp is the only one these processes use.
+      volumes: [{name: tmp, emptyDir: {}}]
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,82 @@
+# The two published images.
+#
+# Both multi-arch, and the Postgres one is the reason this exists as CI rather
+# than as a script someone runs: percolate_parser is a shared library, so it is
+# one file per architecture, and building the non-native one locally means the
+# whole Rust toolchain under emulation. An image built on a laptop and pushed
+# as `19` is arm64-only and runs nowhere in a typical amd64 cluster.
+name: images
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_version:
+        description: percolate-core version to tag
+        required: true
+      push:
+        description: push to Docker Hub
+        type: boolean
+        default: false
+
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {repository: percolating-sirsh/p8-subsystems}
+
+      - name: Fetch the parser for both Linux architectures
+        # From the extension release, rather than rebuilt here: the .so in the
+        # image and the .so someone installs with install.sh must be the same
+        # artifact, or "works in Docker, fails on my Postgres" becomes a class
+        # of bug with no way to tell the two builds apart.
+        run: |
+          mkdir -p dev/dist
+          for a in amd64 arm64; do
+            curl -fsSL -o "dev/dist/percolate_parser-$a.so" \
+              "https://github.com/percolating-sirsh/get-percolate/releases/latest/download/percolate_parser-linux-$a.so"
+          done
+          curl -fsSL -o dev/dist/percolate_parser.control \
+            https://github.com/percolating-sirsh/get-percolate/releases/latest/download/percolate_parser.control
+          curl -fsSL -o dev/dist/percolate_parser--0.1.0.sql \
+            https://github.com/percolating-sirsh/get-percolate/releases/latest/download/percolate_parser--0.1.0.sql
+
+      - name: Generate the extension SQL
+        run: |
+          python3 extension/percolate/build-sql.py
+          cp extension/percolate/sql/percolate--0.1.0.sql dev/dist/
+          cp extension/percolate/percolate.control dev/dist/
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: inputs.push
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: dev
+          file: dev/Dockerfile.pg19
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push }}
+          tags: percolationlabs/percolate-postgres:19
+
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {repository: percolating-sirsh/percolate-core}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: inputs.push
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push }}
+          tags: |
+            percolationlabs/percolate-core:${{ inputs.core_version }}
+            percolationlabs/percolate-core:latest

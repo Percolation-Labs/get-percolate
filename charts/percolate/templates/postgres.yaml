@@ -1,0 +1,92 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "percolate.fullname" . }}-postgres
+  labels: {{- include "percolate.labels" . | nindent 4 }}
+spec:
+  ports: [{port: 5432, targetPort: postgres, name: postgres}]
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "percolate.fullname" . }}-postgres
+  labels: {{- include "percolate.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "percolate.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "percolate.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999            # the postgres user in the official image
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          args: {{- toYaml .Values.postgres.extraArgs | nindent 12 }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: postgres-password}}
+            # Read by the image's baked bootstrap, which creates the roles the
+            # services connect as. If these differ from what the Deployments
+            # below use, every service starts and fails to authenticate -- so
+            # both sides read the same Secret keys.
+            - name: P8_AUTHENTICATOR_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: authenticator-password}}
+            - name: P8_WORKER_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: worker-password}}
+            # The official image refuses to initdb into a non-empty directory,
+            # and a PVC mounted at /var/lib/postgresql/data is never empty --
+            # it has lost+found. This is the documented answer, not a hack.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports: [{containerPort: 5432, name: postgres}]
+          readinessProbe:
+            exec: {command: ["pg_isready", "-U", "{{ .Values.postgres.user }}", "-d", "{{ .Values.postgres.database }}"]}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            exec: {command: ["pg_isready", "-U", "{{ .Values.postgres.user }}", "-d", "{{ .Values.postgres.database }}"]}
+            # Generous on purpose: the first start runs the whole extension
+            # install, and a liveness probe that kills the pod mid-install
+            # leaves a half-created schema behind and then does it again.
+            initialDelaySeconds: 120
+            periodSeconds: 20
+          resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            # readOnlyRootFilesystem is not set for this container: postgres
+            # writes to /tmp and to its own socket directory, and pretending
+            # otherwise means an emptyDir per path and a longer list to keep
+            # right than the guarantee is worth here.
+  {{- if .Values.postgres.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgres.persistence.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources: {requests: {storage: {{ .Values.postgres.persistence.size }}}}
+  {{- else }}
+      volumes: [{name: data, emptyDir: {}}]
+  {{- end }}
+{{- end }}

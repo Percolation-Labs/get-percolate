@@ -85,25 +85,29 @@ spec:
   CPU -- and an HPA cannot ask it. KEDA's postgresql scaler can, and it can
   also scale to zero, which a queue that is empty most of the day should.
 
-  THE QUERY COUNTS `running` AS WELL AS CLAIMABLE-`ready`, and that is not
-  belt and braces. Counting only `ready` is the subtle wrong version: it is
-  correct for `pending` (a task blocked on a dependency is not work anyone can
-  do) and wrong for `running`, because a pool of pods three minutes into a
-  task then reports depth 0. KEDA reads that as idle and scales the pods out
-  from under work in flight.
+  A FUNCTION, NOT A TABLE READ, and that is the difference between working and
+  not. Counting rows in workflow.tasks fails as `worker`, which holds no table
+  grants -- and granting it select on tasks then fails again with `permission
+  denied for table runs`, because the RLS policy on tasks reads runs. Two
+  tables, to answer one number, handed to a credential the KEDA operator holds
+  across every namespace it serves. workflow.queue_depth(text) is one EXECUTE
+  grant on one SECURITY DEFINER function, and the worker keeps holding no
+  table privileges at all.
 
-  Measured, on a queue holding 2 claimable-ready, 1 ready backing off, 2
-  running, 1 done and 1 failed: this query returns 4, the `ready`-only version
-  returns 2. It undercounts by exactly the in-flight tasks.
+  What the function counts is the other half. It counts `running` as well as
+  claimable-`ready`: the version counting only `ready` is right about
+  `pending` -- a task blocked on a dependency is not work anyone can do -- and
+  wrong about `running`, because a pool of pods three minutes into a task
+  reports depth 0, KEDA reads that as idle, and the pods are scaled out from
+  under work in flight.
 
-  The arithmetic still works because KEDA's target is PER REPLICA: N pods each
-  holding one task report depth N against a target of N-per-pod, which
-  resolves to N. Work drains, both counts fall to zero, and the pool scales to
-  zero with no special case anywhere.
+  Both halves measured on a live cluster: the same four 40-second tasks took
+  160s on one pod pinned there by a failing scaler, and 56s on four.
 
-  `run_after <= now()` is equally deliberate: a task backing off between
-  retries is not work anyone can do yet, and holding a pod for it burns money
-  until the backoff expires.
+  Requires an image whose extension ships queue_depth (percolate-postgres:19
+  from 2026-09 onward). On an older one the scaler reports "function
+  workflow.queue_depth(text) does not exist" -- loudly, rather than by quietly
+  never scaling.
 */}}
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -130,11 +134,7 @@ spec:
   triggers:
     - type: postgresql
       metadata:
-        query: >-
-          select count(*)::int from workflow.tasks
-          where queue = '{{ $w.queue }}'
-            and (status = 'running'
-                 or (status = 'ready' and run_after <= now()))
+        query: "select workflow.queue_depth('{{ $w.queue }}')::int"
         targetQueryValue: "{{ $w.autoscaling.queueDepthPerPod | default 20 }}"
         # Gates 0 -> 1, and it is a DIFFERENT question from targetQueryValue --
         # "is there any work?" not "how much work per pod?". The failure mode

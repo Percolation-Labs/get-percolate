@@ -68,6 +68,12 @@ name = "Beyond workflows"
   summary = "An agent is a row. Prompt, tools and delegation are data, and tools are discovered rather than declared."
 
   [[section.page]]
+  file = "ingest.md"
+  title = "Uploading files"
+  status = "proven"
+  summary = "A file becomes chunks, vectors and, if it is a table, a Parquet dataset -- with nothing to run after the upload."
+
+  [[section.page]]
   file = "query.md"
   title = "Querying"
   status = "proven"

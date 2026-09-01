@@ -89,4 +89,4 @@ LLM call and a tool call and neither of those is a catalog lookup. So treat the
 streaming and delegation behaviour described here as specified and reviewed
 rather than measured.
 
-Next: [querying](query.html).
+Next: [uploading files](ingest.html).

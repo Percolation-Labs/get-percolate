@@ -97,8 +97,8 @@ only needed for scheduled workflows.
 
 **Supported platforms for the prebuilt parser:** `linux/amd64`,
 `linux/arm64`, `macos/arm64`. On anything else `install.sh` installs the SQL
-extension and tells you plainly that `define_yaml` and `p8ql` will not resolve
-until you build the parser — it does not pretend to have succeeded.
+extension and tells you that `define_yaml` and `p8ql` will not resolve until
+you build the parser — it does not pretend to have succeeded.
 
 ---
 
@@ -109,7 +109,7 @@ until you build the parser — it does not pretend to have succeeded.
 | **Workflow engine** | DAG, saga compensation, retry with backoff, matrix fan-out, timers, signals, scheduling — all as rows. `SKIP LOCKED` claiming; the database is the queue. |
 | **Agents** | An agent is a row. Prompt, tools and delegation are data. Tools are MCP or OpenAPI endpoints, discovered rather than declared. |
 | **Query layer** | `LOOKUP`, `FUZZY`, `GRAPH`, `TEXT`, `SEMANTIC`, `SEARCH` and plain SQL in one dialect, over PG19 property graphs plus pgvector. |
-| **Content plane** | Channels, files, resources, chunks — upload, ingest and serve back. |
+| **Content plane** | Channels, files, resources, chunks. Post a file and it is parsed, chunked and embedded with nothing else to run — PDF, DOCX, HTML, markdown and audio; a CSV becomes a Parquet dataset instead, because a table is not prose. |
 | **Identity** | Users, roles, API keys, sessions, and RLS that is actually on. No role in the system is a superuser. |
 
 ---

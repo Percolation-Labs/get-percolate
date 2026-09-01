@@ -8,7 +8,8 @@ being asked nicely.
 
 `queue` is the only signal that both `claim_task` and an autoscaler see, so one
 worker pool per queue is how a slow model endpoint stops starving a fast
-ingestion queue.
+ingestion queue — and the [ingest queue](ingest.html) is the one to watch
+first, since a batch of uploads arrives all at once and then stops.
 
 ```yaml
 workers:

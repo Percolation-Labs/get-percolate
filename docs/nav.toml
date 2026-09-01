@@ -71,7 +71,7 @@ name = "Beyond workflows"
   file = "ingest.md"
   title = "Uploading files"
   status = "proven"
-  summary = "A file becomes chunks, vectors and, if it is a table, a Parquet dataset -- with nothing to run after the upload."
+  summary = "A file becomes chunks, vectors, graph nodes and, if it is a table, a Parquet dataset -- with nothing to run after the upload."
 
   [[section.page]]
   file = "query.md"

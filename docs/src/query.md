@@ -90,6 +90,15 @@ side of the scale argument.
 The same rule is why a workflow artefact gets the `stored` resource status
 rather than `ready`, since step output is machine-generated too.
 
+Rows arrive in the registry two ways. A table you register with
+`aiq.register_entity_table` is projected as its rows change, which is how
+documents, companies and filings get there. The other way is extraction: an
+uploaded file can be read by a structured-output extractor whose nodes and
+edges land through `aiq.upsert_graph`, so the things your documents mention are
+in the graph next to the things your tables hold. That is a flag on the
+ingestion pipeline and it is off by default — see
+[uploading files](ingest.html).
+
 ## Property graphs are a read-only view
 
 SQL/PGQ in PG19 defines a property graph as a view over ordinary relational

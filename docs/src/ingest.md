@@ -2,7 +2,8 @@
 
 You post a file and, with nothing else to run, it becomes an answer to a
 question. That path is two workflow steps and one function call to install
-them.
+them, and a flag on the same call adds a second index that makes the upload
+connected as well as findable.
 {: .lede }
 
 `POST /files` hashes the bytes, stores them content-addressed in object
@@ -14,8 +15,8 @@ later `SEARCH` over `chunks` finds it.
 We install the pipeline with one call:
 
 ```sql
-select content.install_ingest_workflow();
--- ingest_file: parse + embed (text-embedding-3-small)
+select content.install_ingest_workflow('text-embedding-3-small');
+-- ingest_file: parse, embed with text-embedding-3-small in batches
 ```
 
 That writes an ordinary workflow document, which you can read, edit or replace:
@@ -165,6 +166,95 @@ per-chunk shape was eight of each. Re-embedding a chunk replaces its vector, so
 re-ingesting a document whose text changed does not leave the old vector
 ranking against the new text.
 
+## A second index off the same parse
+
+Chunks and vectors make an upload findable. The other thing we can do with the
+same parse is make it connected: read what each passage names and how those
+things relate, and land that as nodes and edges in the graph. It is a flag on
+the same install call:
+
+```sql
+select aiq.install_structure_null('gpt-4o-mini');
+select content.install_ingest_workflow(
+           p_model       => 'text-embedding-3-small',
+           p_graph_index => true,
+           p_graph_model => 'gpt-4o-mini');
+-- ingest_file: parse, embed with text-embedding-3-small in batches,
+--             graph-index each window with structure_null (gpt-4o-mini)
+```
+
+That adds two steps:
+
+```yaml
+  - id: graph
+    needs: [parse]                 # a sibling of embed, not a successor
+    matrix:
+      rows: {function: windows_to_index, args: ['{{run.resource_id}}']}
+      max_fanout: 200
+      template: {queue: http, rate_key: structure_extraction, rest: …}
+
+  - id: land_graph
+    needs: [graph]
+    sql: {function: land_graph_windows, args: ['{{steps.graph.result.task_id}}']}
+```
+
+`embed` and `graph` both wait on `parse` and on nothing else, so the two
+indexes run at the same time over the same text, a deployment with no embedding
+model can still build a graph, and an extraction that fails costs you no
+vectors. A window here is a chunk, so the extractor reads the same passages the
+embedder embedded and a node can be traced back to the passage that named it.
+
+The extractor is a row in `agentic.agents` rather than a prompt in the
+workflow, which means changing what it looks for is an update, not an edit to
+every pipeline that uses it. `aiq.install_structure_null()` writes the default
+one: a system prompt that asks for what the document names and how those things
+connect, and a JSON Schema whose relation field is an enum built from
+`aiq.graph_vocabulary`. The vocabulary is closed, so an extractor cannot invent
+a relation the graph then has to carry forever.
+
+The five uploaded files produced about 90 soft nodes and 70 extracted edges
+over 13 relations. Those counts move between runs, since a model is doing the
+reading; what does not move is that every extracted edge carries the resource,
+the run and the agent that made it:
+
+```sql
+select e.relation, r.title, e.provenance->'sources'->0->>'agent' as agent
+from aiq.edges e
+join content.resources r on r.id = (e.provenance->'sources'->0->>'resource_id')::uuid
+limit 3;
+--     relation     |       title        |     agent
+-- -----------------+--------------------+----------------
+--  contains        | r7-field-notice.md | structure_null
+--  affiliated_with | r7-field-notice.md | structure_null
+--  supplies        | r7-field-notice.md | structure_null
+```
+
+Two things to know before you turn it on.
+
+**It costs a completion per window**, where the embedding branch costs a
+fraction of a cent per document, and that is why the flag defaults to off. On
+these five documents it was a few cents; on a corpus it is the line item to
+watch.
+
+**A cheap model gets some of it wrong, and we drop those rather than fail the
+upload.** Two kinds: an edge that points at node 8 when the model listed eight
+nodes, and a relation outside the vocabulary — gpt-4o-mini emitted `trips` on a
+document about a robotic arm. The JSON Schema carries the vocabulary as an
+enum, and OpenAI honours an enum only in strict structured-output mode, which
+this schema cannot use because strict wants every property in `required` and
+the attribute bag is optional. So the enum is a strong hint rather than a
+constraint. Both kinds are dropped before landing and counted in the receipt
+(`edges_dropped_ordinal`, `edges_dropped_offvocab`), which also tells you when
+the vocabulary is too small for your corpus.
+
+What is not built here yet: nothing resolves a soft node. Extraction lands
+names, so `Ravensworth` and `Ravensworth Precision` are two nodes until
+something decides they are one, and `aiq.promote_soft_node` is the function
+that would do it and is called by nothing. The graph answers "what did the
+documents name, and how did they connect it" rather than "what is out there".
+And re-ingesting a document re-extracts all of it, the same way it re-embeds
+all of it.
+
 ## Where it fails loudly
 
 Three of these exist because the alternative is a pipeline that reports
@@ -204,17 +294,10 @@ The rest of the gaps:
 - **A provider that cannot batch is called N times.** Ollama's embeddings
   endpoint takes one prompt, so the worker loops — same receipt, same retry,
   and no faster than the per-chunk shape it replaced.
-- **The graph index is off by default.** The same parse can feed a second
-  index, where a structured-output agent reads the document and its nodes and
-  edges land in the graph, so an upload is connected as well as findable. Its
-  database half ships and is asserted; no model has been pointed at it yet. A
-  completion per document is a different order of cost from an embedding per
-  chunk, which is why that branch is a flag on
-  `content.install_ingest_workflow()` rather than a default.
-
 Five formats — markdown, PDF, DOCX, WAV and CSV — were uploaded through a live
-stack, and four questions were answered afterwards from four different formats,
-with the CSV answered by SQL over Parquet rather than by retrieval. Everything
-above is that run.
+stack with both indexes on, and four questions were answered afterwards from
+four different formats, with the CSV answered by SQL over Parquet rather than
+by retrieval. Everything above is that run: the chunk counts, the one request
+for eight chunks, the edges above and the relation the model invented.
 
 Next: [querying](query.html).

@@ -52,7 +52,7 @@ helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \
 
 The chart is an OCI artefact, so there is no chart repository, no `index.yaml`
 and no DNS involved, and each of those is a thing that can break on its own.
-`helm repo add percolate https://docs.percolationlabs.ai/charts` works too if
+`helm repo add percolate https://percolating-sirsh.github.io/get-percolate/charts` works too if
 you prefer a classic repo, and Flux and Argo can both point straight at
 `charts/percolate` in git with nothing published at all.
 

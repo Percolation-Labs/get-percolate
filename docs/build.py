@@ -217,12 +217,12 @@ def build() -> int:
     (OUT / "llms.txt").write_text("\n".join(index_lines))
     (OUT / "llms-full.txt").write_text("\n".join(full_md))
 
-    # Pages needs this to serve the custom domain, and it must be in the
-    # published artifact rather than in the repo root -- the workflow uploads
-    # _site, not the repo.
-    (OUT / "CNAME").write_text("docs.percolationlabs.ai\n")
-    # And this, or Pages runs the whole thing through Jekyll and drops
-    # every directory beginning with an underscore.
+    # No CNAME. The site is served from the project Pages URL, so every link
+    # here is one that resolves today; a custom domain can be added later by
+    # changing site_url in nav.toml and setting the CNAME in the repo settings.
+    #
+    # .nojekyll, or Pages runs the whole thing through Jekyll and drops every
+    # directory beginning with an underscore.
     (OUT / ".nojekyll").write_text("")
 
     (OUT / "robots.txt").write_text(

@@ -9,7 +9,7 @@
 
 site_name = "Percolate"
 site_tagline = "An AI workflow engine in Postgres"
-site_url = "https://docs.percolationlabs.ai"
+site_url = "https://percolating-sirsh.github.io/get-percolate"
 description = """
 Percolate puts workflow state, agent conversations, identity and semantic \
 query inside PostgreSQL. Workflows are declarative documents compiled to rows; \

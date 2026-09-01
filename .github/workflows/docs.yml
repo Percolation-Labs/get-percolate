@@ -1,7 +1,7 @@
 # Build the docs and the Helm chart repository, publish both to GitHub Pages.
 #
 # One site, two things on it: the pages at the root and the chart index under
-# /charts. That is why `helm repo add percolate https://docs.percolationlabs.ai/charts`
+# /charts. That is why `helm repo add percolate https://percolating-sirsh.github.io/get-percolate/charts`
 # works without a second host or a second DNS record to keep alive.
 name: docs
 
@@ -53,11 +53,11 @@ jobs:
           # it every publish rewrites index.yaml with only the current chart,
           # and a pinned `targetRevision: 0.1.0` in somebody's Argo Application
           # stops resolving the moment 0.1.1 ships.
-          if curl -fsSL https://docs.percolationlabs.ai/charts/index.yaml -o old-index.yaml; then
+          if curl -fsSL https://percolating-sirsh.github.io/get-percolate/charts/index.yaml -o old-index.yaml; then
             helm repo index docs/_site/charts \
-              --url https://docs.percolationlabs.ai/charts --merge old-index.yaml
+              --url https://percolating-sirsh.github.io/get-percolate/charts --merge old-index.yaml
           else
-            helm repo index docs/_site/charts --url https://docs.percolationlabs.ai/charts
+            helm repo index docs/_site/charts --url https://percolating-sirsh.github.io/get-percolate/charts
           fi
 
       - name: Check the chart renders

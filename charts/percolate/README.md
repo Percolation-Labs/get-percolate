@@ -38,7 +38,7 @@ if you turn autoscaling on.
 |---|---|
 | **OCI** (preferred) | `oci://ghcr.io/percolating-sirsh/charts/percolate` — no repository index, no DNS, no Pages build. Helm 3.8+, Flux `OCIRepository`, Argo all read it. |
 | **Git** | point straight at `charts/percolate` in this repo. Nothing is published at all, so nothing can be stale. |
-| **Classic repo** | `helm repo add percolate https://docs.percolationlabs.ai/charts` — familiar, and the one that depends on a domain, a Pages deploy and a correctly merged `index.yaml`. |
+| **Classic repo** | `helm repo add percolate https://percolating-sirsh.github.io/get-percolate/charts` — familiar, and the one that depends on a domain, a Pages deploy and a correctly merged `index.yaml`. |
 
 The ordering is deliberate. A classic Helm repo is a URL, so it inherits every
 failure mode of the thing serving it; a chart nobody can install because a CNAME

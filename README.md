@@ -30,7 +30,7 @@ That is a complete workflow. `define_yaml` compiles it to rows; `start_workflow`
 runs it. The `sql` step executes the moment its dependency completes, in the
 transaction that completes it.
 
-**Documentation: <https://docs.percolationlabs.ai>**
+**Documentation: <https://percolating-sirsh.github.io/get-percolate>**
 
 ---
 
@@ -62,7 +62,7 @@ helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \
 
 The chart is published as an **OCI artifact**, which needs no chart repository,
 no `index.yaml` and no DNS — three things that can each break independently of
-the chart itself. `helm repo add percolate https://docs.percolationlabs.ai/charts`
+the chart itself. `helm repo add percolate https://percolating-sirsh.github.io/get-percolate/charts`
 also works if you prefer a classic repo, and Flux and Argo can point straight at
 `charts/percolate` in this git repo without any published artifact at all.
 

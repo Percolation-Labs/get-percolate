@@ -34,7 +34,7 @@ jobs:
 
       - name: Build the site
         run: |
-          pip install "markdown==3.7" "pygments==2.19.1"
+          pip install "markdown==3.7" "pygments==2.19.1" "pyyaml==6.0.2"
           python docs/build.py
 
       - uses: azure/setup-helm@v4

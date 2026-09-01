@@ -1,8 +1,8 @@
 # Your first workflow
 
-A workflow is a document. `define_yaml` compiles it to rows and
-`start_workflow` runs it — both are ordinary SQL functions, so nothing needs to
-be running for you to define one.
+A workflow is a document. `define_yaml` compiles it into rows and
+`start_workflow` runs it, and both are ordinary SQL functions, so you do not
+need anything running to define one.
 {: .lede }
 
 ## The smallest one that does something
@@ -18,17 +18,17 @@ $$);
 select workflow.start_workflow('hello', '{}'::jsonb);
 ```
 
-That run is already complete by the time `start_workflow` returns. A `sql` step
-becomes ready the moment its dependencies are satisfied and executes inside
-Postgres — there is no worker in this picture at all.
+That run has already finished by the time `start_workflow` returns to you. A
+`sql` step becomes ready as soon as the things it depends on are satisfied and
+then executes inside Postgres, so there is no worker involved anywhere.
 
-## A real one, four steps
+## A four-step one
 
 <ol class="steps" markdown="1">
-<li markdown="1">**Fetch** something over the network. Needs a worker, because the database does not make outbound calls.</li>
-<li markdown="1">**Project** the response into a typed table. Pure SQL; runs in-database.</li>
-<li markdown="1">**Fan out** over the rows that produced. Expands with no controller process.</li>
-<li markdown="1">**Aggregate** the children. Reads their outputs by handle, not by value.</li>
+<li markdown="1">**Fetch** something over the network. This needs a worker, since the database does not make outbound calls.</li>
+<li markdown="1">**Project** the response into a typed table. Pure SQL, so it runs in the database.</li>
+<li markdown="1">**Fan out** over the rows that produced.</li>
+<li markdown="1">**Aggregate** the children, reading their outputs by handle rather than by value.</li>
 </ol>
 
 ```yaml
@@ -58,7 +58,7 @@ steps:
     sql: {function: fx_volatility, args: ['{{run.$id}}']}
 ```
 
-### What the run looks like while it happens
+### What it looks like while it runs
 
 <div class="evidence" markdown="1">
 <div class="label">select step_key, kind, status from workflow.tasks_api where run_id = …</div>
@@ -76,51 +76,53 @@ steps:
 ```
 </div>
 
-The children exist as rows the instant `fan` completes, with `volatility`
-already depending on all of them. That is the property the design is for: there
-is no moment where the fan-out has happened but the work is not recorded.
+The children exist as rows the moment `fan` completes, with `volatility`
+already depending on all of them. There is never a moment where the fan-out has
+happened but the work is not written down.
 
-## Three things this example is quietly teaching
+## Three things this example is teaching you
 
 ### `{{run.$id}}` — the run can see itself
 
-`{{run.*}}` reads the run *input*. The run's own identity lives behind a
-reserved `$`:
+`{{run.*}}` reads the input you passed to `start_workflow`. The run's own
+identity lives behind a `$`:
 
 | Template | Is |
 |---|---|
 | `{{run.$id}}` | this run's uuid |
 | `{{run.$trace_id}}` | the trace shared by every task in the run |
-| `{{run.$session}}` | an engine-minted conversation id, for agent steps |
+| `{{run.$session}}` | a conversation id the engine mints, for agent steps |
 
-The prefix is reserved rather than plain `{{run.id}}` because an input key
-called `id` is not unusual, and shadowing it would make the same template mean
-different things depending on the caller's payload. This could not be worked
-around by passing the id in: the caller does not know it until `start_workflow`
-returns.
+The prefix is there because plenty of payloads have a key called `id`, and
+without it the same template would mean different things depending on what you
+passed in. You cannot get around this by passing the run id yourself either,
+since you do not have it until `start_workflow` returns.
 
 ### The row set comes from a registered function
 
-`matrix.rows` names a function in `workflow.step_functions`, never inline SQL.
-Registration is an admin act, so **authoring a workflow never widens what can be
-executed**. `max_fanout` is mandatory for the same reason a query without a
-LIMIT is a bad idea against an unknown result set.
+`matrix.rows` names a function in `workflow.step_functions` rather than inline
+SQL. Registering one is an admin action, so writing a workflow never widens
+what can be executed. `max_fanout` is required, for the same reason you would
+not run a query with no `LIMIT` against a result set you have not seen.
 
 ### The fan-in reads handles, not values
 
-`fx_volatility` reads its siblings' outputs through `workflow.matrix_outputs`,
-not through a template. Children deliberately do not write into `runs.context`:
-one JSONB column rewritten in full per completion is quadratic write
-amplification at fan-out scale.
+`fx_volatility` reads its siblings through `workflow.matrix_outputs` rather
+than through a template. Children do not write into `runs.context`, because one
+JSONB column rewritten in full on every completion gives you quadratic write
+amplification once a fan-out gets wide.
 
-## Watching it
+## Watching a run
 
 ```sql
 select status, count(*) from workflow.tasks_api where run_id = :run group by 1;
 select * from workflow.runs_api where id = :run;
 ```
 
-Both are RLS-filtered views. Over REST they are `GET /runs_api?id=eq.<uuid>` and
-`GET /tasks_api?run_id=eq.<uuid>` — every function in the client API is already
-a PostgREST endpoint, so any HTTP-capable language is a full client with no
-generated SDK.
+Both are RLS-filtered views. Over REST they are
+`GET /runs_api?id=eq.<uuid>` and `GET /tasks_api?run_id=eq.<uuid>`, since every
+function in the client API is already a PostgREST endpoint and any
+HTTP-capable language is a full client with no generated SDK.
+
+Next: [authoring in YAML](authoring.html) covers the step kinds and what the
+compiler will refuse.

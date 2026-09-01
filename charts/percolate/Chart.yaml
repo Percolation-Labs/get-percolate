@@ -10,8 +10,6 @@ home: https://docs.percolationlabs.ai
 icon: https://docs.percolationlabs.ai/assets/logo.png
 sources:
   - https://github.com/percolating-sirsh/get-percolate
-  - https://github.com/percolating-sirsh/p8-subsystems
-  - https://github.com/percolating-sirsh/percolate-core
 keywords: [postgres, workflow, agents, rag, pgvector, ai]
 maintainers:
   - name: Percolation Labs

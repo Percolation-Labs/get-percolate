@@ -1,16 +1,19 @@
 # What Percolate is
 
-An AI workflow engine that lives inside PostgreSQL. Workflow state, agent
-conversations, identity and permissions, graph and semantic queries are tables
-and functions in your database — not state held by a control plane that talks
-to your database.
+Percolate is an AI workflow engine that lives inside PostgreSQL. Workflow
+state, agent conversations, identity and permissions, and graph and semantic
+queries are all tables and functions in your database, rather than state held
+by a control plane that talks to your database.
 {: .lede }
 
-The practical consequence is that **most steps need no process**. A step is
-`sql`, `p8ql`, `rest`, `agent` or `work`. The first two run *inside* Postgres
-the moment their dependencies complete, in the transaction that completes them.
-Only `rest` and `agent` leave the machine, and only `work` runs code you wrote.
-A pipeline of queries and graph updates finishes with nothing running anywhere.
+The nice consequence of that is that most steps need no process at all. A step
+is `sql`, `p8ql`, `rest`, `agent` or `work`. The first two run inside Postgres
+as soon as the steps they depend on finish, in the same transaction that
+finishes them. Only `rest` and `agent` leave the machine, and only `work` runs
+code you wrote. So a pipeline made of queries and graph updates completes with
+nothing running anywhere.
+
+Here is a small one:
 
 ```yaml
 name: triage
@@ -30,68 +33,74 @@ steps:
       properties: {verdict: {type: string, enum: [SAFETY, FINANCE, OTHER]}}
 ```
 
-`define_yaml` compiles that to rows. `start_workflow` runs it. `retrieve`
-executes in the database; `embed` and `classify` become queued tasks a worker
-picks up.
+`define_yaml` compiles that into rows and `start_workflow` runs it. `retrieve`
+executes inside the database, while `embed` and `classify` become queued tasks
+that a worker picks up.
 
-## Three ideas the whole thing rests on
+## Three ideas everything else follows from
 
 ### The database never blocks on HTTP
 
-No HTTP client extension is installed, deliberately. A step that needs the
-network becomes a **row**; `pg_notify` nudges a worker; the worker blocks, never
-Postgres. A blocking call inside the database would hold a backend and a
-transaction open for someone else's latency — a slow model endpoint would cost
-you connection slots rather than worker capacity.
+There is no HTTP client extension installed. When a step needs the network it
+becomes a row, `pg_notify` nudges a worker, and the worker is the thing that
+blocks. If the database made the call itself it would hold a backend and an
+open transaction for the length of somebody else's latency, so a slow model
+endpoint would cost you connection slots instead of worker capacity.
 
-This is the one decision that shapes everything else. It is why there is a
-worker at all, why `mode: async` exists, and why an agent step is an ordinary
-REST call whose URL the compiler fills in.
+This one decision shapes most of the rest. It is why there is a worker at all,
+why `mode: async` exists, and why an agent step turns out to be an ordinary
+REST call with the URL filled in for you.
 
-### Fan-out has no controller
+### Fan-out needs no controller
 
-A `matrix` step expands a query result into N children **in the transaction that
-completes it**, and rewires the successors onto the children. Argo does this
-with a controller pod reading a JSON array; that costs three processes, a
-serialisation round trip, and a window in which the parent is `done` and the
-children do not exist — so a controller crash strands the fan-out with nothing
-to resume from.
+A `matrix` step expands a query result into N children in the transaction that
+completes it, and rewires whatever depended on the parent onto the children.
 
-Here there is no window, because there is no second step.
+Argo does the equivalent with a controller pod that reads a JSON array, which
+costs three processes and a serialisation round trip, and leaves a window where
+the parent is `done` and the children do not exist yet. If the controller dies
+in that window the fan-out is stranded with nothing to resume from. Here there
+is no window, because there is no second step.
 
-### No role in the system is a superuser
+### No role is a superuser
 
-Superusers bypass row-level security unconditionally, and so does a view owned
-by the table owner. So `app_owner` owns tables and functions — the trusted
-`SECURITY DEFINER` path — while `api_viewer` owns only the `*_api` views, which
-means reads through them are RLS-filtered.
+A superuser bypasses row-level security completely, and so does a view owned by
+the same role that owns the table. So `app_owner` owns the tables and functions
+and `api_viewer` owns only the `*_api` views, which is what makes reads through
+those views RLS-filtered.
 
-Every schema self-checks this at load time and **refuses to install** if it does
-not hold. That check exists because the failure it prevents is silent: every
-policy in the schema stays syntactically present and semantically inert.
+Every schema checks this when it loads and refuses to install if it does not
+hold. It is worth a check rather than a comment because if you get it wrong
+every policy in the schema is still there and none of them do anything.
 
-## What it costs you
+## What it costs
 
-Worth stating plainly, because the pitch above is one-sided.
-
-| | |
-|---|---|
-| **PostgreSQL 19** | SQL/PGQ property graphs are a PG19 feature and the query parser is compiled against its ABI. There is no graceful degradation to 18. PG19 is in beta. |
-| **A compiled extension** | `percolate_parser` is Rust. Prebuilt for linux/amd64, linux/arm64 and macos/arm64; anything else you build yourself. |
-| **Your database is load-bearing** | Workflow state in Postgres means workflow throughput is bounded by your Postgres. That is usually the right trade at this scale, and it is a real one. |
-| **Not a hosted product** | No dashboard, no SaaS. The management surface is the same RPC set a worker uses, over PostgREST. |
-
-## Where the pieces live
+The pitch above is one-sided, so:
 
 | | |
 |---|---|
-| [p8-subsystems](https://github.com/percolating-sirsh/p8-subsystems) | the specs and the schema — the source of truth, and the assertions behind every claim on this site |
-| [percolate-core](https://github.com/percolating-sirsh/percolate-core) | the worker, Content Server and Agent Runtime |
-| [get-percolate](https://github.com/percolating-sirsh/get-percolate) | the compose file, the Helm chart, and these docs |
+| **PostgreSQL 19** | SQL/PGQ property graphs are a PG19 feature and the query parser is compiled against its ABI, so there is no graceful fallback to 18. PG19 is in beta. |
+| **A compiled extension** | `percolate_parser` is Rust. We publish builds for linux/amd64, linux/arm64 and macos/arm64; anything else you build yourself. |
+| **Your database is in the path** | Workflow state in Postgres means workflow throughput is bounded by your Postgres. At this scale that is usually the right trade, but it is a real one. |
+| **Not a hosted product** | There is no dashboard and no SaaS. The management surface is the same RPC set a worker uses, over PostgREST. |
 
-The specs repository is unusual and worth knowing about: **every design claim in
-it was run against a live database before being written down**, and the ones
-that did not survive are recorded as corrections rather than quietly fixed.
-`surface.sql` is an audit that checks each promised capability against a real
-database and fails loudly. The status chip at the top of each page here means
-the same thing.
+## How this documentation is written
+
+Everything here was run against a live database before it was written down.
+Where something did not survive that, we changed the page rather than the
+claim.
+
+The chip at the top of each page tells you which of three states it is in:
+
+| | |
+|---|---|
+| `proven` | we ran it, and there is an assertion behind it |
+| `designed` | specified and reviewed, but not yet run end to end |
+| `absent` | named because it is missing, since leaving it out would read as done |
+
+Moving a page back to `designed` when something turns out to be unbuilt is a
+normal edit.
+
+[Install](install.html) is next, and after that
+[your first workflow](first-workflow.html) walks a four-step pipeline through
+from `define_yaml` to a completed run.

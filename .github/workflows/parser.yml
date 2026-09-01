@@ -16,6 +16,17 @@ on:
         description: p8-subsystems ref to build from
         default: main
 
+# THE SOURCE REPOSITORY IS PRIVATE, so it is named by a repository variable
+# rather than hardcoded here: this repo is public, and a public workflow should
+# not publish the layout of a private one. Set them once, per repo:
+#
+#   gh variable set SPECS_REPO  --body '<owner>/<specs-repo>'
+#   gh secret   set SOURCE_TOKEN --body '<PAT with read access to it>'
+#
+# Without them these jobs do not run, which is the correct behaviour for a fork:
+# a fork cannot build the extension and should fail saying so rather than
+# checking out nothing and publishing an empty release.
+
 permissions:
   contents: write        # to create the release and upload assets
 
@@ -26,7 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: percolating-sirsh/p8-subsystems
+          repository: ${{ vars.SPECS_REPO }}
+          token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref || 'main' }}
       - name: Generate the extension SQL from specs/
         # Generated rather than committed: the spec files are what get reviewed
@@ -53,7 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: percolating-sirsh/p8-subsystems
+          repository: ${{ vars.SPECS_REPO }}
+          token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref || 'main' }}
 
       - name: Install PostgreSQL 19 headers

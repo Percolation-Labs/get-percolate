@@ -136,8 +136,7 @@ SHELL = """<!doctype html>
   <span>Percolate</span>
   <span class="dot">&bull;</span>
   <a href="https://percolationlabs.ai">Percolation Labs</a>
-  <a href="https://github.com/percolating-sirsh/p8-subsystems">Specs</a>
-  <a href="https://github.com/percolating-sirsh/percolate-core">Services</a>
+  <a href="https://github.com/percolating-sirsh/get-percolate">GitHub</a>
   <a href="https://pypi.org/project/percolate-core/">PyPI</a>
   <span class="spacer"></span>
   <span>MIT</span>
@@ -208,9 +207,8 @@ def build() -> int:
         index_lines += [f"## {name}", "", *links, ""]
     index_lines += [
         "## Source", "",
-        "- [Specs and schema](https://github.com/percolating-sirsh/p8-subsystems): the SQL, and the specs each capability is asserted against.",
-        "- [Services](https://github.com/percolating-sirsh/percolate-core): the worker, Content Server and Agent Runtime.",
-        "- [Getting started](https://github.com/percolating-sirsh/get-percolate): compose file, Helm chart, install script.",
+        "- [Getting started](https://github.com/percolating-sirsh/get-percolate): compose file, Helm chart, install script and the source of these docs.",
+        "- [percolate-core on PyPI](https://pypi.org/project/percolate-core/): the worker, Content Server and Agent Runtime.",
         "",
         "## Optional", "",
         f"- [Full documentation as one file]({nav['site_url'].rstrip('/')}/llms-full.txt): every page above, concatenated.",

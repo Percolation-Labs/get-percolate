@@ -61,8 +61,9 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 fetch() {
   curl -fsSL "$1" -o "$2" 2>/dev/null \
     || die "could not download $1
-  If this is a fresh checkout with no release yet, build from source instead:
-  github.com/percolating-sirsh/p8-subsystems -> extension/percolate/build-sql.py"
+  Check https://github.com/$REPO/releases for a published release. If you are
+  running ahead of one, the Docker image carries the same extensions:
+  percolationlabs/percolate-postgres:19"
 }
 
 # ---------------------------------------------------------------- percolate
@@ -82,9 +83,12 @@ if [ -z "$PLATFORM" ]; then
   say "!! No prebuilt parser for $os/$arch."
   say "   percolate is installed and every SQL capability works. The P8QL and"
   say "   YAML compilers do NOT: define_yaml() and p8ql: steps will fail until"
-  say "   percolate_parser is built for this platform. Build it with"
-  say "   cargo-pgrx 0.19.2 from p8-subsystems/extension/percolate_parser,"
-  say "   or use the Docker image, which carries both."
+  say "   percolate_parser is built for this platform."
+  say ""
+  say "   The Docker image carries a prebuilt parser for linux/amd64 and"
+  say "   linux/arm64: percolationlabs/percolate-postgres:19"
+  say "   For another platform, open an issue at github.com/$REPO/issues with"
+  say "   the output of \\`uname -sm\\` and it can be added to the build matrix."
   exit 3
 fi
 

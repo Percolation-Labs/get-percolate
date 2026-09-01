@@ -111,16 +111,6 @@ until you build the parser — it does not pretend to have succeeded.
 
 ---
 
-## Where things live
-
-| | |
-|---|---|
-| [p8-subsystems](https://github.com/percolating-sirsh/p8-subsystems) | the specs and the schema — the source of truth |
-| [percolate-core](https://github.com/percolating-sirsh/percolate-core) | the Python services (`pip install percolate-core`) |
-| **this repo** | how you get it running, the Helm chart, and the docs |
-
----
-
 ## License
 
 MIT.

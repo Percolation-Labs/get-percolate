@@ -171,6 +171,102 @@ step naming a throttle that does not exist never runs at all.
 <a href="query.html">where a corpus and its spaces come from</a></p>
 </details>
 
+## Probing: run the cheap half
+
+What we are trying to do here is find out whether a pipeline works, without
+paying for it.
+{: .goal }
+
+```sql
+select * from workflow.plan_probe('sec_revenue');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">nothing here executes a step</div>
+
+```
+   step   |   probe   | verdict |                     detail
+----------+-----------+---------+-------------------------------------------------
+ quarters | parses    | ok      | the planner accepted it
+ quarters | relations | ok      | reads sec_facts
+ quarters | returns   | ok      | {"fp": "text", "fy": "integer", "val": "numeric"}
+ typo     | parses    | fail    | relation "sec_factz" does not exist
+ land     | arity     | fail    | 'record_chunks' is registered with 2 argument(s)
+                                  and this step passes 1
+ ask      | env       | skipped | needs P8_AGENT_URL from the worker's environment
+ ask      | agent     | ok      | agent 'percolate' exists
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — EXPLAIN plans and discards, and CREATE VIEW validates
+without running</summary>
+
+Probing a five-step pipeline costs no outbound request, no model call and no
+row. `EXPLAIN` without `ANALYZE` gives you the parse and the relations the
+*planner* names — not a guess from reading the string. A temp view gives the
+result's column names and types, because a view is validated and planned at
+creation and executes nothing.
+
+`arity` is the one that saves an afternoon: at dispatch, a step passing one
+argument to a two-argument function fails with `function f(text) does not
+exist`, which reads as a missing function rather than a miscounted argument
+list.
+
+**`skipped` is never `ok`.** The worker's environment, an outbound URL, whether
+a credential resolves — all of those belong to a process the database
+deliberately cannot see. A probe that passed them would be worse than one that
+says it cannot tell.
+
+Templates become `null` before probing, since `{{run.cik}}` is not SQL. That is
+enough for parsing, relations and column types, and honestly less than a run.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-workflow.html#sql-steps-run-sql">what a statement step may
+carry</a> ·
+<a href="failure.html">what happens when one fails for real</a></p>
+</details>
+
+## The last run, beside the plan
+
+What we are trying to do here is find out what shape a step actually returns, so
+the next step can be written against it.
+{: .goal }
+
+```sql
+select * from workflow.plan_status('sec_revenue');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">shapes, not values</div>
+
+```
+   step   | status | attempts |                      returned
+----------+--------+----------+----------------------------------------------------
+ quarters | done   |        1 | {"of": {"fp": "string", "fy": "number"}, "rows": 2}
+ tally    | done   |        1 | {"of": {"n": "number", "peak": "number"}, "rows": 1}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — the join was already there</summary>
+
+A step's declared output is `jsonb`. Somebody writing
+`{{steps.quarters.result}}` into an agent's prompt has no way to know what keys
+it has, and no plan can tell them — one execution can. `workflow.tasks` is keyed
+`(run_id, step_key)` and every step node carries `step_key`, so this is a join
+rather than a second system.
+
+Keys and their types, or a row count. The values are one `select` away and would
+make this unreadable for a fan-out that returned four thousand rows.
+
+It is `SECURITY INVOKER`, unlike everything else on this page: `workflow.tasks`
+is RLS-enabled and per-tenant, so you see the runs your policies admit.
+
+<p class="related"><strong>Related</strong>
+<a href="operating.html">what to watch while a run is in flight</a></p>
+</details>
+
 ## What it cannot do
 
 This is pre-flight, not verification, and the difference matters enough to state
@@ -196,23 +292,17 @@ present on a clean deployment teaches people to skip it, so read the errors firs
 and treat the warnings as a list of defaults nobody chose.
 
 <details class="why" markdown="1">
-<summary>Why it works — the next thing this wants is a run, not another check</summary>
+<summary>Why it works — the two gaps above are now two functions, and the third
+is still open</summary>
 
-Nothing static can tell you that a step returned a well-formed result meaning
-nothing. One execution can. The plan carries `step_key` on every step and
-`workflow.tasks` is keyed on `(run_id, step_key)`, so joining the last run's
-status and output shape onto the document is a join:
+Two of the three complaints on this page have answers: *what shape does this
+return* is `plan_status`, and *does any of it actually work* is `plan_probe`.
 
-```sql
-select n->>'id', t.status
-  from jsonb_array_elements(workflow.plan_graph('sec_revenue')->'nodes') n
-  left join workflow.tasks t
-    on t.run_id = :run and t.step_key = n->>'step_key';
-```
-
-That overlay is not built into `plan_graph` on purpose: a `p_run_id` argument
-would put a runtime concern inside the one function whose whole value is that it
-is pure and reads only configuration.
+The one that remains is the first, and it does not have a mechanical fix: a
+plan cannot tell you the pipeline is asking the wrong question. Probing proves
+a statement parses and names real tables; it cannot know that the concept you
+selected carries year-to-date facts under the same name as quarterly ones.
+Reading the numbers is still the job.
 
 <p class="related"><strong>Related</strong>
 <a href="operating.html">what to watch while it runs</a></p>

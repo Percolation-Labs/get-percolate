@@ -354,8 +354,8 @@ select content.register_upload(
     p_external_id  => 'psc-2026-018');
 
 select content.record_chunks(:resource_id, $j$[
-  {"ordinal":0,"content":"Gothenburg PSC inspection found the auxiliary boiler within tolerance.","start_char":0,"end_char":69},
-  {"ordinal":1,"content":"No deficiencies were recorded against Aurora Kestrel on this call.","start_char":70,"end_char":135}
+  {"ordinal":0,"content":"Gothenburg PSC inspection found the auxiliary boiler within tolerance.","start_offset":0,"end_offset":69},
+  {"ordinal":1,"content":"No deficiencies were recorded against Aurora Kestrel on this call.","start_offset":70,"end_offset":135}
 ]$j$::jsonb);
 ```
 

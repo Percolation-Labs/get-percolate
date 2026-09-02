@@ -320,7 +320,7 @@ begin
 
         perform content.record_chunks(v_res, jsonb_build_array(jsonb_build_object(
             'ordinal', 0, 'content', it->>'body',
-            'start_char', 0, 'end_char', length(it->>'body'))));
+            'start_offset', 0, 'end_offset', length(it->>'body'))));
         v_new := v_new + 1;
     end loop;
     update content.channels set last_polled_at = now() where name = 'harbour-notices';

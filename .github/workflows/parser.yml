@@ -81,9 +81,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {os: ubuntu-latest,  platform: linux-amd64}
-          - {os: ubuntu-24.04-arm, platform: linux-arm64}
-          - {os: macos-14,       platform: macos-arm64}
+          # Native per architecture, never under emulation: cross-building the
+          # Rust toolchain with QEMU works and takes the better part of an hour.
+          - {os: ubuntu-latest,    platform: linux-amd64, docker: linux/amd64}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64, docker: linux/arm64}
+          - {os: macos-14,         platform: macos-arm64, docker: ''}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -92,86 +94,70 @@ jobs:
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
 
-      - name: Install PostgreSQL 19 headers
+      # THE HEADERS MUST COME FROM THE SERVER THE .so WILL BE LOADED INTO, and
+      # three attempts at installing them on a bare runner each failed one step
+      # later than the last: a missing `signed-by=` on the PGDG sources line,
+      # then a missing `-pgdg-testing` component, then the fact that PGDG ships
+      # no PG19 package for Ubuntu at all while 19 is in beta. Letting pgrx
+      # build the server instead got as far as `configure: error: readline
+      # library not found` -- and would have been wrong even had it worked,
+      # because cargo-pgrx 0.19.2 pins 19BETA2 and the image runs 19beta3.
+      # A .so built against one beta's headers and loaded into another's server
+      # is not a thing to ship, and it is not a thing a test would catch.
+      #
+      # p8-subsystems already solves this, and has since before this workflow
+      # existed: dev/Dockerfile.pgrx-builder starts FROM the same
+      # postgres:19beta3-bookworm the runtime image is built on and installs
+      # postgresql-server-dev-19 from ITS Debian repo. Its own header says it
+      # was made self-contained so that `--platform` works and so it runs on a
+      # CI runner. This workflow was reinventing it, badly.
+      - name: Build the parser in the image that ships the target server
+        if: runner.os == 'Linux'
+        working-directory: dev
         run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            # Homebrew has no postgresql@19 formula while 19 is in beta. The
-            # previous `|| brew install postgresql` fallback therefore installed
-            # a DIFFERENT major and then pointed PG_CONFIG at an
-            # `opt/postgresql@19` path that does not exist, so every macOS build
-            # died inside `cargo pgrx init` -- and since the release manifest
-            # requires percolate_parser-macos-arm64.so, no release could ever be
-            # cut. install.sh downloads that asset for Darwin:arm64, so the
-            # target cannot simply be dropped.
-            #
-            # pgrx can build the server it needs itself, which is the supported
-            # path when no system PG of that major exists. `download` is a
-            # sentinel read by the Build step below.
-            if brew install postgresql@19 2>/dev/null; then
-              echo "PG_CONFIG=$(brew --prefix)/opt/postgresql@19/bin/pg_config" >> "$GITHUB_ENV"
-            else
-              echo "no postgresql@19 formula -- pgrx will build PG19 from source"
-              echo "PG_CONFIG=download" >> "$GITHUB_ENV"
-            fi
-          else
-            # signed-by= is load-bearing and was missing: the key was fetched,
-            # dearmored to /usr/share/keyrings/pgdg.gpg, and then referenced by
-            # nothing, so apt rejected the repo with
-            # `NO_PUBKEY 7FCC7D46ACCC4CF8` and the step exited 100. A defence
-            # written, wired, and inert -- on both Linux architectures, which is
-            # the pair the published image is built from.
-            curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
-            # BOTH components. `-pgdg` carries released majors only; 19 is in
-            # beta and lives in `-pgdg-testing`, so the first fix (the missing
-            # signed-by, below) only got as far as
-            # `E: Unable to locate package postgresql-server-dev-19`. The dev
-            # image sidesteps this by starting FROM postgres:19beta3-bookworm;
-            # a bare runner has to name the component.
-            sudo sh -c 'c=$(lsb_release -cs); {
-              echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $c-pgdg main"
-              echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $c-pgdg-testing main"
-            } > /etc/apt/sources.list.d/pgdg.list'
-            sudo apt-get update
-            sudo apt-get install -y clang libclang-dev
-            # THERE IS NO PG19 PACKAGE FOR UBUNTU, in either component: PGDG's
-            # noble-pgdg-testing tops out at postgresql-server-dev-18 while 19
-            # is in beta, so the two fixes above -- the missing signed-by, then
-            # the missing -pgdg-testing component -- each moved the failure one
-            # step later and neither could have reached a build. The dev image
-            # never met this because it starts FROM postgres:19beta3-bookworm,
-            # which is a DEBIAN package; a bare Ubuntu runner has nothing to
-            # install.
-            #
-            # So pgrx builds the server, the same fallback macOS takes above.
-            # It is slower than a package and it is the only thing that works
-            # today, and the `if` means this reverts to the package the moment
-            # PGDG ships one -- which is the difference between a fallback and
-            # a fork.
-            if apt-cache show postgresql-server-dev-19 >/dev/null 2>&1; then
-              sudo apt-get install -y postgresql-server-dev-19
-              echo "PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config" >> "$GITHUB_ENV"
-            else
-              echo "no postgresql-server-dev-19 for $(lsb_release -cs) -- pgrx will build PG19 from source"
-              echo "PG_CONFIG=download" >> "$GITHUB_ENV"
-            fi
-          fi
+          docker build --platform ${{ matrix.docker }} \
+            -f Dockerfile.pgrx-builder -t pgrx-builder .
+          docker run --rm --platform ${{ matrix.docker }} \
+            -v "$GITHUB_WORKSPACE/extension/percolate_parser":/work \
+            -e PGRX_HOME=/work/.pgrx -w /work pgrx-builder bash -c '
+              cargo pgrx init --pg19 /usr/bin/pg_config >/dev/null 2>&1 || true
+              cargo pgrx package --features pg19 --no-default-features \
+                                 --pg-config /usr/bin/pg_config'
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/extension/percolate_parser"
+
+      # macOS has no container and Homebrew has no postgresql@19 while 19 is in
+      # beta, so this is the one platform with no existing pattern to reuse. It
+      # builds the server from source -- but the SAME beta the image runs, read
+      # out of the builder Dockerfile rather than written here, so the two
+      # cannot drift into the ABI mismatch described above. Everything optional
+      # is switched off: this exists to produce pg_config and headers, not a
+      # working server.
+      - name: Build PG19 from source for the headers
+        if: runner.os == 'macOS'
+        run: |
+          V=$(sed -n 's/^FROM postgres:\([0-9a-z.]*\)-.*/\1/p' dev/Dockerfile.pgrx-builder)
+          [ -n "$V" ] || { echo "::error::could not read the PG version from dev/Dockerfile.pgrx-builder" >&2; exit 1; }
+          echo "building postgres $V"
+          curl -fsSL "https://ftp.postgresql.org/pub/source/v$V/postgresql-$V.tar.bz2" | tar xj
+          cd "postgresql-$V"
+          ./configure --prefix="$HOME/pg" --without-readline --without-zlib \
+                      --without-icu --without-llvm >/dev/null
+          make -j3 >/dev/null && make install >/dev/null
+          echo "PG_CONFIG=$HOME/pg/bin/pg_config" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
+        if: runner.os == 'macOS'
       - name: cargo-pgrx
+        if: runner.os == 'macOS'
         # Pinned. pgrx generates the FFI shims against a specific PG ABI, so
         # "whatever is latest" is a silent correctness dependency.
         run: cargo install --locked cargo-pgrx --version 0.19.2
 
       - name: Build
+        if: runner.os == 'macOS'
         working-directory: extension/percolate_parser
         run: |
-          if [ "$PG_CONFIG" = download ]; then
-            cargo pgrx init --pg19 download
-            PG_CONFIG=$(ls "$HOME"/.pgrx/19.*/pgrx-install/bin/pg_config | head -1)
-            echo "built PG19 at $PG_CONFIG"
-          else
-            cargo pgrx init --pg19 "$PG_CONFIG"
-          fi
+          cargo pgrx init --pg19 "$PG_CONFIG"
           cargo pgrx package --features pg19 --no-default-features --pg-config "$PG_CONFIG"
 
       - name: Collect

@@ -80,6 +80,21 @@ name = "Beyond workflows"
   summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
 
 [[section]]
+name = "Reference"
+
+  [[section.page]]
+  file = "grammar-p8ql.md"
+  title = "The P8QL grammar"
+  status = "proven"
+  summary = "Every query mode at version 0.1.0, what each modifier belongs to, and how to read the grammar out of your own parser."
+
+  [[section.page]]
+  file = "grammar-workflow.md"
+  title = "The workflow grammar"
+  status = "proven"
+  summary = "Every key the YAML compiler accepts at version 0.1.0, what each one compiles to, and who executes the result."
+
+[[section]]
 name = "Putting it together"
 
   [[section.page]]

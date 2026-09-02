@@ -1,11 +1,15 @@
 # Your first workflow
 
 A workflow is a document. `define_yaml` compiles it into rows and
-`start_workflow` runs it, and both are ordinary SQL functions, so you do not
-need anything running to define one.
+`start_workflow` runs it, and because both are ordinary SQL functions you do not
+need anything running in order to define one.
 {: .lede }
 
 ## The smallest one that does something
+
+What we are trying to do here is define and run a workflow with nothing deployed
+anywhere.
+{: .goal }
 
 ```sql
 select workflow.define_yaml($$
@@ -18,18 +22,29 @@ $$);
 select workflow.start_workflow('hello', '{}'::jsonb);
 ```
 
-That run has already finished by the time `start_workflow` returns to you. A
-`sql` step becomes ready as soon as the things it depends on are satisfied and
-then executes inside Postgres, so there is no worker involved anywhere.
+<details class="why" markdown="1">
+<summary>Why it works — the run has already finished by the time
+`start_workflow` returns</summary>
+
+A `sql` step becomes ready as soon as the things it depends on are satisfied,
+and then executes inside Postgres in that same transaction. There is no worker
+involved anywhere, no queue to poll, and no moment where the run exists but
+nothing is acting on it.
+
+That is not a special case for trivial workflows. Any pipeline made only of
+`sql` and `p8ql` steps behaves this way, however long it is.
+
+<p class="related"><strong>Related</strong>
+<a href="authoring.html#choosing-a-step-kind">why to reach for `sql` first</a> ·
+<a href="cookbook.html#6-a-workflow-with-nothing-running">a three-step version
+with its task table</a></p>
+</details>
 
 ## A four-step one
 
-<ol class="steps" markdown="1">
-<li markdown="1">**Fetch** something over the network. This needs a worker, since the database does not make outbound calls.</li>
-<li markdown="1">**Project** the response into a typed table. Pure SQL, so it runs in the database.</li>
-<li markdown="1">**Fan out** over the rows that produced.</li>
-<li markdown="1">**Aggregate** the children, reading their outputs by handle rather than by value.</li>
-</ol>
+What we are trying to do here is fetch a rate table, project it into typed rows,
+fan out over the currencies it produced, and aggregate the children.
+{: .goal }
 
 ```yaml
 name: fx_daily
@@ -58,8 +73,6 @@ steps:
     sql: {function: fx_volatility, args: ['{{run.$id}}']}
 ```
 
-### What it looks like while it runs
-
 <div class="evidence" markdown="1">
 <div class="label">select step_key, kind, status from workflow.tasks_api where run_id = …</div>
 
@@ -76,53 +89,75 @@ steps:
 ```
 </div>
 
-The children exist as rows the moment `fan` completes, with `volatility`
-already depending on all of them. There is never a moment where the fan-out has
-happened but the work is not written down.
+Only two of those four steps need a process. `project` and `volatility` run
+inside the database, and `fetch` and the fan-out children are outbound calls,
+which is the one thing the database will not do.
 
-## Three things this example is teaching you
+<details class="why" markdown="1">
+<summary>Why it works — three things this example is quietly teaching you</summary>
 
-### `{{run.$id}}` — the run can see itself
-
-`{{run.*}}` reads the input you passed to `start_workflow`. The run's own
-identity lives behind a `$`:
-
-| Template | Is |
-|---|---|
-| `{{run.$id}}` | this run's uuid |
-| `{{run.$trace_id}}` | the trace shared by every task in the run |
-| `{{run.$session}}` | a conversation id the engine mints, for agent steps |
-
-The prefix is there because plenty of payloads have a key called `id`, and
+**The run can see itself, behind a `$`.** `{{run.*}}` reads the input you passed
+to `start_workflow`, and the run's own identity lives behind the prefix:
+`{{run.$id}}` is this run's uuid, `{{run.$trace_id}}` the trace shared by every
+task in it, `{{run.$session}}` a conversation id the engine mints for agent
+steps. The prefix exists because plenty of payloads have a key called `id`, and
 without it the same template would mean different things depending on what you
-passed in. You cannot get around this by passing the run id yourself either,
+passed in. You cannot work around it by passing the run id yourself either,
 since you do not have it until `start_workflow` returns.
 
-### The row set comes from a registered function
+**The row set comes from a registered function.** `matrix.rows` names a function
+in `workflow.step_functions` rather than carrying inline SQL, so writing a
+workflow never widens what the deployment can be made to execute. `max_fanout`
+is required for the same reason you would not run a query with no `LIMIT`
+against a result set you have not seen.
 
-`matrix.rows` names a function in `workflow.step_functions` rather than inline
-SQL. Registering one is an admin action, so writing a workflow never widens
-what can be executed. `max_fanout` is required, for the same reason you would
-not run a query with no `LIMIT` against a result set you have not seen.
+**The fan-in reads handles, not values.** `fx_volatility` reads its siblings
+through `workflow.matrix_outputs` rather than through a template. Children do
+not write into `runs.context`, because one JSONB column rewritten in full on
+every completion gives you quadratic write amplification once a fan-out gets
+wide.
 
-### The fan-in reads handles, not values
+The children also exist as rows the moment `fan` completes, with `volatility`
+already depending on all of them, so there is never a moment where the fan-out
+has happened and the work is not written down.
 
-`fx_volatility` reads its siblings through `workflow.matrix_outputs` rather
-than through a template. Children do not write into `runs.context`, because one
-JSONB column rewritten in full on every completion gives you quadratic write
-amplification once a fan-out gets wide.
+<p class="related"><strong>Related</strong>
+<a href="grammar-workflow.html#templates-and-the-one-rule-that-bites">every
+template namespace</a> ·
+<a href="outputs.html">why a fan-in reads a handle</a> ·
+<a href="cookbook.html#7-fan-out-over-a-query-result">a fan-out with its rows
+captured</a></p>
+</details>
 
 ## Watching a run
+
+What we are trying to do here is find out where a run has got to, from SQL or
+over HTTP.
+{: .goal }
 
 ```sql
 select status, count(*) from workflow.tasks_api where run_id = :run group by 1;
 select * from workflow.runs_api where id = :run;
 ```
 
-Both are RLS-filtered views. Over REST they are
-`GET /runs_api?id=eq.<uuid>` and `GET /tasks_api?run_id=eq.<uuid>`, since every
-function in the client API is already a PostgREST endpoint and any
-HTTP-capable language is a full client with no generated SDK.
+<details class="why" markdown="1">
+<summary>Why it works — every function in the client API is already a REST
+endpoint</summary>
 
-Next: [authoring in YAML](authoring.html) covers the step kinds and what the
-compiler will refuse.
+Both of those are RLS-filtered views, so a caller sees their own runs and not
+anybody else's. Over REST they are `GET /runs_api?id=eq.<uuid>` and
+`GET /tasks_api?run_id=eq.<uuid>`.
+
+There is no generated SDK, and there is not meant to be. Every function in the
+client API is a PostgREST endpoint already, which makes any HTTP-capable
+language a complete client — and it means the management surface is the same one
+a worker uses rather than a second, privileged path.
+
+<p class="related"><strong>Related</strong>
+<a href="operating.html">what to watch when nobody is looking</a> ·
+<a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">why a
+result can look empty</a></p>
+</details>
+
+Next: [the workflow grammar](grammar-workflow.html) is the full vocabulary, and
+[authoring in YAML](authoring.html) covers how to choose between the step kinds.

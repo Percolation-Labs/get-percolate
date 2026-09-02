@@ -268,6 +268,83 @@ footer.site a { color: var(--ink-2); border: 0; }
 footer.site a:hover { color: var(--accent); }
 footer.site .dot { color: var(--gold); }
 
+/* ------------------------------------------------------- why it works */
+/* The third beat of every unit on this site: lesson, example, then the
+ * mechanism -- collapsed, because a reader who is copying the example should
+ * not have to scroll past the reasoning to reach the next one, and a reader
+ * who wants the reasoning always knows where it is.
+ *
+ * Quiet by design. It is not an admonition and it is not a warning; it is the
+ * part of the page that is optional on a first pass. A left rule in the accent
+ * and nothing else. */
+details.why {
+  margin: 0 0 26px;
+  border-left: 2px solid var(--rule);
+  padding-left: 18px;
+}
+details.why > summary {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--ink-3);
+  cursor: pointer;
+  list-style: none;
+  padding: 3px 0;
+  transition: color 0.12s ease;
+}
+details.why > summary::-webkit-details-marker { display: none; }
+details.why > summary::before {
+  content: "\203A";            /* a single chevron, rotated when open */
+  display: inline-block;
+  width: 14px;
+  color: var(--accent);
+  transition: transform 0.15s ease;
+}
+details.why[open] > summary::before { transform: rotate(90deg); }
+details.why > summary:hover { color: var(--accent); }
+details.why[open] { border-left-color: var(--accent-dim); }
+details.why[open] > summary { color: var(--ink-2); margin-bottom: 8px; }
+details.why > :not(summary) { font-size: 17px; }
+details.why > p:last-child { margin-bottom: 12px; }
+/* Keyboard users get the same affordance the pointer does. */
+details.why > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  details.why > summary,
+  details.why > summary::before { transition: none; }
+}
+
+/* The related-links line that closes a why-it-works block. Backlinks are a
+ * requirement of the format rather than a courtesy: a reader who opened the
+ * mechanism is the reader most likely to want the next level down. */
+.related {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-top: 14px;
+}
+.related strong {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-right: 8px;
+}
+
+/* --------------------------------------------------------------- goal line */
+/* Opens every worked example: one sentence saying what we are trying to do,
+ * in the same voice on every page, so an example can be recognised as an
+ * example before it is read. */
+p.goal {
+  font-family: var(--sans);
+  font-size: 15.5px;
+  color: var(--ink-2);
+  margin-bottom: 14px;
+}
+
 /* ------------------------------------------------------- syntax highlight */
 /* Pygments, restrained: three weights of ink plus the accent. Colour here
  * competes with the status chips, which carry real meaning, so it stays quiet. */

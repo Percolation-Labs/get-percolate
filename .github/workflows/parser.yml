@@ -132,8 +132,28 @@ jobs:
               echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $c-pgdg-testing main"
             } > /etc/apt/sources.list.d/pgdg.list'
             sudo apt-get update
-            sudo apt-get install -y postgresql-server-dev-19 clang libclang-dev
-            echo "PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config" >> "$GITHUB_ENV"
+            sudo apt-get install -y clang libclang-dev
+            # THERE IS NO PG19 PACKAGE FOR UBUNTU, in either component: PGDG's
+            # noble-pgdg-testing tops out at postgresql-server-dev-18 while 19
+            # is in beta, so the two fixes above -- the missing signed-by, then
+            # the missing -pgdg-testing component -- each moved the failure one
+            # step later and neither could have reached a build. The dev image
+            # never met this because it starts FROM postgres:19beta3-bookworm,
+            # which is a DEBIAN package; a bare Ubuntu runner has nothing to
+            # install.
+            #
+            # So pgrx builds the server, the same fallback macOS takes above.
+            # It is slower than a package and it is the only thing that works
+            # today, and the `if` means this reverts to the package the moment
+            # PGDG ships one -- which is the difference between a fallback and
+            # a fork.
+            if apt-cache show postgresql-server-dev-19 >/dev/null 2>&1; then
+              sudo apt-get install -y postgresql-server-dev-19
+              echo "PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config" >> "$GITHUB_ENV"
+            else
+              echo "no postgresql-server-dev-19 for $(lsb_release -cs) -- pgrx will build PG19 from source"
+              echo "PG_CONFIG=download" >> "$GITHUB_ENV"
+            fi
           fi
 
       - uses: dtolnay/rust-toolchain@stable

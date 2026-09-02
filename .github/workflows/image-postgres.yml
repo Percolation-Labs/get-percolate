@@ -113,3 +113,43 @@ jobs:
             echo "$m" | grep -q linux/amd64 || { echo "::error::$t has no amd64" >&2; exit 1; }
             echo "$m" | grep -q linux/arm64 || { echo "::error::$t has no arm64" >&2; exit 1; }
           done
+
+      # THE CHECK THAT WOULD HAVE CAUGHT v0.1.0, and the reason it is a static
+      # one. That image killed the backend with `signal 4: Illegal instruction`
+      # on the first `<=>`, on every Apple Silicon machine: pgvector's Makefile
+      # defaults to -march=native, CI builds arm64 on Neoverse runners which
+      # have SVE, and Apple Silicon does not implement SVE.
+      #
+      # A smoke test that RAN a query here would not have found it. The runner
+      # executes the image on the CPU it was just built on, where the
+      # instructions are legal -- the defect only appears on a CPU different
+      # from the builder's, which is every user's and no runner's. So the
+      # observable is not "does a query work" but "does this binary contain
+      # instructions outside the architecture baseline", which is answerable
+      # from the disassembly without executing anything.
+      #
+      # Inserting a vector worked on the broken image; only the distance
+      # function carried the instructions. That is why this looks at the
+      # library rather than at whether the extension loads.
+      - name: Refuse a build compiled for the builder's own CPU
+        if: inputs.push
+        run: |
+          fail=0
+          for a in amd64 arm64; do
+            case $a in
+              # SVE (Neoverse and later): absent from Apple Silicon.
+              arm64) bad='ptrue|whilelt|ld1[bhwd]|st1[bhwd]' ;;
+              # AVX-512: absent from most consumer and older server parts.
+              amd64) bad='%zmm|kmov[bwdq]|vpternlog' ;;
+            esac
+            n=$(docker run --rm --platform "linux/$a" \
+                  "percolationlabs/percolate-postgres:19-${{ inputs.version }}" \
+                  sh -c "objdump -d /usr/lib/postgresql/19/lib/vector.so \
+                         | grep -cE '$bad' || true")
+            echo "$a: $n non-baseline instructions in vector.so"
+            [ "$n" = "0" ] || {
+              echo "::error::vector.so for $a was compiled for the build machine's CPU" >&2
+              echo "::error::pass OPTFLAGS=\"\" to pgvector's make -- see dev/Dockerfile.pg19" >&2
+              fail=1; }
+          done
+          [ "$fail" = "0" ]

@@ -120,10 +120,10 @@ gets written for you</a> ·
 <a href="query.html">the three search modes</a></p>
 </details>
 
-### The functions a step is allowed to call
+### Registering a function, and when it is worth it
 
-What we are trying to do here is let a workflow write rows, by putting a
-function on the allow-list rather than SQL in a document.
+What we are trying to do here is bless one operation the deployment wants
+reviewed — while ordinary queries stay ordinary queries.
 {: .goal }
 
 ```sql
@@ -136,8 +136,11 @@ select workflow.register_step_function(
 <summary>Why it works — registration refuses the grant problem instead of
 deferring it</summary>
 
-The allow-list is what stops a workflow document being an injection surface, and
-it is why every recipe below that lands data has a small function behind it.
+A step can carry its own SQL, so this is no longer the only door — it is the
+one worth using for the operations you want reviewed, because a registered
+function carries its own timeout and a description a model reads before calling
+it. That is why the recipes below that *land* data have a small function behind
+them, while the ones that only ask questions do not.
 
 `execute_sql_step` is `SECURITY DEFINER`, so your function runs as *its* owner
 and not as you. If that role cannot reach your schema, registration refuses with

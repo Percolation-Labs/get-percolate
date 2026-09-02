@@ -38,7 +38,9 @@ step.
 | YAML | compiles to | who executes it |
 |---|---|---|
 | `p8ql: '<query>'` | `kind: sql` | **nobody** — runs inside Postgres |
-| `sql: {function, args}` | `kind: sql` | **nobody** — an allow-listed function |
+| `sql: '<statement>'` | `kind: sql` | **nobody** — the SQL you wrote, read-only |
+| `sql: {statement, write: true}` | `kind: sql` | **nobody** — SQL that changes the database |
+| `sql: {function, args}` | `kind: sql` | **nobody** — a registered function |
 | `rest: {url, …}` | `kind: http_call` | the worker's built-in handler |
 | `embed: <text>` | `kind: http_call` | the worker, at a URL from the registry |
 | `agent: <name>` | `kind: http_call` | the Agent Runtime |
@@ -105,17 +107,86 @@ way</a> ·
 <a href="first-workflow.html">a four-step pipeline end to end</a></p>
 </details>
 
-## `sql` steps call a registered function
+## `sql` steps run SQL
 
-What we are trying to do here is let a workflow write rows, without letting a
-workflow document carry SQL.
+What we are trying to do here is ask the database a question, in a workflow,
+without ceremony.
 {: .goal }
 
 ```yaml
+  - id: quarters
+    needs: [land]
+    sql: "select fy, fp, val from sec.facts where cik = {{run.cik}} order by fy desc"
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the step's result</div>
+
+```json
+[{"fy": 2026, "fp": "Q3", "val": 109420000000},
+ {"fy": 2026, "fp": "Q2", "val": 111180000000}]
+```
+</div>
+
+A statement is read-only. One that changes the database says so, and is refused
+if it does not:
+
+```yaml
+  - id: purge
+    sql:
+      statement: "delete from staging where run_id = {{run.$id}}"
+      write: true
+```
+
+And a registered function stays available, which is what the engine's own steps
+use:
+
+```yaml
   - id: reindex
-    needs: [judge]
     sql: {function: rebuild_graph_index, args: [company]}
 ```
+
+<details class="why" markdown="1">
+<summary>Why it works — two guards, and only one of them is the boundary</summary>
+
+A read is wrapped as `select … from (<your statement>) t` and runs with
+`transaction_read_only` on. The wrap is structural: Postgres refuses a
+data-modifying `WITH` anywhere but the top level, so `with gone as (delete …)`
+fails on its shape rather than on a keyword list. The read-only transaction
+catches everything else, including a volatile function that writes, which no
+wrapping sees. The keyword check beside them is a courtesy that turns an abort
+into a sentence naming `write: true`.
+
+Every `{{template}}` is substituted as a **quoted literal**, so a run input of
+`'; drop table x; --` becomes a string containing that text. Quotes you write
+yourself are consumed rather than doubled, so `cik = '{{run.cik}}'` and
+`cik = {{run.cik}}` mean the same thing. The one thing you cannot template is
+an identifier — `from {{run.table}}` becomes `from 'sec.facts'`, a syntax error.
+
+**What it costs.** A statement runs as the engine owner, which owns every table
+and bypasses row-level security, so anyone who may define a workflow may read
+anything in the database. That is a deliberate trade: the alternative made every
+question a privileged human had to bless. A deployment that wants the old
+boundary sets one thing —
+
+```sql
+alter database <db> set percolate.sql_policy = 'registered';
+```
+
+— and statements are refused at authoring time and at dispatch, with registered
+functions still running.
+
+<p class="related"><strong>Related</strong>
+<a href="recipes.html#the-functions-a-step-is-allowed-to-call">registering a
+function, and when it is worth it</a> ·
+<a href="outputs.html">what a `sql` step should return</a></p>
+</details>
+
+## Registering a function, and what it still buys
+
+What we are trying to do here is bless an operation the deployment wants
+reviewed, and give it a description a model can read.
+{: .goal }
 
 ```sql
 select workflow.register_step_function(
@@ -124,14 +195,13 @@ select workflow.register_step_function(
 ```
 
 <details class="why" markdown="1">
-<summary>Why it works — the allow-list is what stops a document being an
-injection surface</summary>
+<summary>Why it works — a timeout, a description, and an inventory</summary>
 
-`sql:` names a function in `workflow.step_functions`; it cannot carry a
-statement. Registering one is an owner-only action, so authoring a workflow
-never widens what the deployment can be made to execute. That is the whole
-reason `matrix.rows` also names a function rather than taking an inline
-`SELECT`.
+The registry stopped being a gate and kept the jobs it was always better at. A
+registered function carries its own `timeout_ms`, and its description is the
+same text a bound tool takes into a model's context — so `workflow.step_functions`
+is the answer to *what can a workflow cause to run* for the operations you chose
+to bless. Under `sql_policy = 'registered'` it is also the whole surface.
 
 Registration checks one thing that is easy to get wrong and expensive to
 discover late. `execute_sql_step` is `SECURITY DEFINER`, so your function runs
@@ -152,8 +222,7 @@ ERROR:  function harbour.land_notices(jsonb) is not reachable by app_owner,
 </div>
 
 <p class="related"><strong>Related</strong>
-<a href="recipes.html#the-functions-a-step-is-allowed-to-call">registering the
-functions a recipe needs</a> ·
+<a href="#sql-steps-run-sql">the spelling that needs no registration</a> ·
 <a href="outputs.html">what a `sql` step should return</a></p>
 </details>
 
@@ -311,7 +380,7 @@ nothing outside the database deciding how many.
 ```yaml
   - id: extract
     matrix:
-      rows: {function: unextracted_reports, args: ['{{run.batch}}']}
+      rows: "select id, content from reports where extracted_at is null"
       max_fanout: 500
       continue_on: failed
       min_success: 0.9
@@ -335,8 +404,10 @@ inside it strands the fan-out with nothing to resume from.
 
 `max_fanout` is mandatory and the compiler says why rather than defaulting: a
 cross join with a forgotten `WHERE` expands to the cartesian product, and that
-should fail one step rather than the database. `rows:` names a registered
-function rather than taking inline SQL, for the same reason `sql:` does.
+should fail one step rather than the database. `rows:` takes the query itself
+or a registered function, exactly as `sql:` does — with one difference: a row
+source is always read-only, because it is re-run by every retry of the
+expansion.
 
 `continue_on: failed` lets a failed child satisfy its dependents, and
 `min_success` is the floor below which the aggregate is cancelled rather than

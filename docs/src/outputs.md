@@ -65,8 +65,9 @@ receipt rather than the data.
 <summary>Why it works — returning the rows makes the task table the storage
 layer</summary>
 
-A `sql` step names a registered function, the function writes rows, and the rows
-*are* the result. The next step re-reads by key.
+A `sql` step writes rows — with `write: true` on its own statement, or through
+a registered function — and the rows *are* the result. The next step re-reads by
+key.
 
 If a step returns its rows instead, you have made `workflow.tasks` the storage
 layer for data that already has a home — with no index, no types and no RLS

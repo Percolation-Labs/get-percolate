@@ -133,48 +133,56 @@ looks like from a caller</a></p>
 
 ## Expressive, secure, scalable
 
-Those are the three properties the design is answerable to, and each one is a
-mechanism on some page here rather than a claim about the project.
+Those are the three properties the design is answerable to, and **expressive** is
+the load-bearing one. It is not a claim about syntax: the question is whether a
+mixed collective of people, models and processes can have its coordination
+written down, rather than forced into a request/response shape that has both the
+latency and the authority the wrong way round.
 
-**Expressive** is that a new capability is authored rather than deployed: a
-workflow is a [YAML document](authoring.html) compiled to rows, an [agent is a
-row](agents.html) whose tools are OpenAPI and MCP bindings, and [one
-dialect](query.html) covers graph, vector and lexical retrieval. **Secure** is
-that the database enforces it and refuses to install when it cannot — the
-superuser rule above is checked at load time, and a read through an `*_api` view
-is [filtered per request](query.html#over-rest-and-the-two-things-that-look-like-bugs)
-by the caller's own claims. **Scalable** is that the coordination is absent by
-construction and the hot paths were [measured rather than
-asserted](scaling.html), including the one that turned out to be two orders of
-magnitude slower than it should have been.
+What makes it possible is where the coordination lives. State is the substrate
+and tools, models, sources and people attach to it at the edges — so a
+[delegation is a row](agents.html#delegation-is-an-ordinary-tool-call) rather
+than a stack frame, a [tool is an OpenAPI or MCP binding](agents.html) rather
+than a function registered inside a process, a fan-out is [decided by a query
+result](cookbook.html#7-fan-out-over-a-query-result) rather than by a controller
+holding the plan, and [waiting for a
+person](cookbook.html#8-wait-for-a-person-or-for-a-clock) is a row in
+`waiting_external` with no process doing the waiting. **Secure** is that the
+substrate enforces it and refuses to install when it cannot: the superuser rule
+above is checked at load time, and the tools an agent may call, the rows a query
+returns and the tasks a worker may claim are one RLS decision rather than an
+authorization system per service. **Scalable** is that no component holds the
+plan and the hot paths were [measured rather than asserted](scaling.html),
+including the one that turned out to be two orders of magnitude slower than it
+should have been.
 
 <details class="why" markdown="1">
-<summary>Why those three — an AI workload stresses each of them somewhere
-specific</summary>
+<summary>Why it works — the coordination problem is in one place rather than in
+the seams between four systems</summary>
 
-Those three words would be table stakes for anything meant to run inside a large
-organisation, so on their own they say very little. What makes them the right
-three here is that AI work puts weight on each of them in a particular place.
-
-The work is non-deterministic, so a model call has to be a row that can be
-retried, budgeted and audited rather than a function call somebody made in a
-process you are not watching. That is what turns expressiveness into a compiler
-problem — the document says what to do, the compiler decides what becomes a task,
-and [a vector query becoming two tasks](grammar-workflow.html#a-vector-query-is-two-tasks)
-is the smallest example of it.
-
-The data is contested, so what a source said stays separable from what the system
-concluded. An extracted node can be traced back to the passage that named it, and
-an agent's [citations are built from what its context actually
+Multimodal query, workflow dynamics, conversation and ingestion are normally four
+systems, and the coordination problem then lives in the seams between them. That
+is where this class of system actually fails: a vector built by a different model
+than the space it is ranked against, a citation pointing at a chunk that has
+since been re-ingested, a workflow that cannot see the conversation that spawned
+it, an approval that nothing recorded. In one database those seams are joins, and
+some of the failures stop being expressible — [the embed step is written by the
+compiler](grammar-workflow.html#a-vector-query-is-two-tasks) so the two models
+cannot differ, and an agent's [citations are built from what its context actually
 contained](agents.html) rather than from what the model says it used.
 
-And the load is bursty and long-tailed, so a step waiting on a slow model has to
-cost worker capacity and never a database backend. That is the first of the three
-ideas above, arrived at from the other end.
+The human half is the same move. A scheduler that has to hold a policy about a
+person who answers in six hours has three options and all three are bad: hold the
+slot, time out, or escalate. When the decision is a row instead, the run waits
+without occupying anything, `signal_task` checks who you are through the same
+RBAC as every other call, and the approval is in the audit trail because making
+it was a write.
 
 <p class="related"><strong>Related</strong>
-<a href="scaling.html">what the hot paths cost</a> ·
-<a href="operating.html">the audits that fail loudly</a></p>
+<a href="cookbook.html#8-wait-for-a-person-or-for-a-clock">an approval walked
+through</a> ·
+<a href="agents.html">an agent, its tools and who it may delegate to</a> ·
+<a href="scaling.html">what the hot paths cost</a></p>
 </details>
 
 ## What it costs

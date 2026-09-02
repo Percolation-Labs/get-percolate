@@ -105,9 +105,8 @@ without it the same template would mean different things depending on what you
 passed in. You cannot work around it by passing the run id yourself either,
 since you do not have it until `start_workflow` returns.
 
-**The row set comes from a registered function.** `matrix.rows` names a function
-in `workflow.step_functions` rather than carrying inline SQL, so writing a
-workflow never widens what the deployment can be made to execute. `max_fanout`
+**The row set is a query.** `matrix.rows` takes the statement itself — or a
+registered function, if the deployment wants that operation blessed. `max_fanout`
 is required for the same reason you would not run a query with no `LIMIT`
 against a result set you have not seen.
 

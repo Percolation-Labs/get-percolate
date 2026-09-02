@@ -55,6 +55,11 @@ name = "Workflows"
   summary = "The four output classes: an inline payload, rows, a validated assistant message, or a registered artifact."
 
   [[section.page]]
+  file = "plan.md"
+  title = "Reading a plan"
+  summary = "What a definition reaches -- the agent and its prompt, the corpus and its columns -- and which of those reaches are checked before a run."
+
+  [[section.page]]
   file = "failure.md"
   title = "Failure and retry"
   summary = "Which failures retry, which are terminal, and why that is the worker's decision to make."

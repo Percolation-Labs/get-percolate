@@ -518,10 +518,10 @@ The children are inserted by the statement that completes the parent, so nothing
 outside the database decides the width and there is no window where the parent
 is `done` and the children do not exist.
 
-`rows:` names a function in the `workflow.step_functions` allow-list rather than
-taking an inline `SELECT`, so a workflow document cannot smuggle arbitrary SQL
-past the compiler. Registering one is the price of that, and it is also where
-the query deciding the fan-out width lives.
+`rows:` takes the `SELECT` that decides the width, or a registered function
+where you want the operation blessed. Either way it runs read-only: the row
+source is re-run by every retry of the expansion, so a query that mutated while
+deciding how many children to make would have no good reading.
 
 Leave out `max_fanout` and the compiler refuses the document with the reason:
 

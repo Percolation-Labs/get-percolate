@@ -26,9 +26,10 @@ The single most useful habit is to reach for `work` last rather than first.
 have been `sql`</summary>
 
 Indexing, projection, rollups and graph updates all feel like code because they
-are code everywhere else. Here they are registered functions, they execute
-inside the transaction that makes them ready, and a pipeline built out of them
-completes before `start_workflow` returns to you.
+are code everywhere else. Here they are SQL — a statement on the step, or a
+registered function where you want one — and they execute inside the transaction
+that makes them ready, so a pipeline built out of them completes before
+`start_workflow` returns to you.
 
 The test is whether the work needs to leave the machine. If it does not, the
 only thing `work` buys you is a process to deploy, a queue to watch, and a

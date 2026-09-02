@@ -131,6 +131,52 @@ non-superuser installable</a> ·
 looks like from a caller</a></p>
 </details>
 
+## Expressive, secure, scalable
+
+Those are the three properties the design is answerable to, and each one is a
+mechanism on some page here rather than a claim about the project.
+
+**Expressive** is that a new capability is authored rather than deployed: a
+workflow is a [YAML document](authoring.html) compiled to rows, an [agent is a
+row](agents.html) whose tools are OpenAPI and MCP bindings, and [one
+dialect](query.html) covers graph, vector and lexical retrieval. **Secure** is
+that the database enforces it and refuses to install when it cannot — the
+superuser rule above is checked at load time, and a read through an `*_api` view
+is [filtered per request](query.html#over-rest-and-the-two-things-that-look-like-bugs)
+by the caller's own claims. **Scalable** is that the coordination is absent by
+construction and the hot paths were [measured rather than
+asserted](scaling.html), including the one that turned out to be two orders of
+magnitude slower than it should have been.
+
+<details class="why" markdown="1">
+<summary>Why those three — an AI workload stresses each of them somewhere
+specific</summary>
+
+Those three words would be table stakes for anything meant to run inside a large
+organisation, so on their own they say very little. What makes them the right
+three here is that AI work puts weight on each of them in a particular place.
+
+The work is non-deterministic, so a model call has to be a row that can be
+retried, budgeted and audited rather than a function call somebody made in a
+process you are not watching. That is what turns expressiveness into a compiler
+problem — the document says what to do, the compiler decides what becomes a task,
+and [a vector query becoming two tasks](grammar-workflow.html#a-vector-query-is-two-tasks)
+is the smallest example of it.
+
+The data is contested, so what a source said stays separable from what the system
+concluded. An extracted node can be traced back to the passage that named it, and
+an agent's [citations are built from what its context actually
+contained](agents.html) rather than from what the model says it used.
+
+And the load is bursty and long-tailed, so a step waiting on a slow model has to
+cost worker capacity and never a database backend. That is the first of the three
+ideas above, arrived at from the other end.
+
+<p class="related"><strong>Related</strong>
+<a href="scaling.html">what the hot paths cost</a> ·
+<a href="operating.html">the audits that fail loudly</a></p>
+</details>
+
 ## What it costs
 
 The pitch above is one-sided, so:

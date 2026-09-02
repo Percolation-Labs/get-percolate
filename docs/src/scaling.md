@@ -35,6 +35,21 @@ index (queue, priority desc, created_at)    13,965.3 claims/s     0.57 ms mean
 ```
 </div>
 
+The same comparison on a three-node cluster, with the database on one node and
+the workers on others so every claim crosses a network hop:
+
+<div class="evidence" markdown="1">
+<div class="label">kind, 2 pods × 4 connections, bounded at 40,000 claims</div>
+
+```
+index (queue, priority, run_after)              43.6 claims/s   183.4 ms mean
+index (queue, priority desc, created_at)     9,406.7 claims/s     0.85 ms mean
+```
+</div>
+
+Lower throughput and higher latency than a single box, which is the network and
+is the number to plan against.
+
 <details class="why" markdown="1">
 <summary>Why it works — the index has to match the ORDER BY, and when it does not
 the planner sorts the whole backlog</summary>
@@ -212,6 +227,96 @@ fan-out for.
 receipt</a> ·
 <a href="grammar-workflow.html#matrix-the-work-to-do-is-a-query-result">the
 matrix keys</a></p>
+</details>
+
+## What happens when a worker dies holding work
+
+A pod is evicted, a node drains, a process is OOM-killed. The task it had claimed
+is sitting in `running` with a lease nobody is refreshing.
+
+What we are trying to do here is get that work back without ever taking it from a
+worker that is merely slow.
+{: .goal }
+
+```sql
+select workflow.reap_stale_tasks();   -- one pg_cron job, once a minute
+```
+
+<div class="evidence" markdown="1">
+<div class="label">2,000 tasks stranded by pods that no longer existed</div>
+
+```
+reaper while the leases were fresh (< 2 min)   reaped = 0
+reaper once they aged past the timeout         reaped = 258
+convergence over three passes                  84 -> 888 -> 269 -> 0 running
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — it reaps by lease age, so a slow worker and a dead one are
+not confused</summary>
+
+The first line is the one that matters. A reaper that requeued everything in
+`running` would take work from a worker that was simply taking a while, and then
+two workers would be doing the same task. This one reaps only leases older than
+the queue's `stale_timeout` (two minutes by default), so a live-but-slow worker
+keeps its task.
+
+Every reaped task came back to `ready` with `attempts` incremented, so a task
+that strands repeatedly still hits `max_attempts` and fails the run rather than
+looping forever.
+
+And the worker that died cannot come back and overwrite the retry's answer: the
+lease fence refuses a `complete_task` from a reaped claim, and records the
+refusal in `v_lease_violations` rather than discarding it.
+
+<p class="related"><strong>Related</strong>
+<a href="failure.html#crash-recovery">the lease fence</a> ·
+<a href="install.html#pg_cron-if-you-want-schedules">why the reaper needs
+`pg_cron`</a></p>
+</details>
+
+## The connection budget is what limits worker count
+
+Throughput is not what you run out of first. Connections are.
+
+What we are trying to do here is size a worker pool against the database's
+connection limit rather than against its throughput.
+{: .goal }
+
+<div class="evidence" markdown="1">
+<div class="label">30 pods × 4 connections against max_connections = 100</div>
+
+```
+FATAL:  sorry, too many clients already
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — and why the failure is worse than tasks stopping</summary>
+
+The refusal reached the operator too. The role in that test was a superuser and
+`superuser_reserved_connections` was 3, and a `psql` was still refused: thirty
+pods reconnecting in a tight loop win the race for three reserved slots. So the
+failure mode of connection exhaustion is not that work stops — it is that **you
+cannot get in to find out why**.
+
+Two things follow when you size a pool.
+
+**Cap `maxReplicas` against `max_connections` on purpose.** A pool scaling on
+queue depth will happily grow past the connection budget, because depth says
+nothing about connections. Either put a pooler in front, or pick the ceiling
+deliberately.
+
+**This is the concrete reason workers poll rather than `LISTEN`.** A listening
+connection is session state and cannot be pooled in transaction mode, so a
+listening worker holds a dedicated backend for its whole life. The ceiling that
+took thirty polling pods to reach would arrive at exactly `max_connections`
+listening workers, and no pooler could move it.
+
+<p class="related"><strong>Related</strong>
+<a href="#polling-is-cheaper-than-it-sounds">what the poll actually costs</a> ·
+<a href="operating.html#scaling-on-queue-depth">setting `maxReplicas`</a></p>
 </details>
 
 ## Sizing

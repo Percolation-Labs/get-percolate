@@ -1,8 +1,13 @@
 # @claude in an issue or a review comment, and Claude Code picks it up.
 #
-# Same shape as p8k8's, with one addition: an author check. THIS REPOSITORY IS PUBLIC, so
-# without it any GitHub user could spend the owner's Claude subscription by
-# typing four characters in a comment.
+# THIS FILE IS THE SAME IN ALL THREE REPOSITORIES -- p8-subsystems (the specs
+# and the extension), percolate-core (the Python services) and get-percolate
+# (the public face, docs and chart). That is deliberate: a release crosses all
+# three, so `@claude` has to work from whichever one you happen to be looking
+# at. Change one, change them all.
+#
+# THIS REPOSITORY IS PUBLIC, so without the author check any GitHub user could
+# spend the owner's Claude subscription by typing four characters in a comment.
 name: Claude Code
 
 on:
@@ -45,7 +50,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      actions: read          # so Claude can read CI results on a PR
+      actions: write         # so Claude can run a release workflow, and read CI
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -55,5 +60,17 @@ jobs:
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
+        env:
+          # The cross-repo reach. GITHUB_TOKEN is scoped to THIS repository, so
+          # with it alone Claude can fix the repo it was mentioned in and
+          # nothing else -- and every interesting request here crosses a
+          # boundary: cut a core release, then update the specs repo, then the
+          # chart. One PAT covering all three is what makes
+          # "@claude release core and bring everything into step" a single ask
+          # instead of three issues opened by hand.
+          #
+          # Falls back to GITHUB_TOKEN when the secret is not set, so a fork or
+          # an unconfigured repo degrades to in-repo work rather than failing.
+          GH_TOKEN: ${{ secrets.P8_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

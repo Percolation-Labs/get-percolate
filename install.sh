@@ -67,14 +67,27 @@ fetch() {
 }
 
 # ---------------------------------------------------------------- percolate
+# The version is READ, not hardcoded. A control file names the script Postgres
+# will run -- `default_version = 0.2.0` means `percolate--0.2.0.sql` -- so
+# downloading the control file first and asking it what it wants is the only
+# way this script keeps working across a release. It used to name
+# percolate--0.1.0.sql literally, which made every future version a silent
+# 404 in a curl | sh.
+control_version() {
+  sed -n "s/^default_version = '\\(.*\\)'/\\1/p" "$1" | head -1
+}
+
 say "==> percolate (SQL) -> $SHAREDIR"
-fetch "$BASE/percolate.control"        "$TMP/percolate.control"
-fetch "$BASE/percolate--0.1.0.sql"     "$TMP/percolate--0.1.0.sql"
+fetch "$BASE/percolate.control" "$TMP/percolate.control"
+PV=$(control_version "$TMP/percolate.control")
+[ -n "$PV" ] || die "percolate.control has no default_version -- the release is malformed"
+say "    version $PV"
+fetch "$BASE/percolate--$PV.sql" "$TMP/percolate--$PV.sql"
 
 # install(1) rather than cp, so a non-writable sharedir fails HERE with a
 # readable message instead of half-copying and leaving a control file pointing
 # at a script that is not there.
-install -m 644 "$TMP/percolate.control" "$TMP/percolate--0.1.0.sql" "$SHAREDIR/" \
+install -m 644 "$TMP/percolate.control" "$TMP/percolate--$PV.sql" "$SHAREDIR/" \
   || die "cannot write to $SHAREDIR -- rerun with sudo, or as the postgres owner"
 
 # ------------------------------------------------------- percolate_parser
@@ -93,13 +106,20 @@ if [ -z "$PLATFORM" ]; then
 fi
 
 say "==> percolate_parser ($PLATFORM) -> $PKGLIBDIR"
-fetch "$BASE/percolate_parser-$PLATFORM.so"    "$TMP/percolate_parser.so"
-fetch "$BASE/percolate_parser.control"         "$TMP/percolate_parser.control"
-fetch "$BASE/percolate_parser--0.1.0.sql"      "$TMP/percolate_parser--0.1.0.sql"
+fetch "$BASE/percolate_parser.control" "$TMP/percolate_parser.control"
+QV=$(control_version "$TMP/percolate_parser.control")
+[ -n "$QV" ] || die "percolate_parser.control has no default_version -- the release is malformed"
+# The two extensions are released as one number. If a release ever carries two,
+# `CREATE EXTENSION percolate CASCADE` would resolve a parser the schema was
+# not built against -- worth one line to refuse rather than discover later.
+[ "$QV" = "$PV" ] || die "this release is inconsistent: percolate $PV, percolate_parser $QV.
+  Report it at https://github.com/$REPO/issues -- do not install it."
+fetch "$BASE/percolate_parser-$PLATFORM.so" "$TMP/percolate_parser.so"
+fetch "$BASE/percolate_parser--$QV.sql"     "$TMP/percolate_parser--$QV.sql"
 
 install -m 755 "$TMP/percolate_parser.so" "$PKGLIBDIR/" \
   || die "cannot write to $PKGLIBDIR -- rerun with sudo"
-install -m 644 "$TMP/percolate_parser.control" "$TMP/percolate_parser--0.1.0.sql" "$SHAREDIR/"
+install -m 644 "$TMP/percolate_parser.control" "$TMP/percolate_parser--$QV.sql" "$SHAREDIR/"
 
 say ""
 say "Installed. Now, in the database that will hold it:"

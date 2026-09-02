@@ -1,0 +1,115 @@
+# percolationlabs/percolate-postgres, built once and called from two places.
+#
+# Reusable rather than copied, because it has two callers with the same job:
+# the extension release (parser.yml, right after the release assets exist) and
+# a manual rebuild (images.yml, when the image needs to move and the extension
+# does not). Two copies of a multi-arch image build is exactly the "which tag
+# is current" mistake PACKAGING.md argues one image over three to avoid --
+# applied to the workflow instead of the image.
+name: image-postgres
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: p8-subsystems ref to build the extension SQL from
+        type: string
+        default: main
+      version:
+        description: extension version, for the immutable :19-<version> tag
+        type: string
+        required: true
+      parser_release:
+        description: get-percolate release tag to take the .so files from
+        type: string
+        default: latest
+      push:
+        type: boolean
+        default: false
+    secrets:
+      SOURCE_TOKEN:      {required: true}
+      DOCKERHUB_USERNAME: {required: false}
+      DOCKERHUB_TOKEN:    {required: false}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.SPECS_REPO }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+          ref: ${{ inputs.ref }}
+
+      - name: Fetch the parser for both Linux architectures
+        # From the release, rather than rebuilt here: the .so in the image and
+        # the .so someone installs with install.sh must be the same artifact,
+        # or "works in Docker, fails on my Postgres" becomes a class of bug
+        # with no way to tell the two builds apart.
+        env:
+          BASE: >-
+            ${{ inputs.parser_release == 'latest'
+                && 'https://github.com/percolating-sirsh/get-percolate/releases/latest/download'
+                || format('https://github.com/percolating-sirsh/get-percolate/releases/download/{0}', inputs.parser_release) }}
+        run: |
+          mkdir -p dev/dist
+          for a in amd64 arm64; do
+            curl -fsSL -o "dev/dist/percolate_parser-$a.so" "$BASE/percolate_parser-linux-$a.so"
+          done
+          curl -fsSL -o dev/dist/percolate_parser.control "$BASE/percolate_parser.control"
+          # Named by the version rather than hardcoded: the release asset is
+          # percolate_parser--<version>.sql, and pinning 0.1.0 here is what
+          # made the old install path a silent 404 after the first bump.
+          curl -fsSL -o "dev/dist/percolate_parser--${{ inputs.version }}.sql" \
+            "$BASE/percolate_parser--${{ inputs.version }}.sql"
+
+      - name: Generate the extension SQL
+        run: |
+          python3 extension/percolate/build-sql.py
+          cp "extension/percolate/sql/percolate--${{ inputs.version }}.sql" dev/dist/
+          cp extension/percolate/percolate.control dev/dist/
+
+      - name: Confirm the tree is at the version being tagged
+        # The image is about to be tagged :19-<version>. If the checked-out ref
+        # carries a different default_version, that tag is a lie -- and it is
+        # the tag someone pins to.
+        run: |
+          have=$(sed -n "s/^default_version = '\(.*\)'/\1/p" extension/percolate/percolate.control)
+          [ "$have" = "${{ inputs.version }}" ] || {
+            echo "::error::ref ${{ inputs.ref }} is extension $have, not ${{ inputs.version }}" >&2
+            exit 1; }
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: inputs.push
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: dev
+          file: dev/Dockerfile.pg19
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push }}
+          # Two tags, and the second one is the point. `19` is the Postgres
+          # major and is mutable -- it is what the compose file and the chart
+          # pull, and it moves every release. `19-<version>` never moves, so a
+          # deployment can pin a known extension build and an upgrade is a
+          # visible edit rather than whatever `19` happens to mean today.
+          # Without it there is no way to say which build a cluster is running,
+          # which matters more than usual here: pre-1.0 there is no in-place
+          # extension upgrade, so pinning IS the upgrade strategy.
+          tags: |
+            percolationlabs/percolate-postgres:19
+            percolationlabs/percolate-postgres:19-${{ inputs.version }}
+
+      - name: Confirm both architectures are in the manifest
+        if: inputs.push
+        run: |
+          for t in 19 19-${{ inputs.version }}; do
+            m=$(docker buildx imagetools inspect "percolationlabs/percolate-postgres:$t")
+            echo "$m" | grep -q linux/amd64 || { echo "::error::$t has no amd64" >&2; exit 1; }
+            echo "$m" | grep -q linux/arm64 || { echo "::error::$t has no arm64" >&2; exit 1; }
+          done

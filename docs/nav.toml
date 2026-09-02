@@ -80,6 +80,12 @@ name = "Beyond workflows"
   summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
 
   [[section.page]]
+  file = "cookbook.md"
+  title = "Ten things, worked through"
+  status = "proven"
+  summary = "One small domain and ten scenarios across all five subsystems, each with the output it actually produced."
+
+  [[section.page]]
   file = "operating.md"
   title = "Operating it"
   status = "proven"

@@ -8,13 +8,28 @@
 name: extension
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       ref:
         description: p8-subsystems ref to build from
         default: main
+      version:
+        description: >-
+          extension version to publish. Set it and this cuts a release
+          (assets + image); leave it empty and it only builds, which is the
+          check you want on a branch.
+        default: ""
+      push_image:
+        description: push percolate-postgres to Docker Hub
+        type: boolean
+        default: true
+
+# THE VERSION IS AN INPUT, NOT A TAG ON THIS REPO. The extension's source is
+# p8-subsystems and so is its version -- `percolate.control`'s default_version.
+# This used to fire on a `v*` tag pushed HERE, which put the tag on the repo
+# that does not hold the source and left every release asset named 0.1.0
+# forever. p8-subsystems' release.yml bumps, tags and dispatches this with the
+# number it just wrote; the job below verifies the ref actually carries it.
 
 # THE SOURCE REPOSITORY IS PRIVATE, so it is named by a repository variable
 # rather than hardcoded here: this repo is public, and a public workflow should
@@ -39,7 +54,15 @@ jobs:
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
-          ref: ${{ inputs.ref || 'main' }}
+          ref: ${{ inputs.ref }}
+      - name: Confirm the ref carries the version being released
+        if: inputs.version != ''
+        run: |
+          have=$(sed -n "s/^default_version = '\(.*\)'/\1/p" extension/percolate/percolate.control)
+          [ "$have" = "${{ inputs.version }}" ] || {
+            echo "::error::ref ${{ inputs.ref }} is extension $have, not ${{ inputs.version }}" >&2
+            exit 1; }
+
       - name: Generate the extension SQL from specs/
         # Generated rather than committed: the spec files are what get reviewed
         # and tested, and a hand-copied extension script would be a second copy
@@ -50,7 +73,7 @@ jobs:
         with:
           name: sql
           path: |
-            extension/percolate/sql/percolate--0.1.0.sql
+            extension/percolate/sql/percolate--*.sql
             extension/percolate/percolate.control
 
   parser:
@@ -67,7 +90,7 @@ jobs:
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
-          ref: ${{ inputs.ref || 'main' }}
+          ref: ${{ inputs.ref }}
 
       - name: Install PostgreSQL 19 headers
         run: |
@@ -115,23 +138,68 @@ jobs:
   release:
     needs: [sql, parser]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: inputs.version != ''
     steps:
       - uses: actions/download-artifact@v4
         with: {path: assets}
-      - name: Flatten
+      - name: Flatten and check the manifest
+        env: {V: "${{ inputs.version }}"}
         run: |
           mkdir -p out && find assets -type f -exec cp -n {} out/ \;
           ls -la out/
-          # install.sh downloads by exact name; a missing one is a broken
-          # install path that nothing else would notice until someone ran it.
-          for f in percolate.control percolate--0.1.0.sql \
-                   percolate_parser.control percolate_parser--0.1.0.sql \
+          # install.sh downloads by exact name -- it reads the version out of
+          # the control file and then asks for percolate--<that>.sql. A missing
+          # or misnamed asset is a broken install path that nothing else would
+          # notice until someone ran the curl | sh.
+          for f in percolate.control "percolate--$V.sql" \
+                   percolate_parser.control "percolate_parser--$V.sql" \
                    percolate_parser-linux-amd64.so percolate_parser-linux-arm64.so \
                    percolate_parser-macos-arm64.so; do
-            [ -f "out/$f" ] || { echo "missing release asset: $f" >&2; exit 1; }
+            [ -f "out/$f" ] || { echo "::error::missing release asset: $f" >&2; exit 1; }
+          done
+          # And the control files must agree with the number being published,
+          # or install.sh will resolve a script this release does not carry.
+          for c in percolate percolate_parser; do
+            have=$(sed -n "s/^default_version = '\(.*\)'/\1/p" "out/$c.control")
+            [ "$have" = "$V" ] || {
+              echo "::error::$c.control says $have, releasing $V" >&2; exit 1; }
           done
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ inputs.version }}
+          name: Extension v${{ inputs.version }}
           files: out/*
           generate_release_notes: true
+          body: |
+            The Percolate Postgres extensions, built from p8-subsystems
+            `${{ inputs.ref }}`.
+
+            ```sh
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+            ```
+
+            Or pull the image, which carries the same build:
+            `percolationlabs/percolate-postgres:19-${{ inputs.version }}`
+
+            **Pre-1.0 there is no in-place upgrade.** These extensions ship no
+            `percolate--<old>--<new>.sql`, so `ALTER EXTENSION percolate UPDATE`
+            has nothing to run. Pin the version you install; moving to a new one
+            means a fresh database.
+
+  # The image comes last and only after the assets exist, because it fetches
+  # the .so files FROM this release -- the same bytes install.sh hands out.
+  # Order is the whole point: publish what the image needs, then the image,
+  # then (in p8-subsystems' release.yml) the docs that reference both.
+  image:
+    needs: release
+    if: inputs.version != ''
+    uses: ./.github/workflows/image-postgres.yml
+    with:
+      ref: ${{ inputs.ref }}
+      version: ${{ inputs.version }}
+      parser_release: v${{ inputs.version }}
+      push: ${{ inputs.push_image }}
+    secrets:
+      SOURCE_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

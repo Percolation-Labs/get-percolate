@@ -95,11 +95,33 @@ jobs:
       - name: Install PostgreSQL 19 headers
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
-            brew install postgresql@19 || brew install postgresql
-            echo "PG_CONFIG=$(brew --prefix)/opt/postgresql@19/bin/pg_config" >> "$GITHUB_ENV"
+            # Homebrew has no postgresql@19 formula while 19 is in beta. The
+            # previous `|| brew install postgresql` fallback therefore installed
+            # a DIFFERENT major and then pointed PG_CONFIG at an
+            # `opt/postgresql@19` path that does not exist, so every macOS build
+            # died inside `cargo pgrx init` -- and since the release manifest
+            # requires percolate_parser-macos-arm64.so, no release could ever be
+            # cut. install.sh downloads that asset for Darwin:arm64, so the
+            # target cannot simply be dropped.
+            #
+            # pgrx can build the server it needs itself, which is the supported
+            # path when no system PG of that major exists. `download` is a
+            # sentinel read by the Build step below.
+            if brew install postgresql@19 2>/dev/null; then
+              echo "PG_CONFIG=$(brew --prefix)/opt/postgresql@19/bin/pg_config" >> "$GITHUB_ENV"
+            else
+              echo "no postgresql@19 formula -- pgrx will build PG19 from source"
+              echo "PG_CONFIG=download" >> "$GITHUB_ENV"
+            fi
           else
-            sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+            # signed-by= is load-bearing and was missing: the key was fetched,
+            # dearmored to /usr/share/keyrings/pgdg.gpg, and then referenced by
+            # nothing, so apt rejected the repo with
+            # `NO_PUBKEY 7FCC7D46ACCC4CF8` and the step exited 100. A defence
+            # written, wired, and inert -- on both Linux architectures, which is
+            # the pair the published image is built from.
             curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+            sudo sh -c 'echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
             sudo apt-get update
             sudo apt-get install -y postgresql-server-dev-19 clang libclang-dev
             echo "PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config" >> "$GITHUB_ENV"
@@ -114,7 +136,13 @@ jobs:
       - name: Build
         working-directory: extension/percolate_parser
         run: |
-          cargo pgrx init --pg19 "$PG_CONFIG"
+          if [ "$PG_CONFIG" = download ]; then
+            cargo pgrx init --pg19 download
+            PG_CONFIG=$(ls "$HOME"/.pgrx/19.*/pgrx-install/bin/pg_config | head -1)
+            echo "built PG19 at $PG_CONFIG"
+          else
+            cargo pgrx init --pg19 "$PG_CONFIG"
+          fi
           cargo pgrx package --features pg19 --no-default-features --pg-config "$PG_CONFIG"
 
       - name: Collect

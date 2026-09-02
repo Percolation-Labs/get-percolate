@@ -119,7 +119,10 @@ services:
     image: percolationlabs/percolate-core:0.1.3
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
-    # --host 0.0.0.0, because `agent serve` defaults to 127.0.0.1 and that is
+    # --host 0.0.0.0. Also fixed at source in percolate-core#1, so this too is
+    # redundant once the pin moves past 0.1.3 -- but it is harmless and
+    # explicit, and an explicit bind in a compose file is not a bad thing to
+    # keep. `agent serve` defaults to 127.0.0.1 and that is
     # the container's own loopback. It came up, logged
     # `percolate agent on http://127.0.0.1:8080`, and answered nothing on the
     # published port -- a service that looks healthy in `docker compose ps` and
@@ -127,7 +130,12 @@ services:
     # for a laptop and wrong for every container; this file is the container.
     command: ["agent", "serve", "--host", "0.0.0.0"]
     environment:
-      # BOTH NAMES, because this image reads two. `core/config.py` requires
+      # BOTH NAMES, and this is pinned to the 0.1.3 image -- percolate-core#1
+      # makes the runtime read P8_DSN, so once this file moves past 0.1.3 the
+      # second line below is redundant rather than load-bearing. Kept until
+      # then, and named here so it does not outlive its reason.
+      #
+      # This image reads two. `core/config.py` requires
       # P8_DSN ("every service connects to Postgres") and the agent runtime's
       # own settings.py reads P8_DATABASE_URL, defaulting to
       # postgresql://p8:p8@localhost:5500/p8agentic when it is unset. With only

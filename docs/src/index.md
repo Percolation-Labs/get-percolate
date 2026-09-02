@@ -156,19 +156,21 @@ site much faster to skim.
 Each of those collapsed blocks ends with links to the pages that own the
 concepts it touched, so following the reasoning is also how you navigate.
 
-Everything here was run against a live database before it was written down.
-Where something did not survive that, we changed the page rather than the claim.
-The chip at the top of each page says which of three states it is in:
+Everything here describes what is shipped and running, and it was run against a
+live database before it was written down. Where something did not survive that,
+we changed the page rather than the claim.
 
-| | |
-|---|---|
-| `proven` | we ran it, and there is an assertion behind it |
-| `designed` | specified and reviewed, but not yet run end to end |
-| `absent` | named because it is missing, since leaving it out would read as done |
+There is no per-page status label, and its removal was deliberate. A page that
+said "designed" was still a page on the site, and "designed" is indistinguishable
+from "works" to anybody skimming. So a thing that is not built does not get a
+page here — it gets a spec in
+[p8-subsystems](https://github.com/percolating-sirsh/p8-subsystems). Gaps inside
+a feature that *is* shipped are named where they bite, in the section they belong
+to, rather than collected behind a label at the top.
 
-Moving a page back to `designed` when something turns out to be unbuilt is a
-normal edit.
-
-[Install](install.html) is next, and after that
-[your first workflow](first-workflow.html) walks a four-step pipeline through
-from `define_yaml` to a completed run.
+[Install](install.html) is next, and after that [agents](agents.html) is the
+shortest useful loop in the system: an agent is a specification, the
+specification is a row, and the page walks writing one, saving it and calling it
+over REST before it explains any of the reasoning. [Your first
+workflow](first-workflow.html) then walks a four-step pipeline from `define_yaml`
+to a completed run.

@@ -10,11 +10,11 @@ which is where the vocabulary lives. These pages divide the work deliberately:
 the grammar page answers *what does `matrix` accept*, and this one answers *what
 do I write to poll a source into a corpus an agent can be asked about*.
 
-Two of the seven depend on things this release does not have — the channel
-poller and an exercised Agent Runtime — and those are named in the recipe that
-needs them rather than in a list at the bottom. The page carries the `designed`
-chip because the pipelines have not been run end to end, though every function,
-column and key in them is checked against the installed schema.
+Two of the seven lean on something incomplete — the channel poller, and an Agent
+Runtime that ships but has no compose service — and each is named in the recipe
+that needs it rather than in a list at the bottom. Every function, column and key
+below is checked against the installed schema; what has not been run end to end
+is the seven pipelines as wholes.
 
 ## Before any of this runs
 

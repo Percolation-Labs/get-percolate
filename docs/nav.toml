@@ -2,10 +2,12 @@
 # page-to-page footer links are all generated from this file, so a page that is
 # added here cannot be missing from one of the three.
 #
-# status is real information, not decoration:
-#   proven   -- executed against a live database, and there is an assertion for it
-#   designed -- specified and reviewed, not yet run end to end
-#   absent   -- named here because it is missing, and silence would read as done
+# There is no status field. These pages describe what is shipped and running --
+# if something is not built, it does not get a page here, it gets a spec in
+# p8-subsystems. A per-page status chip was the old answer and it was the wrong
+# one: it let an unbuilt thing sit on the site behind a label most readers do
+# not parse, and "designed" is indistinguishable from "works" to somebody
+# skimming. Gaps inside an otherwise-shipped feature stay, named in place.
 
 site_name = "Percolate"
 site_tagline = "An AI workflow engine in Postgres"
@@ -22,61 +24,52 @@ name = "Start"
   [[section.page]]
   file = "index.md"
   title = "What Percolate is"
-  status = "proven"
   summary = "Postgres as the system rather than the backing store: what that buys, and what it costs."
 
   [[section.page]]
   file = "install.md"
   title = "Install"
-  status = "proven"
   summary = "Docker Compose, Helm, or the extension in a Postgres 19 you already run."
 
   [[section.page]]
-  file = "first-workflow.md"
-  title = "Your first workflow"
-  status = "proven"
-  summary = "A four-step pipeline, walked end to end, with the output each step actually produced."
+  file = "agents.md"
+  title = "Agents"
+  summary = "An agent is a specification and the specification is a row: write it, save it, call it over REST."
 
 [[section]]
 name = "Workflows"
 
   [[section.page]]
+  file = "first-workflow.md"
+  title = "Your first workflow"
+  summary = "A four-step pipeline, walked end to end, with the output each step actually produced."
+
+  [[section.page]]
   file = "authoring.md"
   title = "Authoring in YAML"
-  status = "proven"
   summary = "The five step kinds, the template namespaces, and what the compiler refuses."
 
   [[section.page]]
   file = "outputs.md"
   title = "What a step leaves behind"
-  status = "proven"
   summary = "The four output classes: an inline payload, rows, a validated assistant message, or a registered artifact."
 
   [[section.page]]
   file = "failure.md"
   title = "Failure and retry"
-  status = "proven"
   summary = "Which failures retry, which are terminal, and why that is the worker's decision to make."
 
 [[section]]
-name = "Beyond workflows"
-
-  [[section.page]]
-  file = "agents.md"
-  title = "Agents"
-  status = "designed"
-  summary = "An agent is a row. Prompt, tools and delegation are data, and tools are discovered rather than declared."
+name = "Content and querying"
 
   [[section.page]]
   file = "ingest.md"
   title = "Uploading files"
-  status = "proven"
   summary = "A file becomes chunks, vectors, graph nodes and, if it is a table, a Parquet dataset -- with nothing to run after the upload."
 
   [[section.page]]
   file = "query.md"
   title = "Querying"
-  status = "proven"
   summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
 
 [[section]]
@@ -85,13 +78,11 @@ name = "Reference"
   [[section.page]]
   file = "grammar-p8ql.md"
   title = "The P8QL grammar"
-  status = "proven"
   summary = "Every query mode at version 0.1.0, what each modifier belongs to, and how to read the grammar out of your own parser."
 
   [[section.page]]
   file = "grammar-workflow.md"
   title = "The workflow grammar"
-  status = "proven"
   summary = "Every key the YAML compiler accepts at version 0.1.0, what each one compiles to, and who executes the result."
 
 [[section]]
@@ -100,20 +91,22 @@ name = "Putting it together"
   [[section.page]]
   file = "cookbook.md"
   title = "Ten things, worked through"
-  status = "proven"
   summary = "One capability at a time: ten scenarios over one small domain, each with the output it actually produced."
 
   [[section.page]]
   file = "recipes.md"
   title = "Workflow recipes"
-  status = "designed"
   summary = "Whole pipelines -- a source polled on a clock, a backlog through an extractor, an agent answering over your own corpus -- and what has to exist before each will run."
 
 [[section]]
 name = "Operating"
 
   [[section.page]]
+  file = "scaling.md"
+  title = "Scaling"
+  summary = "What the hot paths cost, measured: claim throughput under contention, what the autoscaler pays, and where the engine was two orders of magnitude slower than it should have been."
+
+  [[section.page]]
   file = "operating.md"
   title = "Operating it"
-  status = "proven"
   summary = "Scaling worker pools on queue depth, what to watch, and the audits that fail loudly."

@@ -26,7 +26,6 @@ import markdown
 HERE = Path(__file__).resolve().parent
 SRC = HERE / "src"
 OUT = HERE / "_site"
-CHIPS = {"proven": "proven", "designed": "designed", "absent": "absent"}
 
 
 def load_nav() -> dict:
@@ -64,11 +63,6 @@ def render_markdown(text: str) -> tuple[str, str]:
         first = re.sub(r"<[^>]+>", "", m.group(1)).strip()
     return body, first
 
-
-def chip(status: str | None) -> str:
-    if status not in CHIPS:
-        return ""
-    return f'<span class="chip chip-{status}">{CHIPS[status]}</span>'
 
 
 def sidebar(nav: dict, current: str) -> str:
@@ -176,12 +170,6 @@ def build() -> int:
         body, first_para = render_markdown(text)
         summary = page.get("summary") or first_para
 
-        # The status chip rides on the h1, so it is the first thing read and is
-        # attached to the claim rather than floating in a legend.
-        body = re.sub(r"(<h1[^>]*>.*?)(</h1>)",
-                      lambda m: m.group(1) + chip(page.get("status")) + m.group(2),
-                      body, count=1, flags=re.S)
-
         (OUT / page["url"]).write_text(SHELL.format(
             title=html.escape(page["title"]),
             site=html.escape(nav["site_name"]),
@@ -196,8 +184,7 @@ def build() -> int:
 
         by_section.setdefault(page["section"], []).append(
             f"- [{page['title']}]({nav['site_url'].rstrip('/')}/{page['url']}): {summary}")
-        full_md += [f"\n\n---\n\n## {page['title']}",
-                    f"_status: {page.get('status', 'unstated')}_\n", text]
+        full_md += [f"\n\n---\n\n## {page['title']}", text]
 
     # llms.txt -- llmstxt.org: an H1, a blockquote summary, then link sections.
     # Generated from the same nav as the site so it cannot fall behind, which is

@@ -1,14 +1,21 @@
 # Ten things, worked through
 
-Ten scenarios against one small domain, each with the output it actually
-produced. If you have read the other pages and want to see the pieces used
-together rather than one at a time, this is that page.
+Ten scenarios against one small domain, one capability at a time, each with the
+output it actually produced. This is the page for finding out what a single
+move does and what it returns.
 {: .lede }
 
 Everything below was run against a live PostgreSQL 19 with the extension
 installed, and the tables are pasted from the transcript rather than typed out
 from what the query ought to return. You can reproduce all of it in about a
 minute, and the last section says how.
+
+**If you came looking for whole pipelines, this is the wrong page and
+[Workflow recipes](recipes.html) is the right one.** The split is deliberate:
+this page answers "what does `GRAPH` return, and what does a matrix step leave
+behind?", and that one answers "how do I poll a source into a corpus an agent
+can be asked about, and what has to exist first?". Read this one to learn the
+vocabulary; read that one to assemble something.
 
 ## The domain
 
@@ -535,7 +542,12 @@ Each example runs in its own transaction and rolls back, so they are
 order-independent and you can run them as many times as you like. The fixture
 is idempotent and re-running it is how you get back to a known state.
 
-If you want to go deeper on any one of these, [Querying](query.md) covers the
-dialect properly, [Authoring in YAML](authoring.md) covers the step kinds and
-what the compiler refuses, and [Uploading files](ingest.md) covers what happens
-between `POST /files` and a chunk that answers a question.
+If you want to go deeper on any one of these, [Querying](query.html) covers the
+dialect properly, [Authoring in YAML](authoring.html) covers the step kinds and
+what the compiler refuses, and [Uploading files](ingest.html) covers what
+happens between `POST /files` and a chunk that answers a question.
+
+And if you now want to see these ten assembled into things worth deploying —
+a source polled on a clock, a backlog through a specialist extractor, a question
+answered by an agent over your own corpus — that is
+[Workflow recipes](recipes.html).

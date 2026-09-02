@@ -79,11 +79,23 @@ name = "Beyond workflows"
   status = "proven"
   summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
 
+[[section]]
+name = "Putting it together"
+
   [[section.page]]
   file = "cookbook.md"
   title = "Ten things, worked through"
   status = "proven"
-  summary = "One small domain and ten scenarios across all five subsystems, each with the output it actually produced."
+  summary = "One capability at a time: ten scenarios over one small domain, each with the output it actually produced."
+
+  [[section.page]]
+  file = "recipes.md"
+  title = "Workflow recipes"
+  status = "designed"
+  summary = "Whole pipelines -- a source polled on a clock, a backlog through an extractor, an agent answering over your own corpus -- and what has to exist before each will run."
+
+[[section]]
+name = "Operating"
 
   [[section.page]]
   file = "operating.md"

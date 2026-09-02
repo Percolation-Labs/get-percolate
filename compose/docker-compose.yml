@@ -37,7 +37,24 @@ services:
       P8_AUTHENTICATOR_PASSWORD: ${P8_AUTHENTICATOR_PASSWORD:-authpass}
       P8_WORKER_PASSWORD: ${P8_WORKER_PASSWORD:-workerpass}
     ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    # MOUNTED AT /var/lib/postgresql, NOT .../data, and on 18+ that is the
+    # difference between a stack that starts and one that restart-loops.
+    #
+    # The postgres images moved PGDATA to a major-version-specific directory
+    # (/var/lib/postgresql/19/docker) so that pg_upgrade has both versions to
+    # work with -- docker-library/postgres#1259. They also refuse to start when
+    # they find anything at the old flat path, reporting it as an "unused
+    # mount/volume", which is exactly what a volume mounted there is. This file
+    # kept the pre-18 spelling, so `docker compose up` -- the one thing this
+    # repo exists to make work -- failed on a completely fresh volume with
+    # `Error: in 18+, these Docker images are configured to store database data
+    # in a format which is compatible with "pg_ctlcluster"`.
+    #
+    # Mounting the parent keeps the version-aware layout rather than opting out
+    # of it. The Helm chart does the other thing -- sets PGDATA to a
+    # subdirectory of the mount -- for a reason that is real there and does not
+    # apply here: a PVC is never empty, because of lost+found.
+    volumes: ["pgdata:/var/lib/postgresql"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-p8} -d percolate"]
       interval: 3s
@@ -102,9 +119,24 @@ services:
     image: percolationlabs/percolate-core:0.1.3
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
-    command: ["agent", "serve"]
+    # --host 0.0.0.0, because `agent serve` defaults to 127.0.0.1 and that is
+    # the container's own loopback. It came up, logged
+    # `percolate agent on http://127.0.0.1:8080`, and answered nothing on the
+    # published port -- a service that looks healthy in `docker compose ps` and
+    # is unreachable, which is worse than one that crashes. The default is right
+    # for a laptop and wrong for every container; this file is the container.
+    command: ["agent", "serve", "--host", "0.0.0.0"]
     environment:
+      # BOTH NAMES, because this image reads two. `core/config.py` requires
+      # P8_DSN ("every service connects to Postgres") and the agent runtime's
+      # own settings.py reads P8_DATABASE_URL, defaulting to
+      # postgresql://p8:p8@localhost:5500/p8agentic when it is unset. With only
+      # P8_DSN set, `agent serve` took that default and restart-looped on
+      # `Connect call failed ('127.0.0.1', 5500)` while every other service in
+      # this file connected fine -- one name for one thing, read under two, and
+      # only the unset one on the path that fails.
       P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
+      P8_DATABASE_URL: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
       # An agent is a row; the model it uses is a column. This is only the
       # key that column's provider needs.

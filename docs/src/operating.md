@@ -91,6 +91,10 @@ missing-bucket failure in full</a> ·
 
 | View | Answers |
 |---|---|
+| `workflow.v_backlog` | per queue: claimable, running, and **how long the oldest has waited** |
+| `workflow.v_unclaimable` | work no worker will ever pick up, with the statement that fixes it |
+| `workflow.v_capacity` | connection headroom, which runs out before throughput does |
+| `workflow.check_hot_paths()` | whether the claim path is still index-backed at depth |
 | `workflow.v_stuck_tasks` | not moving, **and** not making progress |
 | `workflow.v_lease_violations` | a reaped worker tried to publish its result |
 | `workflow.encoding_drift()` | a producer returning double-encoded JSON |
@@ -111,6 +115,109 @@ during the second.
 
 <p class="related"><strong>Related</strong>
 <a href="failure.html#what-to-watch">the same views from the failure side</a></p>
+</details>
+
+## Work nobody can claim
+
+Some failures produce no error anywhere, and this is the one to know about
+because the engine gives no other signal.
+
+What we are trying to do here is find tasks that no worker will ever pick up.
+{: .goal }
+
+```sql
+select reason, count(*), min(waiting) from workflow.v_unclaimable group by 1;
+select remedy from workflow.v_unclaimable limit 1;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">workflow.v_unclaimable</div>
+
+```
+                      reason                      | count |  waiting
+--------------------------------------------------+-------+----------
+ rate_key names no bucket in workflow.rate_limits |     3 | 00:04:11
+
+remedy: insert into workflow.rate_limits (key, capacity, tokens, refill_rate)
+        values ('openai-completions', 20, 20, 1);
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — `v_stuck_tasks` cannot see this, and the reason is
+subtle</summary>
+
+`rate_key` is a **reference** to a row in `workflow.rate_limits`, not a
+declaration of one. `claim_task` consumes from that bucket with
+`update … where key = $1`, which matches nothing when the bucket does not exist
+and therefore returns false — every time, forever. The task sits in `ready`, no
+worker claims it, no attempt is recorded, nothing retries, and the worker beside
+it reports an empty queue.
+
+`v_stuck_tasks` reports tasks that are **old**, and a freshly created
+unclaimable task is not old yet. It surfaces there an hour later, described as
+something else. This view asks the structural question instead — is there a
+bucket for this key — so it is right immediately.
+
+The `remedy` column is the statement that fixes it, rather than a description of
+the fix. A diagnostic you can paste is one you will actually use.
+
+<p class="related"><strong>Related</strong>
+<a href="#rate-limits">setting a bucket up first</a> ·
+<a href="scaling.html">what else the scale work found</a></p>
+</details>
+
+## Retention — the task table only ever grew
+
+Nothing in this engine deleted a task, so `workflow.tasks` grew without bound.
+That is not only a disk question: the autoscaler's own probe changes plan on the
+ratio of live rows to total rows, so an unbounded table degrades the thing that
+decides how many workers you get.
+
+What we are trying to do here is drop runs that finished long enough ago to stop
+mattering.
+{: .goal }
+
+```sql
+select * from workflow.purge_completed(interval '30 days');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">workflow.purge_completed</div>
+
+```
+ batches | runs_purged | tasks_purged | runs_skipped
+---------+-------------+--------------+--------------
+       1 |           1 |        20000 |            1
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — it batches by run, and tells you what it could not
+take</summary>
+
+**By run rather than by task**, because tasks reference each other within a run
+— a compensation points at what it undoes, a fan-out child at its parent — and
+both are `NO ACTION`. A batch that split a run would block on its own siblings.
+
+**Batched at all**, because deleting a million task rows in one statement takes
+tens of minutes: every row costs an index update per index plus a foreign-key
+probe, and it all accumulates in one transaction. Each batch here commits on its
+own.
+
+`runs_skipped` is the column to read when the table is not shrinking. A run is
+held back if a schedule still points at it as `last_run_id`, if a sub-workflow
+parent references it as a child, or if an agent run records one of its tasks —
+all legitimate, all invisible without being told.
+
+It keys on `completed_at` rather than `updated_at`, because `runs.updated_at` is
+maintained by a touch trigger and therefore means *last modified*: retention on
+it would be retention on when somebody last looked at the run.
+
+<p class="related"><strong>Related</strong>
+<a href="scaling.html">why an unbounded table costs you</a> ·
+<a href="#backup-and-the-two-things-not-in-the-database">what a purge means for
+backups</a></p>
 </details>
 
 ## Version skew

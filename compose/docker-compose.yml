@@ -81,7 +81,7 @@ services:
   # The only process a workflow needs, and only for steps that leave the
   # machine. p8ql and sql steps run inside Postgres with nothing running here.
   worker:
-    image: percolationlabs/percolate-core:0.1.3
+    image: percolationlabs/percolate-core:0.1.4
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
     command: ["worker", "--queue", "http"]
@@ -100,7 +100,7 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
 
   content:
-    image: percolationlabs/percolate-core:0.1.3
+    image: percolationlabs/percolate-core:0.1.4
     restart: unless-stopped
     depends_on:
       db: {condition: service_healthy}
@@ -116,26 +116,23 @@ services:
     ports: ["8081:8081"]
 
   agent:
-    image: percolationlabs/percolate-core:0.1.3
+    image: percolationlabs/percolate-core:0.1.4
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
-    # --host 0.0.0.0. Also fixed at source in percolate-core#1, so this too is
-    # redundant once the pin moves past 0.1.3 -- but it is harmless and
-    # explicit, and an explicit bind in a compose file is not a bad thing to
-    # keep. `agent serve` defaults to 127.0.0.1 and that is
-    # the container's own loopback. It came up, logged
-    # `percolate agent on http://127.0.0.1:8080`, and answered nothing on the
-    # published port -- a service that looks healthy in `docker compose ps` and
-    # is unreachable, which is worse than one that crashes. The default is right
-    # for a laptop and wrong for every container; this file is the container.
-    command: ["agent", "serve", "--host", "0.0.0.0"]
+    # --host is no longer passed: percolate-core#1 made `agent serve` default to
+    # 0.0.0.0, matching the Content Server. It used to default to 127.0.0.1 --
+    # the container's OWN loopback -- so the agent came up, logged
+    # `percolate agent on http://127.0.0.1:8080`, reported healthy in
+    # `docker compose ps`, and answered nothing on the published port. Left
+    # unset here so this file says what the deployment needs rather than what
+    # one version of one image got wrong.
+    command: ["agent", "serve"]
     environment:
-      # BOTH NAMES, and this is pinned to the 0.1.3 image -- percolate-core#1
-      # makes the runtime read P8_DSN, so once this file moves past 0.1.3 the
-      # second line below is redundant rather than load-bearing. Kept until
-      # then, and named here so it does not outlive its reason.
-      #
-      # This image reads two. `core/config.py` requires
+      # ONE NAME AGAIN, as of the 0.1.4 pin. percolate-core#1 made the agent
+      # runtime read P8_DSN like every other service, so the P8_DATABASE_URL
+      # line this file used to carry is gone rather than left behind: a
+      # workaround kept past its reason reads as a decision, and the next person
+      # to touch this file would have had to work out which it was. `core/config.py` requires
       # P8_DSN ("every service connects to Postgres") and the agent runtime's
       # own settings.py reads P8_DATABASE_URL, defaulting to
       # postgresql://p8:p8@localhost:5500/p8agentic when it is unset. With only
@@ -144,7 +141,6 @@ services:
       # this file connected fine -- one name for one thing, read under two, and
       # only the unset one on the path that fails.
       P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
-      P8_DATABASE_URL: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
       # An agent is a row; the model it uses is a column. This is only the
       # key that column's provider needs.

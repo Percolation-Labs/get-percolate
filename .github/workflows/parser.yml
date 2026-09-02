@@ -156,6 +156,17 @@ jobs:
       - name: Build
         if: runner.os == 'macOS'
         working-directory: extension/percolate_parser
+        # -undefined dynamic_lookup is not optional on macOS and is not a
+        # workaround. A Postgres extension is a shared library whose Postgres
+        # symbols -- ErrorContext, FreeErrorData, error_context_stack -- are
+        # resolved by the SERVER at load time, and Mach-O's linker refuses
+        # undefined symbols by default where ELF does not. Without it the build
+        # gets all the way through compilation and fails at the link with a
+        # wall of undefined `_pg*` symbols, which reads like a broken crate and
+        # is a missing flag. Linux needs nothing here, which is why the
+        # container path above says nothing about it.
+        env:
+          RUSTFLAGS: "-C link-arg=-Wl,-undefined,dynamic_lookup"
         run: |
           cargo pgrx init --pg19 "$PG_CONFIG"
           cargo pgrx package --features pg19 --no-default-features --pg-config "$PG_CONFIG"

@@ -204,4 +204,5 @@ it caught a stale development harness on its first run.
 <a href="operating.html#upgrading">running both after an upgrade</a></p>
 </details>
 
-Next: [your first workflow](first-workflow.html).
+Next: [agents](agents.html), which is the shortest useful thing to do
+against a fresh install: write one spec, save it, and call it.

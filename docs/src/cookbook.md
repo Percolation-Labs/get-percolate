@@ -704,7 +704,7 @@ select agentic.upsert_agent($j${
   "name": "harbourmaster",
   "model": "anthropic:claude-sonnet-5",
   "system_prompt": "You answer questions about the fleet. Start with SCHEMA…",
-  "tools": [{"server": "harbour-query", "tool": "query"}]
+  "tools": [{"server": "harbour-query", "tools": ["query"]}]
 }$j$::jsonb);
 ```
 
@@ -712,9 +712,9 @@ select agentic.upsert_agent($j${
 <div class="label">the binding</div>
 
 ```
-     agent     |    server     | tool
----------------+---------------+-------
- harbourmaster | harbour-query | query
+     agent     |    server     | allowlist
+---------------+---------------+-----------
+ harbourmaster | harbour-query | ["query"]
 ```
 </div>
 
@@ -722,8 +722,11 @@ select agentic.upsert_agent($j${
 <summary>Why it works — registration and re-sync are the same call, so
 correcting a URL cannot throw away discovery</summary>
 
-A tool server is a row naming an endpoint, and an agent is a row naming tools on
-it by name. Re-running the upsert with a corrected URL keeps what discovery
+A tool server is a row naming an endpoint, and an agent is a row naming that
+server plus an allowlist of tools on it. The allowlist is a list: `"tool":
+"query"` is stored here without complaint and then dropped by the runtime,
+leaving the agent with no allowlist at all — which means every tool the server
+exposes. Re-running the upsert with a corrected URL keeps what discovery
 found:
 
 <div class="evidence" markdown="1">

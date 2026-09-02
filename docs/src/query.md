@@ -6,9 +6,104 @@ when they ask.
 {: .lede }
 
 [The P8QL grammar](grammar-p8ql.html) is the reference for the seven modes and
-every modifier. The three things a reference cannot tell you are which rows
-become nodes, why the property graph costs no migration, and why a query can
-look empty when it is working correctly.
+every modifier. The four things a reference cannot tell you are who the dialect
+is written for, which rows become nodes, why the property graph costs no
+migration, and why a query can look empty when it is working correctly.
+
+## Written for a model to write
+
+P8QL exists because the caller doing most of the asking here is a language
+model, and the modes are named after the moves an investigation is made of
+rather than after the Postgres features that implement them. Resolve a name,
+walk out from a thing, find things that mean the same, find things that say the
+same, ask what exists at all.
+
+What we are trying to do here is find a company from a name somebody typed
+badly, and compare that against writing the same intent in SQL.
+{: .goal }
+
+```sql
+select aiq.query('FUZZY LOOKUP "acme robotic" LIMIT 5');
+```
+
+```sql
+-- the obvious hand-written equivalent
+select n.entity_type, k.key, similarity(k.key, 'acme robotic') as score
+from aiq.node_keys k join aiq.nodes n on n.id = k.node_id
+where k.key % 'acme robotic'
+order by similarity(k.key, 'acme robotic') desc limit 5;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the hand-written one, against the sample fixture</div>
+
+```
+ entity_type |      key      | score
+-------------+---------------+-------
+ company     | acme robotics | 0.800
+ company     | acme          | 0.385
+ company     | acme          | 0.385
+```
+</div>
+
+<div class="evidence" markdown="1">
+<div class="label">`FUZZY LOOKUP`, same string, same database</div>
+
+```json
+{"mode": "LOOKUP",
+ "plan": {"ok": true, "args": ["acme robotic"], "fuzzy": true, "limit": 5, …},
+ "rows": [{"node_id": "d767d1c8…", "entity_type": "company",
+           "key": "acme robotics", "match_kind": "fuzzy", "score": 0.8,
+           "input_key": "acme robotic"}],
+ "unresolved": []}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — the abstraction is over an investigation procedure, not
+over one query</summary>
+
+Those are the same company three times and the same company once. One node
+carries three keys — `acme` canonical, `acme` short, `acme robotics` alias — so
+the trigram query returns a row per matching *key*, and a caller that hydrates
+each one fetches the same entity three times. `LOOKUP` answers "which nodes
+match this string", which is the question that was actually asked, and it
+reports which key matched so nothing is hidden by the deduplication.
+
+The mode is also a cascade rather than a query: exact canonical first, then
+short and alias, and only then trigram, each stage short-circuiting if it found
+anything. Fuzzy matching a name that is spelled correctly is a way to get a
+worse answer slowly, and that ordering is the sort of thing you write once
+rather than in every prompt.
+
+Each mode stands over a different Postgres feature — `pg_trgm` here, `pgvector`
+under `SEMANTIC`, `tsvector` under `TEXT`, SQL/PGQ `GRAPH_TABLE` under `GRAPH` —
+and a model writing raw SQL has to pick the right one, with the operator that
+matches the index, and an embedding from the same model the column was written
+with. The failures there are quiet ones: a distance operator that does not match
+the opclass returns rows in the wrong order rather than an error, and a vector
+from the wrong model returns a number rather than an error. The dialect turns
+those into refusals — `SEMANTIC` will not run against a space written by a
+different model, and a modifier that means nothing for a mode is rejected rather
+than ignored.
+
+Two things in the response are there for the same reason. `plan` is what the
+parser understood, so a model can see that its query meant what it thought
+before reading a single row, and `unresolved` names which of the keys it asked
+for came back with nothing — the difference between "no such company" and "that
+company has no edges", which is the distinction an agent most often gets wrong.
+
+None of this is an attempt to stop anyone writing SQL. Plain SQL is a mode of
+the dialect precisely because these seven will not cover a real question, and
+the escape hatch is the floor everything else sits on.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-p8ql.html">every mode and modifier</a> ·
+<a href="#start-by-asking-what-can-be-asked">the mode that describes the
+others</a> ·
+<a href="agents.html#tools-are-external-and-they-are-rows">how an agent reaches
+this over MCP</a></p>
+</details>
 
 ## Start by asking what can be asked
 

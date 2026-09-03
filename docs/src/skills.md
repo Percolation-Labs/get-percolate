@@ -1,9 +1,10 @@
 # Skills and plugins
 
-A skill is a prompt fragment in a row. An agent names the ones it always
-carries, the database picks the ones this turn needs, and the rest stay in the
-table costing nothing — so a prompt is assembled at invocation rather than
-authored whole, and adding a capability is an insert.
+A skill is a prompt fragment in a row. An agent **attaches** the ones it may
+use the same way it binds tools — by name, carrying the listing and not the
+text — and a body is loaded on demand when a turn calls for it. So a prompt is
+assembled at invocation rather than authored whole, attaching a capability
+costs a line rather than a page, and adding one is an insert.
 {: .lede }
 
 The idea is not ours. [Agent Skills](https://agentskills.io) is an open
@@ -78,6 +79,109 @@ disclosure</a> ·
 <a href="agents.html">the agent whose prompt this joins</a></p>
 </details>
 
+## Attaching a skill is like binding a tool
+
+This is the part worth getting straight before anything else, because it is
+where the efficiency comes from and it is easy to assume the opposite.
+
+A tool is offered to a model as a **listing** — a name, a description, an
+argument schema. The implementation lives in a service the model never sees,
+and it is reached only when the turn calls for it. That is why an agent can be
+offered dozens of tools without dozens of implementations sitting in its
+context.
+
+A skill attached to an agent works the same way, and the parallel is the design
+rather than a metaphor:
+
+| | `agents.tools` | `agents.skills` |
+|---|---|---|
+| the row names | servers and tool names | fragment names |
+| the prompt carries | name, description, parameters | name, description, when to use |
+| it does **not** carry | the implementation | the body |
+| on demand you get | the tool's result | the fragment's text |
+| the model then | calls it | follows it |
+
+So **attaching is cheap and it is lazy**. Every attached fragment costs one
+listing line in every prompt, whether or not it is used. The body arrives only
+when the turn calls for it. Attaching one more capability costs a line, not a
+page.
+
+What we are trying to do here is give an agent eleven procedures it may use,
+while its prompt carries the text of almost none of them.
+{: .goal }
+
+```sql
+select agentic.upsert_agent($j${
+  "name": "harbourmaster",
+  "skills": ["house-style", "safety-no-destructive-sql",
+             "p8ql-schema-first", "p8ql-fuzzy-lookup", "p8ql-graph-walk",
+             "p8ql-content-search", "p8ql-read-the-plan", "p8ql-unresolved-names",
+             "workflow-define-then-start", "workflow-never-poll",
+             "workflow-diagnose-failure"],
+  "context_policy": {"skills": {
+    "always":    ["house-style", "safety-no-destructive-sql"],
+    "match": true, "top_k": 2, "min_score": 0.28,
+    "max_chars": 6000, "index": "bound", "sticky": true
+  }}
+}$j$::jsonb);
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the same eleven fragments, two ways — measured</div>
+
+```
+if attaching meant carrying the body     4,400 chars, every turn, regardless
+what attaching actually costs            2,403 chars of listings
+
+one turn's assembled prompt (asking about an empty LOOKUP):
+  agent's own prompt          179
+  2 always-on bodies        \
+  2 bodies the turn matched  > 1,400
+  7 remaining listings      1,614
+  ------------------------------------
+  total                     3,267 chars   vs 4,579 if bodies were carried
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — the eager cost grows with the surface and the lazy cost
+does not</summary>
+
+Write out what a prompt costs under each model and the difference is structural
+rather than a matter of degree.
+
+**If attaching carried the body**, the prompt is `agent + Σ(all attached
+bodies)`. Every term grows with the size of the surface. Attaching a twelfth
+fragment costs its whole body on every turn forever, including the turns it has
+nothing to do with — so there is a point, and it arrives quickly, where you
+stop attaching things because you cannot afford them. That is the same pressure
+that makes people write one enormous system prompt and then stop editing it.
+
+**With lazy attachment**, the prompt is `agent + Σ(always bodies) + (at most
+top_k bodies, capped by max_chars) + N listings`. Only the last term grows with
+the surface, and it grows in units of a listing rather than a body. The bodies
+that arrive are chosen per turn and bounded by a budget you set, not by how
+many fragments exist.
+
+In the fixture above a listing averages 218 characters against a body's 400,
+so the surface term grows about 1.8× more slowly. **That ratio is the whole
+game, and 1.8 is a floor rather than a typical figure** — these fragments are
+deliberately terse. A real procedure runs to two or five thousand characters
+against the same ~220-character listing, which is 10× to 25×. The saving is
+proportional to how much you have to say.
+
+The one thing you do pay unconditionally is the index: `N` listing lines,
+every turn. That is the honest cost of the model, and it is why the index is
+worth its own decision rather than being free — [what measuring it
+changed](#what-measuring-it-changed) is the section where that decision got
+made, and reversed once.
+
+<p class="related"><strong>Related</strong>
+<a href="agents.html#tools-are-external-and-they-are-rows">the tool surface
+this mirrors</a> ·
+<a href="#what-the-prompt-becomes">what arrives on demand, and who decides</a></p>
+</details>
+
 ## Attach it to an agent
 
 What we are trying to do here is add one fragment to an agent without knowing,
@@ -132,26 +236,26 @@ function picked, the other is what somebody believed they had written.
 <a href="agents.html#save-it">the agent write path these checks live in</a></p>
 </details>
 
-## What the prompt becomes
+## What the prompt becomes, and who decides
 
-An agent's own prompt stays short. What it carries beyond that is assembled at
-invocation from three places, and they differ only in **who decides**.
+Attachment says what an agent *may* use. This is when a body actually arrives,
+and there are three answers, differing only in **who decides**: the author, the
+runtime, or the model.
 
 What we are trying to do here is have an agent always follow two house rules,
-pick up whatever else the current question calls for, and know what else exists
-without paying for it.
+pick up whatever else the current question calls for, and know what else it
+could ask for.
 {: .goal }
 
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
-  "skills": ["house-style", "safety-no-destructive-sql"],
   "context_policy": {
     "window_messages": 40,
     "skills": {
+      "always":  ["house-style", "safety-no-destructive-sql"],
       "match": true, "matcher": "semantic",
       "top_k": 2, "min_score": 0.28, "max_chars": 6000,
-      "scope": {"tags": ["query"]},
       "index": "bound", "sticky": true
     }
   }
@@ -175,14 +279,18 @@ select agentic.upsert_agent($j${
 <summary>Why it works — expansion is the primitive, and the tool that fetches a
 skill is an option rather than the mechanism</summary>
 
-`skills` on the row is the **composed** set: read from the database at
-invocation and concatenated into the system prompt, in listed order. The row
-holds the keys and never the text, which is the whole reason this is a table —
-one edit reaches every agent that composes it.
+`always` is the **unconditional** subset of the attached surface: read from the
+database at invocation and concatenated into the prompt. It is a policy key
+rather than the meaning of attachment, and that is the distinction the section
+above turns on — if attaching were eager there would be no cheap way to give an
+agent a large surface at all. Expect two or three names here out of a surface
+of dozens.
 
-`context_policy.skills` is the **matched** set: the runtime embeds the turn's
-request, ranks it against the listings, and expands what clears `min_score`
-under the `max_chars` budget. No round trip and no tool call — the model never
+**Matched** is the runtime's answer: it embeds the turn's request, ranks it
+against the listings of the attached surface, and expands what clears
+`min_score` under the `max_chars` budget. `scope` widens that ranking beyond
+what the agent attached, which is discovery rather than capability — a
+different claim, so a different key. No round trip and no tool call — the model never
 has to know skills exist. When the budget is reached the remaining matches fall
 back to their index lines and the run records which ones, because a silent
 truncation is the failure the listing cap exists to prevent one level up.

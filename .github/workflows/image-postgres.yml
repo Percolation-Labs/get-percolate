@@ -101,14 +101,19 @@ jobs:
           # Without it there is no way to say which build a cluster is running,
           # which matters more than usual here: pre-1.0 there is no in-place
           # extension upgrade, so pinning IS the upgrade strategy.
+          # ONLY THE IMMUTABLE TAG IS PUSHED HERE. `19` is moved at the end of
+          # this job, after the checks below have passed, and that ordering is
+          # the whole point of having them: pushing both tags up front meant
+          # the portability gate ran AFTER the mutable tag every user pulls had
+          # already moved to the image it was about to refuse. A gate that
+          # opens the door and then inspects the visitor is a report.
           tags: |
-            percolationlabs/percolate-postgres:19
             percolationlabs/percolate-postgres:19-${{ inputs.version }}
 
       - name: Confirm both architectures are in the manifest
         if: inputs.push
         run: |
-          for t in 19 19-${{ inputs.version }}; do
+          for t in 19-${{ inputs.version }}; do
             m=$(docker buildx imagetools inspect "percolationlabs/percolate-postgres:$t")
             echo "$m" | grep -q linux/amd64 || { echo "::error::$t has no amd64" >&2; exit 1; }
             echo "$m" | grep -q linux/arm64 || { echo "::error::$t has no arm64" >&2; exit 1; }
@@ -134,6 +139,25 @@ jobs:
       - name: Refuse a build compiled for the builder's own CPU
         if: inputs.push
         run: |
+          # SCOPED TO THE FUNCTION THE INSTRUCTION SITS IN, which the first
+          # version of this check was not -- and it refused a correct build.
+          #
+          # pgvector 0.8.x ships EXPLICIT AVX-512 kernels and selects them at
+          # runtime: BitHammingDistanceAvx512Popcount and its Jaccard twin are
+          # compiled with a target attribute and reached only through a CPU
+          # feature test. A portable build therefore CONTAINS zmm instructions
+          # by design, and counting them across the whole library cannot tell
+          # that apart from -march=native. Measured on the published image:
+          # 20 such instructions, all of them inside those two functions, with
+          # 108 cpuid/__cpu_model sites gating the dispatch.
+          #
+          # What -march=native actually looks like is the opposite -- the
+          # instructions are everywhere, in the ordinary distance and
+          # quantisation loops, not confined to two functions whose names say
+          # what they are. So the observable is "does a function that is NOT a
+          # dispatched kernel carry non-baseline instructions", which is still
+          # answerable from the disassembly and no longer confuses a deliberate
+          # runtime-dispatched kernel with an accident of the builder's CPU.
           fail=0
           for a in amd64 arm64; do
             case $a in
@@ -142,14 +166,33 @@ jobs:
               # AVX-512: absent from most consumer and older server parts.
               amd64) bad='%zmm|kmov[bwdq]|vpternlog' ;;
             esac
-            n=$(docker run --rm --platform "linux/$a" \
+            # Functions whose names declare them as explicitly-dispatched
+            # kernels. Anything else carrying these instructions is the bug.
+            dispatched='Avx512|Avx2|Sve|Neon|Dispatch'
+            fns=$(docker run --rm --platform "linux/$a" \
                   "percolationlabs/percolate-postgres:19-${{ inputs.version }}" \
                   sh -c "objdump -d /usr/lib/postgresql/19/lib/vector.so \
-                         | grep -cE '$bad' || true")
-            echo "$a: $n non-baseline instructions in vector.so"
-            [ "$n" = "0" ] || {
+                         | awk '/^[0-9a-f]+ </ {fn=\$2} /$bad/ {print fn}' \
+                         | sort -u" || true)
+            offenders=$(printf '%s\n' "$fns" | grep -vE "$dispatched" | grep . || true)
+            echo "$a: functions with non-baseline instructions: ${fns:-none}"
+            [ -z "$offenders" ] || {
               echo "::error::vector.so for $a was compiled for the build machine's CPU" >&2
+              echo "::error::non-baseline instructions outside a dispatched kernel: $offenders" >&2
               echo "::error::pass OPTFLAGS=\"\" to pgvector's make -- see dev/Dockerfile.pg19" >&2
               fail=1; }
           done
           [ "$fail" = "0" ]
+
+      # The mutable tag moves LAST, and only if everything above passed. This
+      # is a manifest copy rather than a rebuild, so `19` and `19-<version>`
+      # are the same digests by construction -- there is no window in which
+      # they could be two different builds.
+      - name: Move the :19 tag onto the verified build
+        if: inputs.push
+        run: |
+          docker buildx imagetools create \
+            -t percolationlabs/percolate-postgres:19 \
+            percolationlabs/percolate-postgres:19-${{ inputs.version }}
+          docker buildx imagetools inspect percolationlabs/percolate-postgres:19 \
+            | grep -E 'linux/(amd64|arm64)'

@@ -46,6 +46,7 @@ def load() -> dict:
         "core": v["published"]["core"],
         "chart": v["published"]["chart"],
         "core_min": v["requires"]["core"],
+        "extension_min": v["requires"].get("extension", v["published"]["extension"]),
     }
 
 
@@ -162,10 +163,19 @@ def main() -> int:
     print("versions.toml agrees with every file that repeats it:")
     for k in ("extension", "core", "chart", "core_min"):
         print(f"  {k:10} {v[k]}")
-    if v["core_min"] != v["core"]:
-        print(f"\nnote: the docs require percolate-core {v['core_min']} and "
-              f"{v['core']} is published.\n"
-              f"      A release is outstanding -- ci/coldstart.sh fails until it ships.")
+    # Two independent gaps, reported the same way. Each means the same thing:
+    # the documentation describes something a reader cannot install yet, which
+    # is a state worth naming out loud rather than leaving for coldstart.sh to
+    # discover as a bare `function does not exist`.
+    outstanding = [(n, v[f"{k}_min"], v[k])
+                   for n, k in (("percolate-core", "core"), ("the extension", "extension"))
+                   if v[f"{k}_min"] != v[k]]
+    if outstanding:
+        print()
+        for name, req, pub in outstanding:
+            print(f"note: the docs require {name} {req} and {pub} is published.")
+        print("      A release is outstanding -- ci/coldstart.sh fails until it ships,")
+        print("      and that failure is the docs being ahead, not the docs being wrong.")
     return 0
 
 

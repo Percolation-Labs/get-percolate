@@ -21,7 +21,18 @@ WORK=$(mktemp -d)
 trap 'cd "$WORK" && docker compose down -v >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 
 say() { printf '\n=== %s\n' "$*"; }
-fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+fail() {
+    printf 'FAIL: %s\n' "$*" >&2
+    # The commonest cause, said once, at the point it matters. Without this the
+    # run ends on `function rbac.bootstrap_admin does not exist` and reads as a
+    # broken install guide rather than an unshipped release.
+    [ "${AHEAD:-no}" = "yes" ] && {
+        printf '\nversions.toml says the documentation is AHEAD of what is published.\n' >&2
+        printf 'This guide describes a release that has not shipped, so it cannot pass\n' >&2
+        printf 'against the published artifacts yet. Ship it, or rehearse against a\n' >&2
+        printf 'local build:  IMAGE=<local-tag> PERCOLATE_CORE_SPEC=<path> ci/coldstart.sh\n' >&2; }
+    exit 1
+}
 
 # Chosen once, at the top, and used for everything Python here. The version of
 # this that picked an interpreter only for the venv left `ci/extract-runnable.py`
@@ -82,8 +93,23 @@ done
 
 psql_() { docker compose exec -T db psql -U p8 -d percolate -v ON_ERROR_STOP=1 "$@"; }
 
+# Named BEFORE the assertions, so a failure that is really "this release has not
+# shipped yet" says so instead of surfacing as `function does not exist` from
+# whichever assertion happened to touch it first.
+say "is the documentation ahead of what is published?"
+"$PY_BIN" "$ROOT/ci/versions.py" --check | sed -n '/^note:/,$p' | sed 's/^/    /'
+AHEAD=$("$PY_BIN" - "$ROOT/versions.toml" <<'EOF'
+import sys, tomllib
+v = tomllib.load(open(sys.argv[1], "rb"))
+p, r = v["published"], v["requires"]
+print("yes" if any(r.get(k, p[k]) != p[k] for k in ("core", "extension")) else "no")
+EOF
+)
+
 say "what is under test"
-psql_ -c "select * from percolate_build()" || true
+psql_ -c "select * from percolate_build()" || {
+    [ "$AHEAD" = "yes" ] && echo "    (no percolate_build() -- expected while the extension release is outstanding)"
+    true; }
 
 say "install.md: the capability probe reports nothing missing"
 missing=$(psql_ -tAc "select workflow.compiler_capabilities()->>'missing'")

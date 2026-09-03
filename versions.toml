@@ -29,4 +29,5 @@ chart     = "0.1.2"   # the Helm chart's own version, not what it deploys
 # something nobody can install yet -- `ci/versions.py --check` says so by name
 # rather than leaving it to be discovered by a reader. `ci/coldstart.sh` is the
 # other half: it runs the install guide and fails while that is true.
-core = "0.1.7"   # `percolate sample load` and `percolate auth` land in 0.1.7
+core      = "0.1.7"   # `percolate sample load` and `percolate auth` land in 0.1.7
+extension = "0.1.2"   # rbac.bootstrap_admin, percolate_build() and ALTER EXTENSION

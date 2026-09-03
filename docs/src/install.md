@@ -178,31 +178,5 @@ can only be one database, and the default is `postgres`.
 <a href="failure.html#crash-recovery">what the reaper recovers</a></p>
 </details>
 
-## Checking an install properly
-
-What we are trying to do here is check that every capability the documentation
-promises is actually present, rather than that the extension loaded.
-{: .goal }
-
-```bash
-psql "$DSN" -f surface.sql
-# NOTICE:  SURFACE COMPLETE: all 137 declared capabilities present
-```
-
-<details class="why" markdown="1">
-<summary>Why it works — every row carries the sentence it keeps honest</summary>
-
-`compiler_capabilities()` tells you the parser is current. `surface.sql` is the
-other half: it declares every capability the documentation promises, each row
-carrying the spec sentence it exists to keep honest, and checks the database
-provides it — failing loudly rather than reporting a count.
-
-It exists because every gap in this collection had been found the hard way, and
-it caught a stale development harness on its first run.
-
-<p class="related"><strong>Related</strong>
-<a href="operating.html#upgrading">running both after an upgrade</a></p>
-</details>
-
 Next: [agents](agents.html), which is the shortest useful thing to do
 against a fresh install: write one spec, save it, and call it.

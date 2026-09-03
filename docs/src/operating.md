@@ -256,8 +256,7 @@ enforced.
 
 <p class="related"><strong>Related</strong>
 <a href="authoring.html#three-things-get-refused-rather-than-ignored">the three
-refusals</a> ·
-<a href="install.html#checking-an-install-properly">`surface.sql`</a></p>
+refusals</a></p>
 </details>
 
 ## Payload limits
@@ -315,13 +314,12 @@ two release trains still agree.
 alter extension percolate update;
 
 select * from workflow.compiler_capabilities();   -- parser vs schema
-\i surface.sql                                    -- every promised capability
 ```
 
 The schema ships as one extension; the worker and services are a separate
-release train and are compatible across a minor version. Check both after any
-upgrade, because the failure mode of not checking is a document that compiles
-and does less than it says.
+release train and are compatible across a minor version. Check `missing` after
+any upgrade, because the failure mode of not checking is a document that
+compiles and does less than it says.
 
 That is the end of the guide. The
 [source repository](https://github.com/percolating-sirsh/get-percolate) has the

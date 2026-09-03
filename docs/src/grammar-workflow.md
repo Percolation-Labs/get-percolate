@@ -177,7 +177,7 @@ alter database <db> set percolate.sql_policy = 'registered';
 functions still running.
 
 <p class="related"><strong>Related</strong>
-<a href="recipes.html#the-functions-a-step-is-allowed-to-call">registering a
+<a href="recipes.html#registering-a-function-and-when-it-is-worth-it">registering a
 function, and when it is worth it</a> ·
 <a href="outputs.html">what a `sql` step should return</a></p>
 </details>
@@ -563,9 +563,7 @@ capability report rather than as a syntax error in a document that is not wrong.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-p8ql.html#getting-this-page-from-your-own-database">the same
-mechanism for the query dialect</a> ·
-<a href="install.html#checking-an-install-properly">`surface.sql`, which checks
-everything else</a></p>
+mechanism for the query dialect</a></p>
 </details>
 
 Next: [authoring in YAML](authoring.html) walks the same vocabulary as prose,

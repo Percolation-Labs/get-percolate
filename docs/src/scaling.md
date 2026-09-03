@@ -83,9 +83,7 @@ mixed direction (`desc` then `asc`) cannot be served by reading one index
 backwards; that would reverse both keys.
 
 <p class="related"><strong>Related</strong>
-<a href="operating.html#scaling-on-queue-depth">what the autoscaler reads</a> ·
-<a href="install.html#checking-an-install-properly">checking which build you
-have</a></p>
+<a href="operating.html#scaling-on-queue-depth">what the autoscaler reads</a></p>
 </details>
 
 ## Polling is cheaper than it sounds

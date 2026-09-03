@@ -148,7 +148,7 @@ the grant that fixes it — rather than succeeding and failing at every single
 run, which is the version of this that costs an afternoon to diagnose.
 
 <p class="related"><strong>Related</strong>
-<a href="grammar-workflow.html#sql-steps-call-a-registered-function">the exact
+<a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">the exact
 error, and the `sql:` key</a></p>
 </details>
 

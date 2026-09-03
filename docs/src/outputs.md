@@ -79,7 +79,7 @@ rather than a payload: five hundred results are for aggregating inside a
 function, not for passing through a step argument.
 
 <p class="related"><strong>Related</strong>
-<a href="grammar-workflow.html#sql-steps-call-a-registered-function">registering
+<a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">registering
 the function that writes them</a> ·
 <a href="cookbook.html#7-fan-out-over-a-query-result">a fan-in reading a
 handle</a></p>

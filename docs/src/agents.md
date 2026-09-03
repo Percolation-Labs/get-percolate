@@ -124,17 +124,12 @@ mandatory for some agents</a></p>
 
 Applying an agent is a migration, not a deploy.
 
-What we are trying to do here is get that file into the database, from a
-terminal or from anything that can make an HTTP request.
+What we are trying to do here is get that file into the database, from `psql`
+or from anything that can make an HTTP request.
 {: .goal }
 
-```bash
-percolate agent agent push harbourmaster.yaml
-percolate agent agent show harbourmaster     # the same document back
-```
-
-The database call underneath it is one function, so a migration, a script or
-PostgREST reach it the same way:
+There is one function underneath this, so a migration, a script or PostgREST
+all reach it the same way:
 
 ```sql
 select agentic.upsert_agent($j${
@@ -159,9 +154,11 @@ wrong is a silent total loss</summary>
 
 `upsert_agent` takes the row shape — `system_prompt` and
 `structured_output_schema` spelled out — while the file you commit is the schema
-document, where those two are `description` and `properties`. `agent push` is
-the translation between them, and `agent show` is the inverse, so pulling an
-agent, editing it and pushing it back is a round trip rather than a rewrite.
+document above, where those two are `description` and `properties`. Making that
+translation is yours to do for now: there is no packaged CLI that reads the
+schema document and calls the function for you, so a script that does both, or
+a thin wrapper around `pydantic`'s own `model_json_schema()`, is what "deploying
+an agent" means until one exists.
 
 The upsert updates only the columns whose **keys are present**, never every
 column. Written the obvious way — `set x = excluded.x` for each one — the most
@@ -471,7 +468,7 @@ an open one becomes a synonym pile within a month, and filtering was the point.
 <p class="related"><strong>Related</strong>
 <a href="#extractors-the-population-this-is-sized-for">what makes the table that
 big</a> ·
-<a href="skills.html#what-the-prompt-becomes">the skills key inside
+<a href="skills.html#what-the-prompt-becomes-and-who-decides">the skills key inside
 context_policy</a> ·
 <a href="outputs.html">the same schema idea for a workflow step</a></p>
 </details>

@@ -5,10 +5,10 @@ is about what gets into the graph in the first place, and what a caller sees
 when they ask.
 {: .lede }
 
-[The P8QL grammar](grammar-p8ql.html) is the reference for the eight modes and
+[The P8QL grammar](grammar-p8ql.html) is the reference for the nine modes and
 every modifier, and [Graph algorithms](graph.html) is the page for the
 questions a walk cannot answer at all — ranked relatedness, the best routes
-between two things, what connects a result set. The four things a reference cannot tell you are who the dialect
+between two things, what connects a result set, and what all of that costs. The four things a reference cannot tell you are who the dialect
 is written for, which rows become nodes, why the property graph costs no
 migration, and why a query can look empty when it is working correctly.
 

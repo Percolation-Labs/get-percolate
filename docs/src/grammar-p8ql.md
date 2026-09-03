@@ -1,6 +1,6 @@
 # The P8QL grammar
 
-P8QL is the query dialect this collection speaks: eight modes over one endpoint,
+P8QL is the query dialect this collection speaks: nine modes over one endpoint,
 compiled by a Rust parser that ships with the extension. This page is the whole
 grammar at version 0.1.0, and the last section shows you how to ask your own
 database for its version rather than trusting this one.
@@ -13,7 +13,7 @@ quietly does something other than what it says. That rule costs a little
 convenience and buys the property that a query you can read is a query you can
 trust.
 
-## The eight modes
+## The nine modes
 
 Every mode goes through `aiq.query(text, vector)`, which is `POST /rpc/query`
 over the REST surface. The second argument is the embedding, and only the two
@@ -24,21 +24,32 @@ vector modes use it.
 | `LOOKUP` | `[FUZZY] LOOKUP "<key>" [, "<key>" …] [LIMIT n]` | Resolve names to nodes. Takes a list, because an agent almost never holds exactly one entity |
 | `GRAPH` | `GRAPH "<key>" [DEPTH n] [TYPE <relation>] [LIMIT n]` | Walk relationships out from a named node, to a bounded depth |
 | `RELEVANCE` | `RELEVANCE "<key>" [, "<key>" …] [TYPE <relation>] [LIMIT n]` | Rank what is most related to one or more nodes. Not a walk — it returns an order |
+| `PATH` | `PATH "<a>", "<b>" [, "<c>" …] [DEPTH n] [TYPE <relation>] [LIMIT n]` | How are these connected? Two names give the best routes; three or more give the smallest subgraph joining them |
 | `TEXT` | `TEXT "<text>" FROM <source> [LIMIT n]` | Lexical search, needing no embedding anywhere |
 | `SEMANTIC` | `SEMANTIC "<text>" FROM <source> [USING <model>] [LIMIT n]` | Meaning-based search. You supply the vector |
 | `SEARCH` | `SEARCH "<text>" FROM <source> [USING <model>] [LIMIT n]` | Both rankings, fused |
 | `SCHEMA` | `SCHEMA ["<facet>"] [FROM <name>]` | What this database *is*. The only mode answerable before you know anything |
 | SQL | `<any read-only statement>` | The floor everything else sits on |
 
-`DEPTH` belongs to `GRAPH` alone. `TYPE` belongs to `GRAPH` and `RELEVANCE`.
-`FROM` and `USING` belong to the three search modes. `LIMIT` works everywhere
-except `SCHEMA`. A modifier written where it means nothing is **refused**, never
-ignored — `RELEVANCE "acme" DEPTH 2` is an error, and the error says to reach
-for `GRAPH` instead.
+Each modifier has a domain, and a modifier written outside it is **refused**,
+never ignored:
 
-`RELEVANCE` is the one mode that runs in the compiled extension rather than in
-SQL, and the one that ships switched off. [Graph algorithms](graph.html) is its
-page.
+| Modifier | Where it applies | What it means there |
+|---|---|---|
+| `DEPTH` | `GRAPH`, `PATH` | bounds a traversal — hops out, or the longest route worth considering |
+| `TYPE` | `GRAPH`, `RELEVANCE`, `PATH` | filters a relation on an edge |
+| `LIMIT` | everywhere but `SCHEMA` | how many answers |
+| `FROM`, `USING` | `TEXT`, `SEMANTIC`, `SEARCH` | which corpus, which embedding space |
+| `FUZZY` | `LOOKUP` | trigram over `node_keys`, and only there |
+
+`RELEVANCE "acme" DEPTH 2` is an error, and the error says why: it ranks by how
+much score reaches a node, not by how many hops away it is — reach for `GRAPH`.
+`PATH "acme"` is an error too, because one name is neither a route nor a
+connecting subgraph.
+
+`RELEVANCE` and `PATH` are the two modes that run in the compiled extension
+rather than in SQL, and the two that ship switched off.
+[Graph algorithms](graph.html) is their page.
 
 ## Resolving a name you are not sure of
 
@@ -160,6 +171,58 @@ error naming a compiled function you have never heard of.
 <a href="graph.html">the six graph algorithms, five of which are SQL-only</a> ·
 <a href="graph.html#what-it-costs-on-a-graph-that-is-not-a-fixture">what it
 costs at four million edges</a></p>
+</details>
+
+## How are these connected
+
+Two names is a route. Three or more is the smallest structure joining all of
+them — and that is the same mode rather than a second one, because a shortest
+path *is* the Steiner tree of two terminals.
+
+What we are trying to do here is find how a ship reaches its ultimate parent,
+and then what joins three things at once.
+{: .goal }
+
+```sql
+select aiq.query('PATH "bulk harmony", "meri" LIMIT 2');
+select aiq.query('PATH "bulk harmony", "rotterdam", "meri"');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">two names: the routes, cheapest first</div>
+
+```json
+{"mode": "PATH",
+ "rows": [{"hops": 2, "cost": 2.05, "nodes": ["bulk harmony", "merb", "meri"]},
+          {"hops": 3, "cost": 3.00, "nodes": ["bulk harmony", "rotterdam",
+                                              "meridian dawn", "meri"]}],
+ "exhausted": false, "unresolved": []}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — one mode with a minimum arity, and a `DEPTH` default of
+its own</summary>
+
+`PATH` is the only mode with a *minimum* number of arguments. One name is
+neither of the things it does, and whoever wrote it wanted `GRAPH` or
+`RELEVANCE`; the error says so rather than guessing.
+
+`DEPTH` bounds the longest route worth considering, and its default here is
+**6**, not the 1 that `GRAPH` uses — a one-hop route is a direct edge, so
+inheriting that default would have meant "only tell me about things already
+adjacent". The substituted default appears in the returned `plan`, because a
+default the caller cannot see is one they will discover from a short answer.
+
+Cost with two names is the volume between them, square-rooted by searching from
+both ends at once; the best route comes back in about 8 ms on a
+four-million-edge graph and the alternates are what spend the budget. With
+three or more it is one multi-source walk, and the answer reports how many
+terminals it actually joined so a partial result cannot read as a whole one.
+
+<p class="related"><strong>Related</strong>
+<a href="graph.html#how-are-these-two-connected">the same question with captured
+output and the cost at scale</a></p>
 </details>
 
 ## The three search modes, and why there are three

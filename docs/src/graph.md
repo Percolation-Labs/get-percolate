@@ -66,12 +66,12 @@ and on a fresh install nobody can.
 run</a></p>
 </details>
 
-## One of them is a dialect mode
+## Two of them are dialect modes
 
-Five of the six are SQL functions and stay that way. The sixth is a P8QL mode,
-because it is the one an agent asks constantly and the one generated SQL gets
-wrong quietly — a depth-capped walk returns the right rows in the wrong order
-and nothing says so.
+Four of the six stay SQL functions. Two are P8QL modes, because they are the
+ones an agent asks constantly and the ones generated SQL gets wrong quietly — a
+depth-capped walk returns the right rows in the wrong order and nothing says
+so.
 
 What we are trying to do here is ask the ranked question through the same REST
 endpoint as every other query.
@@ -79,6 +79,8 @@ endpoint as every other query.
 
 ```sql
 select aiq.query('RELEVANCE "bulk harmony", "rotterdam" LIMIT 3');
+select aiq.query('PATH "bulk harmony", "meri" LIMIT 2');
+select aiq.query('PATH "bulk harmony", "rotterdam", "meri"');
 -- POST /rpc/query  {"p_query": "RELEVANCE \"bulk harmony\" LIMIT 3"}
 ```
 
@@ -96,17 +98,22 @@ select aiq.query('RELEVANCE "bulk harmony", "rotterdam" LIMIT 3');
 </div>
 
 <details class="why" markdown="1">
-<summary>Why it works — eight modes, still six modifiers, and a DEPTH that is
-refused</summary>
+<summary>Why it works — nine modes, still six modifiers, and two refusals that
+teach</summary>
 
 The dialect budgeted seven modes and six modifiers so that it fits in a prompt,
 and six new modes would have spent that budget on questions asked far less often
-than `LOOKUP`. This costs one mode and **no new modifiers**: `TYPE` and `LIMIT`
-already mean here exactly what they mean on `GRAPH`.
+than `LOOKUP`. This costs two modes and **no new modifiers**: `DEPTH`, `TYPE`
+and `LIMIT` already mean here exactly what they mean on `GRAPH`.
 
-`DEPTH` is refused, and the refusal is the whole argument in one error message —
-*it ranks by how much score reaches a node, not by how many hops away it is*.
-A caller who writes it is reaching for `GRAPH`, and the error says so.
+`PATH` is one mode with two arities rather than two modes, because a shortest
+path *is* the Steiner tree of two terminals — two names give the best routes,
+three or more give the smallest structure joining all of them.
+
+`DEPTH` on `RELEVANCE` is refused, and the refusal is the whole argument in one
+error message — *it ranks by how much score reaches a node, not by how many hops
+away it is*. A caller who writes it is reaching for `GRAPH`, and the error says
+so. `PATH` with one name is refused for the mirror reason.
 
 `unresolved` and `exhausted` appear on this envelope and on no other, each for a
 stated reason: the first because a dropped seed would make "no such entity" look
@@ -614,6 +621,7 @@ nodes**, one backend, p50 and p95 in milliseconds:
 | `aiq.related` | 93.3 | 115.0 | 0 of 100 |
 | `aiq.graph_connect` (5 terminals) | 129.8 | 148.4 | 0 of 33 |
 | `aiq.graph_paths` (k=3) | 161.1 | 250.7 | 34 of 100 |
+| **any first call in a backend** | **2 700** | — | it builds the snapshot |
 | `aiq.graph_components` | 184.3 | — | one shot |
 | *the recursive walk, depth 2* | 0.9 | 2.9 | — |
 | *the recursive walk, depth 3* | 19.7 | 4527.0 | — |
@@ -624,24 +632,63 @@ second 95th percentile and a worst case of nineteen seconds, because nothing
 bounds it — and that is the failure every function on this page exists to
 convert into a budget and an honest `budget_exhausted`.
 
+And under concurrency, which is the measurement that changed the design:
+
+| clients | tps | p50 | p95 | peak container memory |
+|---|---|---|---|---|
+| 1 | 10 | 90.3 ms | 102.2 ms | 1.04 GiB |
+| 4 | 29 | 114.8 ms | 132.7 ms | 3.33 GiB |
+| 8 | — | — | — | 5.55 GiB, **OOM kill and cluster restart** |
+| 8, with admission control | 14 | — | — | six served, two refused, cluster alive |
+
+Latency barely moves from one client to four. **Memory is the constraint, not
+CPU**, and it arrives at single digits.
+
 <details class="why" markdown="1">
-<summary>Why it works — one number to size before you enable this on a large
-graph</summary>
+<summary>Why it works — the failure at eight clients was not a slow query, and
+what now happens instead</summary>
 
-The adjacency snapshot is **per backend**: 225 MB at four million edges, built
-in about 3.8 seconds on the first call in each connection. Twenty connections
-that all touch the graph is 4.5 GB. Below about half a million edges — 21 MB,
-200 ms — it needs no thought at all.
+The adjacency snapshot is **per backend**: 225 MB at four million edges, and
+roughly twice that at the peak of a build. Eight concurrent callers on a
+7.65 GiB machine did not produce a slow query — the OOM killer took a backend
+with `signal 9`, and Postgres did what it must when a backend dies holding
+shared memory: *terminating any other active server processes*, then recovery.
+One graph query took the cluster down.
 
-Three ways to live with it above that, and the choice is operational rather
-than architectural: a small number of long-lived workers that build once,
-preloading at connection start, or moving the snapshot into shared memory. The
-third is the one that makes the cost per cluster rather than per connection and
-is not built yet.
+Nothing in Postgres prevented it, and that is structural rather than an
+oversight: this memory is allocated by the extension, outside `work_mem`, so no
+existing setting sees it and the planner does not know it exists.
 
-Figures are from one run of `dev/scale/graph/run.sh`. Re-running moves the
-latency probes by 10–30% and the build probes by up to 2×, so read the ordering
-and the slope rather than the third digit.
+So there is admission control now, built from a primitive Postgres already has.
+A backend takes one of six session-level advisory locks before it builds and
+holds it as long as it holds the snapshot — locks and memory released together
+when the connection ends. A backend that cannot get one is **refused with a
+sentence** telling it what is held and how to release one. Re-run at eight
+clients: six served, two refused, cluster alive.
+
+That is the same discipline as everywhere else here — turn a quiet
+catastrophic failure into a loud refusal — applied to the one failure on this
+page that was not a wrong answer but an outage.
+
+Three ways to live with it, and the choice is operational: a small number of
+long-lived workers that build once, preloading at connection start, or moving
+the snapshot into shared memory. The measurement above promoted the third from
+"the natural next build" to a **requirement above single-digit concurrency**.
+Six slots is a guard rail, not a scaling story.
+
+Every one of those figures is the **call**, not the algorithm — which took a
+correction of its own. The budget used to start after the snapshot was fetched,
+so a cold first call reported 96 ms of a 2,689 ms wait. Both were true of the
+walk, and the one an operator would have built an SLO on was off by 28×. The
+answer now carries `elapsed_ms` for the call, `walk_ms` for the algorithm,
+`build_ms` for the snapshot, and keeps `exhausted` (the *answer* is partial)
+separate from `over_budget` (the *call* took longer than it was given) —
+opposite problems with opposite fixes.
+
+Figures are from one run of `dev/scale/graph/run.sh` and
+`03-concurrency.sh`. Re-running moves the latency probes by 10–30% and the
+build probes by up to 2×, so read the ordering and the slope rather than the
+third digit.
 
 <p class="related"><strong>Related</strong>
 <a href="scaling.html">the engine's own hot paths, measured the same way</a> ·

@@ -660,11 +660,19 @@ oversight: this memory is allocated by the extension, outside `work_mem`, so no
 existing setting sees it and the planner does not know it exists.
 
 So there is admission control now, built from a primitive Postgres already has.
-A backend takes one of six session-level advisory locks before it builds and
-holds it as long as it holds the snapshot — locks and memory released together
-when the connection ends. A backend that cannot get one is **refused with a
-sentence** telling it what is held and how to release one. Re-run at eight
-clients: six served, two refused, cluster alive.
+A backend takes one of `percolate.graph_snapshot_slots` (default six)
+session-level advisory locks before it builds and holds it as long as it holds
+the snapshot — locks and memory released together when the connection ends. A
+backend that cannot get one is **refused with a sentence** telling it what is
+held and how to release one. Re-run at eight clients: six served, two refused,
+cluster alive.
+
+It is a setting rather than a constant because the right value is a function of
+how much memory the machine has, and it is a *superuser* setting because a
+limit the callers it bounds can raise is not a limit. There is a second one,
+`percolate.graph_snapshot_max_mb`, that bounds a single snapshot — the two are
+not substitutes: the ceiling stops one graph too large for any backend, the
+slots stop N ordinary callers, and it was the second that took the box.
 
 That is the same discipline as everywhere else here — turn a quiet
 catastrophic failure into a loud refusal — applied to the one failure on this

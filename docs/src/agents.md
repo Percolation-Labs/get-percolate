@@ -8,7 +8,8 @@ redeployed, and no workflow that uses it is touched.
 
 The three moves below are the whole loop: write the spec, save it, call it over
 REST. Everything after them is what the row can carry once you want more from
-it.
+it — including the prose it shares with other agents, which is
+[skills](skills.html) rather than more of this page.
 
 ## Write the spec
 
@@ -36,6 +37,11 @@ properties:
   vessel:  {type: string}
 required: [verdict, vessel]
 ```
+
+A `description` this short is deliberate. Anything in it that would be equally
+true of a sibling agent belongs in a [skill](skills.html) — a fragment stored
+once and referenced by every agent that needs it — rather than copied into each
+prompt and left to drift.
 
 The same document is what a Python class produces, because the convention was
 chosen so that the two forms are one artifact rather than two:
@@ -465,6 +471,8 @@ an open one becomes a synonym pile within a month, and filtering was the point.
 <p class="related"><strong>Related</strong>
 <a href="#extractors-the-population-this-is-sized-for">what makes the table that
 big</a> ·
+<a href="skills.html#what-the-prompt-becomes">the skills key inside
+context_policy</a> ·
 <a href="outputs.html">the same schema idea for a workflow step</a></p>
 </details>
 

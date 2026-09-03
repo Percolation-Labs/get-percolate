@@ -6,7 +6,9 @@ when they ask.
 {: .lede }
 
 [The P8QL grammar](grammar-p8ql.html) is the reference for the seven modes and
-every modifier. The four things a reference cannot tell you are who the dialect
+every modifier, and [Graph algorithms](graph.html) is the page for the
+questions a walk cannot answer at all — ranked relatedness, the best routes
+between two things, what connects a result set. The four things a reference cannot tell you are who the dialect
 is written for, which rows become nodes, why the property graph costs no
 migration, and why a query can look empty when it is working correctly.
 

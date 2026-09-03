@@ -17,7 +17,8 @@ answers *how do I poll a source into a corpus an agent can be asked about*.
 
 ## The domain
 
-One fixture, reused by all ten. It is a port-operations company with two
+One fixture, reused by all ten — and by the [graph algorithms](graph.html)
+page, which asks a different class of question over the same nine edges. It is a port-operations company with two
 shipping lines in it: **Meridian Line**, which has a bulk subsidiary and three
 ships, and **Kestrel Shipping**, which has one. There are three ports belonging
 to neither, a chartering house both of them use, four inspection records, and
@@ -773,7 +774,7 @@ the ten against it.
 
 ```bash
 cd dev/examples
-./run.sh          # the fixture, then all ten
+./run.sh          # the fixture, then every example
 ./run.sh 07       # just the fan-out
 DSN="postgres://…" ./run.sh
 ```

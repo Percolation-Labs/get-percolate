@@ -82,6 +82,11 @@ name = "Content and querying"
   title = "Querying"
   summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
 
+  [[section.page]]
+  file = "graph.md"
+  title = "Graph algorithms"
+  summary = "Ranked relatedness, the k best routes between two things, what connects a result set, and how much of the answer rests on a guess -- budgeted, and off until you grant them."
+
 [[section]]
 name = "Reference"
 

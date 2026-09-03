@@ -141,26 +141,29 @@ jobs:
           key: pgrx-${{ matrix.platform }}-${{ hashFiles('dev/Dockerfile.pgrx-builder', 'extension/percolate_parser/Cargo.lock') }}
           restore-keys: pgrx-${{ matrix.platform }}-
 
-      # buildx with a CONTAINER driver, because `--cache-to type=gha` is not
-      # supported by the default `docker` driver -- it is accepted and does
-      # nothing, which is the worst of the three possible behaviours. Measured:
-      # a warm run still spent 249 s in the build step while its cache step
-      # restored in 2 s and saved nothing, because the layers were never
-      # exported in the first place.
-      - uses: docker/setup-buildx-action@v3
-        if: runner.os == 'Linux'
-
       - name: Build the parser in the image that ships the target server
         if: runner.os == 'Linux'
         working-directory: dev
         run: |
-          # Layer cache for the builder image, so the PGDG install inside it is
-          # not repeated on every run. type=gha is scoped per repository and
-          # evicted by GitHub, so a miss is a normal build rather than an error.
-          docker buildx build --platform ${{ matrix.docker }} \
-            -f Dockerfile.pgrx-builder -t pgrx-builder --load \
-            --cache-from type=gha,scope=pgrx-${{ matrix.platform }} \
-            --cache-to type=gha,mode=max,scope=pgrx-${{ matrix.platform }} .
+          # PLAIN `docker build`, and that is a measured decision rather than an
+          # omission. Layer-caching this to type=gha needs a buildx CONTAINER
+          # driver, and the driver's own cost is larger than the cache's saving:
+          # `--load` from a container driver exports the whole image back into
+          # the daemon.
+          #
+          # Same commit, dispatched four times through parser.yml's build-only
+          # door (empty version), linux-amd64:
+          #
+          #   default driver      280s cold -> 256s warm
+          #   container driver    358s cold -> 350s warm
+          #
+          # So the container driver is ~90s WORSE warm. Left as it was, with the
+          # numbers, so the next person does not spend the runs finding out
+          # again. The macOS legs are a different story and are cached below:
+          # 396s -> 76s, because what they repeat is compiling PostgreSQL and
+          # cargo-pgrx from source rather than pulling apt packages.
+          docker build --platform ${{ matrix.docker }} \
+            -f Dockerfile.pgrx-builder -t pgrx-builder .
           docker run --rm --platform ${{ matrix.docker }} \
             -v "$GITHUB_WORKSPACE/extension/percolate_parser":/work \
             -e PGRX_HOME=/work/.pgrx -w /work pgrx-builder bash -c '

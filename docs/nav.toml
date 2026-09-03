@@ -36,6 +36,11 @@ name = "Start"
   title = "Agents"
   summary = "An agent is a specification and the specification is a row: write it, save it, call it over REST."
 
+  [[section.page]]
+  file = "skills.md"
+  title = "Skills and plugins"
+  summary = "A prompt fragment is a row: the agent names the ones it always carries, the database picks the ones this turn needs, and a plugin installs and removes the whole bundle."
+
 [[section]]
 name = "Workflows"
 

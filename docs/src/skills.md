@@ -1,0 +1,438 @@
+# Skills and plugins
+
+A skill is a prompt fragment in a row. An agent names the ones it always
+carries, the database picks the ones this turn needs, and the rest stay in the
+table costing nothing — so a prompt is assembled at invocation rather than
+authored whole, and adding a capability is an insert.
+{: .lede }
+
+The idea is not ours. [Agent Skills](https://agentskills.io) is an open
+standard, and [Anthropic's plugin
+specification](https://code.claude.com/docs/en/plugins-reference) packages
+skills, subagents and tool servers into an installable bundle. Both put those
+things in a **directory**: `skills/<name>/SKILL.md` with YAML frontmatter, a
+`plugin.json` beside it, discovered by walking the tree.
+
+We keep the idea and change the substrate, because in this system everything is
+already data. A skill is a row, a plugin is a row, and the agent that uses them
+is a row. That is not a port of the standard — it is the same design given
+things a file tree cannot have: row-level security on who may read a fragment,
+one write path that refuses a bad one, retrieval over the whole population, a
+version recorded on the run that used it, and install-and-uninstall as a
+transaction.
+
+## Write a skill
+
+A skill has two parts and the split between them is the entire mechanism: a
+**listing** a model reads to decide whether it needs this, and a **body** it
+reads once it has decided.
+
+What we are trying to do here is turn a paragraph that four different agents
+have been carrying in their own prompts into one row that all four reference.
+{: .goal }
+
+```sql
+select agentic.upsert_skill($j${
+  "name": "p8ql-fuzzy-lookup",
+  "description": "When a LOOKUP returns nothing, use FUZZY LOOKUP instead of guessing another spelling.",
+  "when_to_use": "A LOOKUP came back empty, or you are about to try a second spelling of a name, ticker or code.",
+  "content": "WHEN A LOOKUP FINDS NOTHING, USE `FUZZY LOOKUP` -- do not guess another spelling. The names in this store follow conventions you cannot deduce. Asked about sterling, a model tried `sterling`, `gbp`, `gbp/usd`, `GBPUSD` and `fx_pair` in five separate calls and gave up, while `FUZZY LOOKUP \"gbp\"` returns `usd/gbp` on the first try.",
+  "requires_tools": ["p8-query"],
+  "category": "procedure",
+  "tags": ["query", "p8ql"]
+}$j$::jsonb);
+```
+
+<details class="why" markdown="1">
+<summary>Why it works — the listing is what enters every prompt, so the database
+treats it as a budget rather than a text field</summary>
+
+`description` and `when_to_use` go into the prompt of every agent that is
+offered this skill, whether or not the skill is ever used. `content` costs
+nothing until the fragment is expanded. Two columns rather than one is what
+makes offering a thousand skills affordable, and it is the same progressive
+disclosure the standard describes — a skill's body *"loads only when it's
+used, so long reference material costs almost nothing until you need it."*
+
+Because the listing is a budget, the table enforces one: `description` plus
+`when_to_use` is capped at 1,536 characters, which is the standard's own
+listing cap transcribed rather than invented. A cap enforced by the table is
+the only kind that holds — the alternative is truncation at render time, which
+is invisible, and a skill whose trigger sentence was cut in half is a skill the
+model quietly stops choosing.
+
+`when_to_use` is separate from `description` because it answers a different
+question and because it is the sentence a semantic match should hit: a user's
+request rarely resembles a capability statement, and usually does resemble the
+situation the fragment is for.
+
+`requires_tools` is the useful half of the standard's `allowed-tools`. That
+field is a permission grant against an interactive approval flow, and there is
+no such flow here — what survives is the dependency it implies, which the
+database checks the moment an agent tries to carry the fragment.
+
+<p class="related"><strong>Related</strong>
+<a href="https://agentskills.io">the Agent Skills standard</a> ·
+<a href="https://code.claude.com/docs/en/skills">frontmatter and progressive
+disclosure</a> ·
+<a href="agents.html">the agent whose prompt this joins</a></p>
+</details>
+
+## Attach it to an agent
+
+What we are trying to do here is add one fragment to an agent without knowing,
+or overwriting, the rest of the list it already carries.
+{: .goal }
+
+```sql
+select agentic.attach_skill('harbourmaster', 'p8ql-fuzzy-lookup');
+
+-- author and attach in one statement, which is what the REST path needs
+select agentic.attach_skill('harbourmaster', 'house-style', $j${
+  "description": "How answers are written here.",
+  "content": "Say which tool told you something. An answer assembled from retrieval is worth exactly what its sources are worth."
+}$j$::jsonb);
+```
+
+<details class="why" markdown="1">
+<summary>Why it works — appending in the database closes a lost update that
+read-modify-write cannot</summary>
+
+Without this, adding one fragment means reading `agents.skills`, appending, and
+sending the whole array back. Two clients doing that at once both read the same
+array and the second write silently discards the first — no error, no conflict,
+and an agent missing an instruction somebody watched themselves add.
+
+<div class="evidence" markdown="1">
+<div class="label">two connections, one agent, two fragments, both reading before either writes</div>
+
+```
+read-modify-write (the array, through upsert_agent)  ->  1 of 2 landed
+attach_skill                                         ->  2 of 2 landed
+```
+</div>
+
+`attach_skill` appends inside a `select … for update`, so concurrent attaches
+to one agent serialize instead of clobbering. It does not write the agent row
+itself: it computes the new array and hands it to `upsert_agent`, so the checks
+that refuse an unknown fragment, or one whose `requires_tools` name a server
+this agent does not bind, run from one copy rather than two. Attaching a skill
+written against the query server to an agent that binds no query server is
+refused with the same message as authoring it that way.
+
+Attaching what is already attached is a no-op rather than an error, and a new
+fragment appends at the end because composed fragments are concatenated in
+listed order. Two things are refused rather than resolved: an agent that does
+not exist, because the underlying upsert would cheerfully create one with an
+empty prompt that resolves by name and can do nothing; and a name given both as
+an argument and inside the spec, disagreeing, because whichever one the
+function picked, the other is what somebody believed they had written.
+
+<p class="related"><strong>Related</strong>
+<a href="agents.html#save-it">the agent write path these checks live in</a></p>
+</details>
+
+## What the prompt becomes
+
+An agent's own prompt stays short. What it carries beyond that is assembled at
+invocation from three places, and they differ only in **who decides**.
+
+What we are trying to do here is have an agent always follow two house rules,
+pick up whatever else the current question calls for, and know what else exists
+without paying for it.
+{: .goal }
+
+```sql
+select agentic.upsert_agent($j${
+  "name": "harbourmaster",
+  "skills": ["house-style", "safety-no-destructive-sql"],
+  "context_policy": {
+    "window_messages": 40,
+    "skills": {
+      "match": true, "matcher": "semantic",
+      "top_k": 2, "min_score": 0.28, "max_chars": 6000,
+      "scope": {"tags": ["query"]},
+      "index": "bound", "sticky": true
+    }
+  }
+}$j$::jsonb);
+```
+
+<div class="evidence" markdown="1">
+<div class="label">what one turn assembled, for the request "LOOKUP sterling came back empty"</div>
+
+```json
+{"composed": ["house-style", "safety-no-destructive-sql"],
+ "matched":  [{"skill": "p8ql-fuzzy-lookup",     "score": 0.4193},
+              {"skill": "p8ql-unresolved-names", "score": 0.3841}],
+ "expanded": ["p8ql-fuzzy-lookup", "p8ql-unresolved-names"],
+ "indexed":  19,
+ "chars": {"prompt": 5852, "agent": 179, "bodies": 1400, "index": 4199}}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — expansion is the primitive, and the tool that fetches a
+skill is an option rather than the mechanism</summary>
+
+`skills` on the row is the **composed** set: read from the database at
+invocation and concatenated into the system prompt, in listed order. The row
+holds the keys and never the text, which is the whole reason this is a table —
+one edit reaches every agent that composes it.
+
+`context_policy.skills` is the **matched** set: the runtime embeds the turn's
+request, ranks it against the listings, and expands what clears `min_score`
+under the `max_chars` budget. No round trip and no tool call — the model never
+has to know skills exist. When the budget is reached the remaining matches fall
+back to their index lines and the run records which ones, because a silent
+truncation is the failure the listing cap exists to prevent one level up.
+
+The third way in is **fetched**: a tool server with `serves_skills = true`
+exposes one tool per skill so a model can ask for one by name. It stays a
+registered tool server rather than a built-in `load_skill`, because this
+runtime has no built-in tools at all — and that is the same move delegation
+already makes, where "hand work to agent B" is an ordinary tool reference
+against a gateway rather than a special case in the engine.
+
+`sticky` is why instructions do not churn. Matching per turn against the latest
+message, on its own, means a fragment expanded on turn three is gone on turn
+four when the subject moves — so a model told to cite its sources quietly stops
+being told, and nothing reports it. With stickiness the set is a union within a
+branch: later matches are added, never swapped in, so instructions are
+monotonic and the accumulation is bounded by `max_chars` rather than by the
+size of the fleet.
+
+<p class="related"><strong>Related</strong>
+<a href="agents.html#the-rest-of-what-the-row-carries">the rest of
+`context_policy`</a> ·
+<a href="https://pydantic.dev/docs/ai/tools-toolsets/toolsets/">the per-run
+hooks this is built on</a></p>
+</details>
+
+## Matching is a query, not a second index
+
+The database already knows how to rank text against a question. Skills register
+as a corpus like any other, so nothing new was built to find them.
+
+What we are trying to do here is ask which fragments bear on a request, using
+the same modes that answer every other retrieval question in this system.
+{: .goal }
+
+```sql
+select s.name, round((1 - m.distance)::numeric, 3) as score
+  from aiq.semantic_in('skills', :query_vector, 'text-embedding-3-small', 5) m
+  join agentic.skills_api s on s.id = m.chunk_id
+ order by score desc;
+```
+
+<details class="why" markdown="1">
+<summary>Why it works — a table with an <code>id</code> is a corpus, and only
+the listing is embedded</summary>
+
+`agentic.skills` needed no adaptation to become searchable: the semantic path
+joins its embedding space back to the source table on `id`, which is the whole
+contract. It is registered as **both** a semantic and a lexical source, so an
+agent's matching policy degrades to full-text where no embedding provider is
+configured rather than degrading to nothing.
+
+Only the listing is embedded, never the body. A body is hundreds of imperative
+lines that dilute the one sentence describing what the fragment is for, and
+that claim was measured rather than assumed: embedding the listing beats
+embedding the body by 22 points of hit@1 and 0.118 of MRR over 31 labelled
+requests. The body arm finds the right fragment somewhere in the top three four
+points *more* often — expansion takes the top *k* under a threshold, so rank is
+what decides, but the recall result is real and is written down rather than
+rounded away.
+
+The text that gets embedded is a generated column, so the text a matcher
+indexes and the text a reader sees cannot drift apart. That turned out to have
+a consequence worth knowing: a generated column may not reference another
+generated column, so the full-text vector is generated from the base columns
+directly rather than from the generated listing.
+
+<p class="related"><strong>Related</strong>
+<a href="query.html">the query modes this reuses</a> ·
+<a href="ingest.html">how a corpus gets its vectors</a></p>
+</details>
+
+## A plugin is the bundle, and the bundle is removable
+
+Servers, skills and agents arrive together and leave together. That is what a
+plugin is here: not a new kind of thing, but **provenance on the things that
+already exist**.
+
+What we are trying to do here is install a capability — the tools, the prose
+and the agent that uses both — from one document, and be able to take it back
+out later.
+{: .goal }
+
+```sql
+select agentic.apply_plugin($j${
+  "name": "harbour", "version": "0.2.0",
+  "tool_servers": [{"name": "harbour-query", "kind": "mcp", "url": "http://harbour-mcp:8090"}],
+  "skills":       [{"name": "p8ql-fuzzy-lookup", "description": "...", "content": "..."}],
+  "agents":       [{"name": "harbourmaster", "skills": ["p8ql-fuzzy-lookup"],
+                    "tools": [{"server": "harbour-query", "tools": ["query"]}]}]
+}$j$::jsonb);
+```
+
+<div class="evidence" markdown="1">
+<div class="label">re-applying the same plugin with one agent dropped from the document</div>
+
+```json
+{"plugin": "harbour", "version": "0.2.1",
+ "tool_servers": ["harbour-query"], "skills": ["p8ql-fuzzy-lookup"],
+ "agents": ["harbourmaster"],
+ "removed": ["agent:scratch", "skill:p8ql-graph-walk"]}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — an upsert-only apply is how a bundle rots, so this one
+prunes and says what it removed</summary>
+
+Applying is one transaction in one order — servers, then skills, then agents —
+because an agent's composed fragments must exist before they can be validated,
+and a fragment's `requires_tools` name servers the agent must already bind.
+
+The half that matters is the prune. Without it, an agent dropped from the
+document stays installed, still resolvable by name, still runnable, and nothing
+on disk describes it any more. So a row carrying this plugin's name and absent
+from this manifest is removed, and the removals come back in the result rather
+than happening quietly. That makes an absent section loud on purpose:
+`{"name": "harbour"}` declares no agents and therefore removes every agent
+`harbour` installed, which is what makes uninstall expressible without a second
+function.
+
+Three things it refuses to remove, and none of them is caught by a foreign key,
+because `agents.skills` is a list of names and `agents.tools` holds server
+names in JSONB — which is exactly what lets one fragment serve many agents. An
+agent with runs against it is not deleted, because that would delete
+conversation history. A skill another agent still carries is not deleted; nor
+is a server another agent still binds. Uncaught, that third case is the
+quietest failure in the schema: the other agent keeps working and loses a third
+of its instructions.
+
+<p class="related"><strong>Related</strong>
+<a href="https://code.claude.com/docs/en/plugins-reference">the plugin manifest
+this mirrors</a> ·
+<a href="agents.html#tools-are-external-and-they-are-rows">tool servers as
+rows</a></p>
+</details>
+
+## What measuring it changed
+
+The design above is not what was specified first. Two measurements changed it,
+and one of them reversed a decision the other had just produced.
+
+<div class="evidence" markdown="1">
+<div class="label">behaviour probe: 4 procedures, 3 arms, 5 samples per cell, one model at temperature 0</div>
+
+```
+arm                     cost        behaviour   body-only detail
+bare agent              --            2/20            0/20
+one listing line       ~223 chars    16/20            0/20
+full body              260-503 chars 18/20           13/20
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — the listing changes what the model does, and the body
+makes it precise</summary>
+
+Two of twenty to eighteen of twenty is the whole design justified in one
+column: a fragment in the prompt changes what the model does, reliably, on
+requests where the agent without it does the wrong thing every time.
+
+The surprise is the middle row. A single 223-character listing line — the model
+is told only that the fragment *exists* — produces sixteen of the eighteen
+behaviour changes that the full body produces. What the body actually buys is
+not behaviour but **specificity**: told only that a fragment about destructive
+SQL existed, the model proposed the statement and declined to run it, which is
+correct, and never asked for the primary-key predicate the body requires.
+
+That reversed a default. The cost accounting had found the index to be the one
+term that grows with the fleet — one line per fragment on every turn, and at
+short body lengths listing everything costs *more* than expanding everything —
+so `index` had been defaulted to `none`. That was the right reading of cost
+made without the benefit side. Per character, the index turns out to be the
+most efficient instruction-carrier in the design. So `index` defaults to
+`bound` and `top_k` came down from 3 to 2: **index everything, expand few.**
+
+A rule about authoring follows, and it is measured rather than stylistic: write
+the description as an instruction, because that is what the model acts on.
+*"When a LOOKUP returns nothing, use FUZZY LOOKUP instead of guessing another
+spelling"* is a complete instruction in 96 characters and scored 5 out of 5
+with no body at all. A description written as a label — *"about name
+resolution"* — would have scored none of that.
+
+<p class="related"><strong>Related</strong>
+<a href="https://github.com/percolating-sirsh/p8-subsystems/blob/main/specs/agentic/plugins.md">the
+spec, with every number and what it does not settle</a></p>
+</details>
+
+## Why a row rather than a file
+
+Everything on this page exists in the standard already. What changes when the
+substrate is a database rather than a directory is worth stating plainly,
+because it is the only reason to have done it differently.
+
+<details class="why" markdown="1">
+<summary>Why it works — five things a file tree cannot do, each of which we got
+for free from machinery that was already here</summary>
+
+**Access control is the same access control.** A skill is shared configuration
+under a policy, on the same row-level security every other table in this system
+uses. A directory's answer is filesystem permissions on the machine running the
+agent, which is not an answer at all once the agent is a service.
+
+**One write path can refuse a bad skill.** `upsert_skill` bumps a version when
+the text changes and not when a tag does; `upsert_agent` refuses a fragment
+that does not exist, or one whose declared tool dependency the agent does not
+bind. A file tree has no moment at which to check either, so both become review
+comments.
+
+**Retrieval was already built.** Finding the right fragment among a thousand is
+the same problem as finding the right chunk among a million, and it is the same
+`SEMANTIC` and `TEXT` machinery, over a corpus registered the same way. Nothing
+was added to search skills.
+
+**Provenance is a column.** The version that was expanded is recorded on the
+run that used it, so a run whose answer rests on a procedure since rewritten is
+reconstructable. Without it nothing downstream can even detect it is looking at
+the wrong text.
+
+**Installing and uninstalling are transactions.** A plugin applies as one
+statement and prunes what it no longer declares, with referential checks that a
+directory has no place to put.
+
+The general point is the one this whole system keeps making. Because agents,
+tools, workflows and identity are all already rows, a new idea usually does not
+need new machinery — it needs a table and the machinery that is already there.
+Skills are a good test of that claim, because the standard they come from was
+designed for a filesystem and lost nothing on the way in.
+
+<p class="related"><strong>Related</strong>
+<a href="index.html">what "Postgres is the system" buys and costs</a> ·
+<a href="agents.html">agents as rows</a></p>
+</details>
+
+## Where this page stands
+
+The schema is installed and every statement on this page runs against it:
+`upsert_skill`, `attach_skill`, `detach_skill`, `apply_plugin` and the views
+they read through, verified on a clean install with the collection's surface
+audit passing. The lost-update comparison, the assembled-prompt accounting, the
+retrieval scores and the behaviour probe are all captured output from a live
+database and a live model, not illustrations.
+
+Two things are honest gaps rather than omissions. The behaviour probe is four
+procedures against one model, which is enough to separate 2/20 from 16/20 and
+nowhere near enough to separate 16/20 from 18/20 — and that second comparison
+is what the `top_k` recommendation leans on. And the fetched path, where a
+model asks for a fragment by name through a gateway, is specified and not
+measured: instructions arriving as a tool result are probably followed less
+reliably than instructions in a prompt, and that "probably" is still judgement.
+
+Next: [agents](agents.html), which is the row these fragments attach to, and
+where the tool servers they depend on are registered.

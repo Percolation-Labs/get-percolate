@@ -342,7 +342,7 @@ author meant. If you want SQL in a workflow, register a function and use
 `sql: {function: …}`.
 
 <p class="related"><strong>Related</strong>
-<a href="grammar-workflow.html#sql-steps-call-a-registered-function">registering
+<a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">registering
 a step function</a> ·
 <a href="authoring.html">what the compiler refuses</a></p>
 </details>

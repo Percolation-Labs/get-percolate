@@ -179,7 +179,7 @@ most of the work.
 <p class="related"><strong>Related</strong>
 <a href="agents.html#tools-are-external-and-they-are-rows">the tool surface
 this mirrors</a> ·
-<a href="#what-the-prompt-becomes">what arrives on demand, and who decides</a></p>
+<a href="#what-the-prompt-becomes-and-who-decides">what arrives on demand, and who decides</a></p>
 </details>
 
 ## Attach it to an agent

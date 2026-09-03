@@ -117,9 +117,7 @@ installed build actually accepts and lists what is `missing`.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-workflow.html#getting-this-page-from-your-own-database">probing
-the installed compiler</a> ·
-<a href="install.html#checking-an-install-properly">checking an install
-properly</a></p>
+the installed compiler</a></p>
 </details>
 
 ## Three validators, and why the third one had to exist

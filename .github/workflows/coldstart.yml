@@ -1,0 +1,40 @@
+# Install this repository the way a stranger does, by running its own pages.
+#
+# Everything the documentation got wrong was mechanical, and all of it survived
+# review: a grant list whose verbs no policy asked for, a CLI no page said to
+# install, a sample path that assumed a clone nobody was told to make, and an
+# evidence block showing an HTTP code the server had stopped returning. Prose
+# is reviewed by reading; commands are only reviewed by running.
+#
+# Against the PUBLISHED image, deliberately. A locally built one is how a stale
+# parser stayed invisible for a day -- the artifact a reader gets is the only
+# artifact whose cold start is worth asserting.
+name: coldstart
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # A reader's experience can break without anybody touching this repository:
+  # a new percolate-core release, a moved image tag, a raw.githubusercontent
+  # path. None of those arrive as a commit here.
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  cold-start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run the install guide
+        run: ci/coldstart.sh
+
+      - name: What the stack said, if it failed
+        if: failure()
+        run: docker compose -p percolate logs --tail=80 || true

@@ -7,6 +7,15 @@
 # "someone builds it on their laptop when they remember".
 name: extension
 
+# The run NAMES ITSELF after the version it is publishing, because the caller
+# has to find it. `gh workflow run` returns nothing -- there is no run id yet --
+# so p8-subsystems' release.yml dispatches this and then goes looking. It used
+# to look for "the newest run created after I dispatched", which is a guess
+# about a clock: two releases in flight, or a queued runner, and it watches the
+# wrong one and reports its result. Matching on this name cannot pick the wrong
+# run.
+run-name: extension ${{ inputs.version || inputs.ref }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -111,18 +120,45 @@ jobs:
       # postgresql-server-dev-19 from ITS Debian repo. Its own header says it
       # was made self-contained so that `--platform` works and so it runs on a
       # CI runner. This workflow was reinventing it, badly.
+      # The crate compile is CHEAP -- 74 s from an empty target directory,
+      # measured, pgrx-pg-sys bindgen and all. What is not cheap is paying for
+      # it three times per release across the matrix, and rebuilding the
+      # builder image each time to do it. Both are cached on what actually
+      # invalidates them: the Dockerfile for the image, and the pgrx pin plus
+      # the lockfile for the crates.
+      #
+      # `target/` lives under the workspace because the container mounts it
+      # there, which is what makes it cacheable at all -- the compile happens
+      # inside a container, but its output lands on the runner's disk.
+      - name: Cache the pgrx builder image and the crate build
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: |
+            extension/percolate_parser/target
+            extension/percolate_parser/.pgrx
+            ~/.cargo/registry
+          key: pgrx-${{ matrix.platform }}-${{ hashFiles('dev/Dockerfile.pgrx-builder', 'extension/percolate_parser/Cargo.lock') }}
+          restore-keys: pgrx-${{ matrix.platform }}-
+
       - name: Build the parser in the image that ships the target server
         if: runner.os == 'Linux'
         working-directory: dev
         run: |
-          docker build --platform ${{ matrix.docker }} \
-            -f Dockerfile.pgrx-builder -t pgrx-builder .
+          # Layer cache for the builder image, so the PGDG install inside it is
+          # not repeated on every run. type=gha is scoped per repository and
+          # evicted by GitHub, so a miss is a normal build rather than an error.
+          docker buildx build --platform ${{ matrix.docker }} \
+            -f Dockerfile.pgrx-builder -t pgrx-builder --load \
+            --cache-from type=gha,scope=pgrx-${{ matrix.platform }} \
+            --cache-to type=gha,mode=max,scope=pgrx-${{ matrix.platform }} .
           docker run --rm --platform ${{ matrix.docker }} \
             -v "$GITHUB_WORKSPACE/extension/percolate_parser":/work \
             -e PGRX_HOME=/work/.pgrx -w /work pgrx-builder bash -c '
               cargo pgrx init --pg19 /usr/bin/pg_config >/dev/null 2>&1 || true
               cargo pgrx package --features pg19 --no-default-features \
                                  --pg-config /usr/bin/pg_config'
+          # The container writes as root; the cache action has to read it back.
           sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/extension/percolate_parser"
 
       # macOS has no container and Homebrew has no postgresql@19 while 19 is in
@@ -132,26 +168,86 @@ jobs:
       # cannot drift into the ABI mismatch described above. Everything optional
       # is switched off: this exists to produce pg_config and headers, not a
       # working server.
-      - name: Build PG19 from source for the headers
+      # THE THREE THINGS macOS REBUILDS, AND WHAT EACH IS KEYED ON.
+      #
+      # This platform was the release's critical path by a wide margin: it
+      # compiled PostgreSQL from source AND compiled cargo-pgrx from source,
+      # from scratch, on every release -- for a schema change that touched no
+      # Rust at all. Both are pinned artefacts, so both are cacheable, and the
+      # key is the pin itself: the cache is reused exactly while the thing it
+      # was built from has not moved, and a miss only costs what it used to
+      # cost every time.
+      #
+      # Keyed on the PIN and not on a lockfile hash on purpose. Hashing the
+      # crate would have looked more thorough and reused nothing: the release
+      # bumps Cargo.toml's version every time, so a key derived from it changes
+      # every release by construction, and the cache would never hit.
+      - name: Read the pinned versions
         if: runner.os == 'macOS'
+        id: pins
         run: |
           V=$(sed -n 's/^FROM postgres:\([0-9a-z.]*\)-.*/\1/p' dev/Dockerfile.pgrx-builder)
           [ -n "$V" ] || { echo "::error::could not read the PG version from dev/Dockerfile.pgrx-builder" >&2; exit 1; }
+          echo "pg=$V" >> "$GITHUB_OUTPUT"
+          # One home for the pgrx pin, so the cache key and the install below
+          # cannot name different versions.
+          echo "pgrx=0.19.2" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the built server
+        if: runner.os == 'macOS'
+        id: pgcache
+        uses: actions/cache@v4
+        with:
+          path: ~/pg
+          key: pg-src-${{ runner.os }}-${{ steps.pins.outputs.pg }}
+
+      - name: Build PG from source for the headers
+        # Only on a miss. It exists to produce pg_config and headers, not a
+        # working server, which is why everything optional is switched off.
+        if: runner.os == 'macOS' && steps.pgcache.outputs.cache-hit != 'true'
+        run: |
+          V=${{ steps.pins.outputs.pg }}
           echo "building postgres $V"
           curl -fsSL "https://ftp.postgresql.org/pub/source/v$V/postgresql-$V.tar.bz2" | tar xj
           cd "postgresql-$V"
           ./configure --prefix="$HOME/pg" --without-readline --without-zlib \
                       --without-icu --without-llvm >/dev/null
           make -j3 >/dev/null && make install >/dev/null
-          echo "PG_CONFIG=$HOME/pg/bin/pg_config" >> "$GITHUB_ENV"
+
+      - name: Point at it
+        if: runner.os == 'macOS'
+        # Outside the build step, because it has to happen on a cache hit too.
+        run: echo "PG_CONFIG=$HOME/pg/bin/pg_config" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         if: runner.os == 'macOS'
+
+      - name: Cache cargo-pgrx and the crate registry
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-pgrx
+            ~/.cargo/registry
+            ~/.cargo/git
+            extension/percolate_parser/target
+          key: pgrx-${{ runner.os }}-${{ steps.pins.outputs.pgrx }}-${{ hashFiles('extension/percolate_parser/Cargo.lock') }}
+          restore-keys: pgrx-${{ runner.os }}-${{ steps.pins.outputs.pgrx }}-
+
       - name: cargo-pgrx
         if: runner.os == 'macOS'
         # Pinned. pgrx generates the FFI shims against a specific PG ABI, so
-        # "whatever is latest" is a silent correctness dependency.
-        run: cargo install --locked cargo-pgrx --version 0.19.2
+        # "whatever is latest" is a silent correctness dependency. Skipped when
+        # the cached binary already reports the pinned version -- checked rather
+        # than assumed, because a restore-keys hit can carry an older one.
+        run: |
+          want=${{ steps.pins.outputs.pgrx }}
+          have=$(cargo pgrx --version 2>/dev/null | awk '{print $2}' || true)
+          if [ "$have" = "$want" ]; then
+            echo "cargo-pgrx $want already present"
+          else
+            cargo install --locked cargo-pgrx --version "$want"
+          fi
 
       - name: Build
         if: runner.os == 'macOS'
@@ -257,3 +353,53 @@ jobs:
       SOURCE_TOKEN: ${{ secrets.SOURCE_TOKEN }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------
+  # THE DOCS CATCH THEMSELVES UP.
+  #
+  # This used to be a GitHub issue, opened by p8-subsystems' release.yml,
+  # asking @claude to find every version quoted in prose and open a PR. It did
+  # not work -- three pages still said the dialect was 0.1.0 after the
+  # extension went to 0.1.1, and nothing reported it, because stale prose reads
+  # exactly like current prose.
+  #
+  # Now the pages hold @@extension@@ and the number lives in versions.toml, so
+  # catching up is one edit to one file. docs.yml refuses to build a site whose
+  # numbers disagree with it, which is what makes this step load-bearing rather
+  # than decorative.
+  #
+  # LAST, after the image. The number here means "published", so it must not
+  # move until the thing it names exists -- a doc that names an artifact half a
+  # minute before it is pushable sends a reader to a 404.
+  # ---------------------------------------------------------------------
+  docs-version:
+    needs: image
+    if: inputs.version != '' && inputs.push_image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}   # tomllib is stdlib from 3.11
+
+      - name: Point the docs at ${{ inputs.version }}
+        run: python3 ci/versions.py --set published.extension=${{ inputs.version }}
+
+      - name: Commit, if anything moved
+        run: |
+          # Nothing to commit is the normal case for a re-run, not a failure.
+          git diff --quiet && { echo "already at ${{ inputs.version }}"; exit 0; }
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "docs: extension ${{ inputs.version }}"
+          # Rebase before pushing: percolate-core's release writes the SAME file
+          # for a different key, and the two are independent buttons that can be
+          # pressed minutes apart. Without this the second one to finish fails
+          # on a non-fast-forward after everything it was gating has already
+          # been published -- a red run for a release that actually succeeded.
+          for _ in 1 2 3; do
+            git pull --rebase --quiet && git push && exit 0
+          done
+          echo "::error::could not push the version bump after three rebases" >&2
+          exit 1

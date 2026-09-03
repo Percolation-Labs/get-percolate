@@ -11,6 +11,7 @@ What we are trying to do here is define and run a workflow with nothing deployed
 anywhere.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.define_yaml($$
 name: hello
@@ -138,6 +139,17 @@ over HTTP.
 select status, count(*) from workflow.tasks_api where run_id = :run group by 1;
 select * from workflow.runs_api where id = :run;
 ```
+
+**These need an identity, and say nothing when there isn't one.** Both are
+RLS-filtered, so on an install where you have not yet run
+`rbac.bootstrap_admin` — or in a `psql` session carrying no claims — they
+return zero rows rather than an error, which looks identical to a run that
+never happened. If that is what you are seeing, the run is almost certainly
+fine: check `workflow.runs` directly to confirm, then go and make yourself an
+administrator ([install](install.html#the-first-user-and-a-token)). Being a
+superuser does not help, because RLS on a view is evaluated as the view's
+owner — `api_viewer`, which is deliberately neither the table owner nor a
+superuser.
 
 <details class="why" markdown="1">
 <summary>Why it works — every function in the client API is already a REST

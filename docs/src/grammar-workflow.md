@@ -1,7 +1,7 @@
 # The workflow grammar
 
 A workflow is a YAML document with a name and a list of steps, and each step
-carries exactly one action. This page is the whole vocabulary at version 0.1.0 —
+carries exactly one action. This page is the whole vocabulary at version @@extension@@ —
 every key the compiler accepts, what each one compiles to, and who executes the
 result.
 {: .lede }

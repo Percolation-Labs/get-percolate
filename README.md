@@ -52,6 +52,16 @@ Postgres 19 with the extensions baked in, PostgREST, two workers — one for
 outbound HTTP, one for ingestion — the Content Server, the Agent Runtime, and
 MinIO. Nothing to compile.
 
+Make yourself the first administrator before anything else. A fresh install has
+no users on purpose — the alternative is a default account with a known
+password — and until one exists, every `*_api` view is correctly empty for
+everybody, which reads exactly like a system that is not working:
+
+```bash
+psql postgres://p8:p8@localhost:5432/percolate \
+  -c "select rbac.bootstrap_admin('you@example.com', 'a long passphrase')"
+```
+
 A workflow has to be defined before it can be started, and both are ordinary
 SQL, so this is the whole round trip against a fresh stack:
 
@@ -68,9 +78,13 @@ SQL
 ```
 
 Then load the sample, which nothing does for you — a fresh install is empty on
-purpose:
+purpose. `percolate` is the CLI from `percolate-core` (Python 3.11+), and
+`samples/harbour` lives in this repository, so both have to be on your machine —
+a compose install has neither:
 
 ```bash
+pip install 'percolate-core>=0.1.7'
+git clone https://github.com/percolating-sirsh/get-percolate && cd get-percolate
 percolate sample load samples/harbour --as-email you@example.com
 ```
 

@@ -32,6 +32,14 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}   # tomllib is stdlib from 3.11
 
+      # Before building, because a site built from a stale number is a site that
+      # has to be rebuilt. This is the check that replaced a GitHub issue asking
+      # a person to go and find every version quoted in prose -- which did not
+      # work: three pages said the dialect was 0.1.0 for a whole release after
+      # it became 0.1.1, and nothing reported it.
+      - name: versions.toml agrees with every file that repeats it
+        run: python3 ci/versions.py --check
+
       - name: Build the site
         run: |
           pip install "markdown==3.7" "pygments==2.19.1" "pyyaml==6.0.2"

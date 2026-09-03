@@ -173,5 +173,21 @@ begin
     end if;
 end $$;
 
+-- The last thing that has to happen, said here because the failure it prevents
+-- is silent. rbac ships empty on purpose -- the alternative is a default
+-- administrator with a known password -- and until somebody holds a role, every
+-- `*_api` view correctly returns zero rows to everyone, which is indis-
+-- tinguishable from an install that did not work. Being a superuser does not
+-- reveal them either: RLS on those views is evaluated as their owner,
+-- `api_viewer`, which is deliberately neither a superuser nor the table owner.
+do $$
+begin
+    if not exists (select 1 from rbac.user_roles) then
+        raise notice 'percolate: rbac is empty, so every *_api view will return no rows '
+                     'to anyone yet. Make the first administrator with:  '
+                     'select rbac.bootstrap_admin(''you@example.com'', ''a long passphrase'');';
+    end if;
+end $$;
+
 select 'percolate ' || extversion || ' installed into ' || current_database()
   from pg_extension where extname = 'percolate';

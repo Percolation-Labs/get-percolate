@@ -33,6 +33,52 @@ def load_nav() -> dict:
         return tomllib.load(fh)
 
 
+def load_versions() -> dict:
+    """The numbers the pages ask for, flattened to placeholder names.
+
+    ../versions.toml is the one home. Pages write @@extension@@ rather than a
+    literal because a literal in prose has no way to announce that it has gone
+    stale -- three pages claimed the dialect was 0.1.0 for an entire release
+    after it became 0.1.1, and they read exactly as convincingly as the pages
+    that were right.
+    """
+    with (HERE.parent / "versions.toml").open("rb") as fh:
+        v = tomllib.load(fh)
+    return {
+        "extension": v["published"]["extension"],
+        "core": v["published"]["core"],
+        "chart": v["published"]["chart"],
+        "core_min": v["requires"]["core"],
+    }
+
+
+# @@name@@, NOT {{name}}. `{{...}}` is the workflow engine's own template
+# syntax -- {{run.$id}}, {{item.code}}, {{items}} -- and these pages document
+# it at length, so a substituting build would have eaten the very thing the
+# grammar pages exist to show. The strict unknown-placeholder check below is
+# what caught that, on the first build, rather than a reader finding a mangled
+# example later.
+PLACEHOLDER = re.compile(r"@@([a-z_]+)@@")
+
+
+def substitute(text: str, versions: dict, where: str) -> str:
+    """Replace @@name@@ with the number, and refuse an unknown name.
+
+    Refusing matters more than substituting. A typo'd @@verison@@ left as
+    literal text on the page is the same class of silent wrongness this file
+    exists to remove, so an unknown placeholder stops the build and names the
+    page it is on.
+    """
+    def one(m):
+        key = m.group(1)
+        if key not in versions:
+            raise SystemExit(
+                f"{where}: unknown placeholder @@{key}@@ -- "
+                f"versions.toml offers {', '.join(sorted(versions))}")
+        return versions[key]
+    return PLACEHOLDER.sub(one, text)
+
+
 def pages(nav: dict) -> list[dict]:
     """Flat page list, in nav order -- what the pager and llms.txt walk."""
     out = []
@@ -142,6 +188,7 @@ SHELL = """<!doctype html>
 
 def build() -> int:
     nav = load_nav()
+    versions = load_versions()
     all_pages = pages(nav)
     if OUT.exists():
         shutil.rmtree(OUT)
@@ -166,7 +213,7 @@ def build() -> int:
     by_section: dict[str, list[str]] = {}
 
     for i, page in enumerate(all_pages):
-        text = (SRC / page["file"]).read_text()
+        text = substitute((SRC / page["file"]).read_text(), versions, page["file"])
         body, first_para = render_markdown(text)
         summary = page.get("summary") or first_para
 

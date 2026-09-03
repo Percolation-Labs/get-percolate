@@ -1,0 +1,32 @@
+# THE NUMBERS THIS REPOSITORY PUBLISHES, IN ONE PLACE.
+#
+# Every version that appeared in prose used to be typed out where it was
+# needed, and the release ended by opening an issue asking somebody to go and
+# find them all. That did not work: three pages still said the dialect was
+# 0.1.0 after the extension went to 0.1.1, and nothing reported it, because
+# stale prose reads exactly like current prose.
+#
+# So the numbers live here and the pages ask for them. `docs/build.py`
+# substitutes @@extension@@, @@core@@, @@chart@@ and @@core_min@@ into
+# docs/src/*.md at build time; `ci/versions.py` writes the literals into the
+# files that cannot hold a placeholder -- a compose file is executed, a
+# Chart.yaml is parsed by Helm, a README renders on GitHub -- and then checks
+# that every one of them still agrees with this file.
+
+[published]
+# What a reader can actually pull today. These move when a release publishes,
+# never before: docs that name a version ahead of its artifact send people to
+# a `docker pull` that 404s.
+extension = "0.1.1"   # percolate + percolate_parser, and the :19-<v> image tag
+core      = "0.1.6"   # percolate-core on PyPI and Docker Hub
+chart     = "0.1.2"   # the Helm chart's own version, not what it deploys
+
+[requires]
+# The lowest version the DOCUMENTATION's own examples work against, which is a
+# different fact from what is published and is allowed to be ahead of it.
+#
+# When this exceeds `published`, a release is outstanding and the docs describe
+# something nobody can install yet -- `ci/versions.py --check` says so by name
+# rather than leaving it to be discovered by a reader. `ci/coldstart.sh` is the
+# other half: it runs the install guide and fails while that is true.
+core = "0.1.7"   # `percolate sample load` and `percolate auth` land in 0.1.7

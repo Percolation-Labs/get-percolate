@@ -565,7 +565,7 @@ select aiq.extension_boundary();
 
 ```json
 {"ok": true,
- "provider": {"extension": "percolate_parser", "version": "0.1.0", "functions": 21},
+ "provider": {"extension": "percolate_parser", "version": "@@extension@@", "functions": 21},
  "crossings": [{"caller": "aiq.query",     "callee": "aiq_parse",         "present": true},
                {"caller": "aiq.related",   "callee": "p8_graph_ppr",      "present": true},
                {"caller": "workflow.define_yaml", "callee": "p8_compile_workflow", "present": true},

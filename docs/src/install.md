@@ -10,6 +10,7 @@ What we are trying to do here is get a working database and services with
 nothing to compile and no ordering to get right.
 {: .goal }
 
+<!-- run: shell -->
 ```bash
 curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/compose/docker-compose.yml \
   -o docker-compose.yml
@@ -25,6 +26,34 @@ fewer — often just a worker, since `sql` and `p8ql` steps need no process at
 all — or many more, a pool per queue. The one pairing not to collapse is the two
 workers: `--queue` takes a single queue, so merging them means choosing which of
 outbound calls and ingestion silently stops happening.
+
+`:19` is a moving tag, so **updating an existing install starts with a pull**:
+`docker compose up -d` on its own will happily keep running the image you
+already have, and report success doing it.
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+The new image brings the new extension files; one more statement installs them
+into the database that already exists:
+
+```sql
+set role app_owner;
+alter extension percolate update;
+```
+
+`set role app_owner` is not decoration. An extension update creates its new
+objects as whoever runs it, so running this as a superuser would hand every new
+table a superuser owner and leave the policies on it inert — the one failure
+this collection is built to refuse. Updating as `app_owner` is what keeps
+ownership and row-level security exactly as a fresh install has them.
+
+Every release ships `percolate--<old>--@@extension@@.sql` for each version
+already published, and it is the whole schema replayed: every statement in it
+is written to survive being applied twice, and `build-sql.py` refuses one that
+is not. An upgraded database was checked against a fresh install of the same
+version object by object — 629 of them, identical.
 
 Give it a minute, then ask it whether it is really there. If you have no `psql`
 on the host — and nothing above installed one — the database container has its
@@ -49,6 +78,24 @@ psql postgres://p8:p8@localhost:5432/percolate -c "select * from workflow.compil
 ```
 </div>
 
+And ask it what it was built from, which is a different question:
+
+```sql
+select * from percolate_build();
+```
+
+```
+ component | version | commit_sha | built_at             | consistent
+-----------+---------+------------+----------------------+-----------
+ parser    | @@extension@@   | 2e679e3    | 2026-09-03 16:04:00Z | f
+ schema    | @@extension@@   | 9f832b1    | 2026-09-03 19:52:00Z | f
+```
+
+`consistent` is `f` there because the two halves were built from different
+commits — the shape of a real incident, not a decorative example. A `-dirty`
+suffix on a commit means that build came from a working tree that matched no
+commit at all.
+
 <details class="why" markdown="1">
 <summary>Why it works — the database installs itself, and `missing` is the field
 to read</summary>
@@ -62,6 +109,14 @@ and the SQL schema ship independently and will eventually disagree, so this
 probes the installed build with one canary per feature. If it lists anything you
 have version skew, which otherwise shows up looking like a syntax error in a
 workflow that is not wrong.
+
+`percolate_build()` answers the other axis, and the two are not
+interchangeable. Capabilities detect the parser and the schema drifting apart
+from **each other**; both halves can agree perfectly and both be several
+commits behind the source that produced them. That second case cost a day
+once — a test suite failing on two parser bugs that were already fixed in the
+tree, against a `.so` compiled before the fix — so the build now says what it
+came from rather than leaving it to be inferred.
 
 <p class="related"><strong>Related</strong>
 <a href="operating.html#version-skew">what skew looks like in production</a> ·
@@ -205,28 +260,32 @@ can only be one database, and the default is `postgres`.
 A fresh install has **no users, no roles and no permissions** — those tables are
 empty on purpose, because the alternative is a default administrator with a
 known password. Nothing over HTTP works until you create one: PostgREST answers
-`not authorized to author agents` and the agent runtime answers
-`a verified bearer token is required`.
+`permission denied for function upsert_agent` with a 401, and the agent runtime
+answers `a verified bearer token is required`.
 
 What we are trying to do here is get from an empty `rbac` to a bearer token that
 the REST interface and the agent runtime both accept.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
--- 1. a user
-select rbac.create_user_with_password('me@example.com', 'a long passphrase') as uid \gset
-
--- 2. a role, and the four resources the system actually gates on
-insert into rbac.roles (name, description) values ('admin', 'everything');
-insert into rbac.role_permissions (role, resource, action) values
-    ('admin', 'users',              'admin'),
-    ('admin', 'agents',             'update'),
-    ('admin', 'workflow_runs',      'read'), ('admin', 'workflow_runs',      'write'),
-    ('admin', 'workflow_schedules', 'read'), ('admin', 'workflow_schedules', 'write');
-
--- 3. the FIRST grant is an insert, not rbac.grant_role() -- see below
-insert into rbac.user_roles (user_id, role) values (:'uid'::uuid, 'admin');
+select rbac.bootstrap_admin('me@example.com', 'a long passphrase') as uid \gset
 ```
+
+That is the whole step. It creates the user, creates an `admin` role, grants it
+the permissions the system actually checks, and makes the first `user_roles`
+row — and it **refuses to run once any role has been granted to anyone**, which
+is what keeps it a bootstrap rather than a back door.
+
+This page used to spell the same thing out as a list of `insert` statements to
+copy, and the list was wrong. `role_permissions.action` is free text compared
+with `=`, so a wrong verb is not an error anywhere: it inserts, the role looks
+populated, and every policy that consults it returns false. The list here
+granted `workflow_runs`/`read` where every RLS policy in the collection asks for
+`select`, so following this page exactly produced an administrator who then saw
+**zero rows** in `workflow.runs_api` with no way to tell that from "my workflow
+never ran". The vocabulary is now derived in one place inside the extension
+instead of transcribed into prose that can drift away from it.
 
 Then sign a JWT with the same secret the stack was given — `P8_JWT_SECRET`,
 which the compose file defaults to
@@ -239,7 +298,7 @@ import base64, hmac, hashlib, json, time
 b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=")
 secret = b"change-me-a-long-random-string-at-least-32-chars"
 head = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-body = b64(json.dumps({"sub": "<the uid from step 1>",
+body = b64(json.dumps({"sub": "<the uid bootstrap_admin returned>",
                        "role": "authenticated",
                        "exp": int(time.time()) + 3600}).encode())
 sig  = b64(hmac.new(secret, head + b"." + body, hashlib.sha256).digest())
@@ -254,7 +313,7 @@ That is the `$TOKEN` every `curl` in these docs wants.
 ```
 $ curl -s localhost:3000/rpc/upsert_agent -H 'Content-Profile: agentic' \
        -H 'Content-Type: application/json' -d '{"p_spec":{"name":"harbourmaster"}}'
-{"code":"P0001","message":"not authorized to author agents"}          # HTTP 400
+{"code":"42501","message":"permission denied for function upsert_agent"}  # HTTP 401
 
 $ curl -s localhost:3000/rpc/upsert_agent -H 'Content-Profile: agentic' \
        -H "Authorization: Bearer $TOKEN" \
@@ -269,10 +328,17 @@ author an agent all along</summary>
 
 `rbac.grant_role` is gated on `rbac.has_permission(current_user_id(), 'users',
 'admin')`, and on an empty database nobody holds that — including the person
-trying to bootstrap. So the first `user_roles` row is a plain insert made by a
-connection privileged enough to write the table, and every grant after it can go
-through the function. That is a real bootstrap step rather than an oversight:
-the alternative is a function that grants `users/admin` to whoever asks first.
+trying to bootstrap. So the first `user_roles` row cannot come from
+`grant_role`, and every grant after it can. That is a real bootstrap step
+rather than an oversight: the alternative is a function that grants
+`users/admin` to whoever asks first.
+
+`bootstrap_admin` is that step with the escalation closed rather than left to
+the caller. It refuses the moment `rbac.user_roles` holds anything, so it is
+reachable only while the system has no administrator — the one window in which
+handing out `users/admin` is not a privilege escalation. It is also not granted
+to `web_anon` or `authenticated`, so it does not exist over PostgREST; like the
+`CREATE EXTENSION` before it, it is run from a privileged local session.
 
 It is also why the SQL on the [agents](agents.html) page works from `psql`
 before any of this. `agentic.may_author` permits the call when
@@ -303,7 +369,22 @@ What we are trying to do here is get the domain the rest of this documentation
 queries, and be able to tell it apart from our own data afterwards.
 {: .goal }
 
+`percolate` is the CLI from `percolate-core`, and nothing you have run so far
+installed it — the compose stack runs that image, it does not put the command on
+your PATH. It needs **Python 3.11 or newer**; on a Mac the system `python3` is
+older than that and `pip` will report the package as simply not existing rather
+than as unsupported.
+
 ```bash
+pip install 'percolate-core>=@@core_min@@'
+```
+
+`samples/harbour` is a path **inside this repository**, so it needs to be on
+disk — a compose install has only the one file you curled:
+
+```bash
+git clone https://github.com/percolating-sirsh/get-percolate
+cd get-percolate
 percolate sample load samples/harbour --as-email me@example.com
 ```
 

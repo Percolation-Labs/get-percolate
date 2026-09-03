@@ -2,7 +2,7 @@
 
 P8QL is the query dialect this collection speaks: eight modes over one endpoint,
 compiled by a Rust parser that ships with the extension. This page is the whole
-grammar at version 0.1.0, and the last section shows you how to ask your own
+grammar at version @@extension@@, and the last section shows you how to ask your own
 database for its version rather than trusting this one.
 {: .lede }
 
@@ -373,7 +373,7 @@ what to write instead, rather than with "unknown mode".
 
 ## Getting this page from your own database
 
-The grammar above is version 0.1.0 of the parser. Your deployment is the
+The grammar above is version @@extension@@ of the parser. Your deployment is the
 authority on its own version, and it will tell you:
 
 What we are trying to do here is read the grammar out of the installed parser

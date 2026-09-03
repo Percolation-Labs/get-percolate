@@ -170,11 +170,11 @@ deliberately terse. A real procedure runs to two or five thousand characters
 against the same ~220-character listing, which is 10× to 25×. The saving is
 proportional to how much you have to say.
 
-The one thing you do pay unconditionally is the index: `N` listing lines,
-every turn. That is the honest cost of the model, and it is why the index is
-worth its own decision rather than being free — [what measuring it
-changed](#what-measuring-it-changed) is the section where that decision got
-made, and reversed once.
+The one thing you pay unconditionally is the index: `N` listing lines, every
+turn. That is the honest cost of this shape, and it is why the index is a
+decision rather than a freebie — [what the numbers say](#what-the-numbers-say)
+is where that decision is argued, and where the listing turns out to be doing
+most of the work.
 
 <p class="related"><strong>Related</strong>
 <a href="agents.html#tools-are-external-and-they-are-rows">the tool surface
@@ -295,12 +295,24 @@ has to know skills exist. When the budget is reached the remaining matches fall
 back to their index lines and the run records which ones, because a silent
 truncation is the failure the listing cap exists to prevent one level up.
 
-The third way in is **fetched**: a tool server with `serves_skills = true`
-exposes one tool per skill so a model can ask for one by name. It stays a
-registered tool server rather than a built-in `load_skill`, because this
-runtime has no built-in tools at all — and that is the same move delegation
-already makes, where "hand work to agent B" is an ordinary tool reference
-against a gateway rather than a special case in the engine.
+The third way in is **fetched**, where the model asks. It is two surfaces, split
+by how large the population is:
+
+`load_skill(name)` is **one tool** covering the attached surface. The index has
+already named those fragments, so the model does not need to search for them —
+it needs a way to ask, and one tool with one argument is that. Keeping it to one
+is deliberate: every tool an agent is offered costs its name, description and
+schema in every prompt, and a design that answers "how do we expose this?" with
+"another tool" has usually not asked the question yet.
+
+Beyond the attached surface, an agent can be permitted to reach fragments it
+could never list — a thousand rows will not fit in a prompt as a thousand
+listing lines. Those become **deferred tools**: one per fragment, hidden from
+the model entirely, surfaced by a search when a request calls for one. This is
+[pydantic-ai's `defer_loading()`](https://pydantic.dev/docs/ai/tools-toolsets/tools-advanced/),
+used as-is, and it is the same trade this page has been making all along —
+a listing is cheap, a body is not — in the framework's own vocabulary. An agent
+that permits no discovery carries none of it.
 
 **None of this uses a framework's lazy loading, and it does not need to.**
 pydantic-ai has a `DeferredLoadingToolset` that hides tools from a model until
@@ -308,8 +320,9 @@ a search turns them up, which is the same instinct — but the laziness here is 
 SQL projection. The query behind the index asks for the name, the description
 and the trigger, and never for the body, so a body is not read until it is
 named. That holds under any framework or none. It is also the half that is easy
-to get wrong: the first version of this assembled a lazy prompt out of a query
-that had already pulled every attached body out of the database.
+to get wrong, because the prompt looks lazy either way: a query that selects
+the whole row and uses three columns of it has already pulled every attached
+body out of the database.
 
 `sticky` is why instructions do not churn. Matching per turn against the latest
 message, on its own, means a fragment expanded on turn three is gone on turn
@@ -324,6 +337,45 @@ size of the fleet.
 `context_policy`</a> ·
 <a href="https://pydantic.dev/docs/ai/tools-toolsets/toolsets/">pydantic-ai's
 toolsets, which this deliberately does not use</a></p>
+</details>
+
+<div class="evidence" markdown="1">
+<div class="label">the fetched path, running against a real model</div>
+
+```
+tool surface  1 (load_skill) + 10 deferred (hidden until searched)
+
+  -> load_skill({"name":"p8ql-fuzzy-lookup"})
+  <- WHEN A LOOKUP FINDS NOTHING, USE `FUZZY LOOKUP` -- do not guess another...
+
+  -> skill_extraction_cost_cascade({})          # never attached, never listed
+  <- Extraction is ordered by cost, not by capability. Structured feeds first...
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — and the limit worth knowing before you rely on it</summary>
+
+The second call in that trace is the one to look at. `extraction-cost-cascade`
+was never attached to the agent, never appeared in its index, and was never in
+its prompt. It was found by search and followed, which is what deferred loading
+is for.
+
+The limit is that **the model has to decide to look.** Asked how to get
+structured data out of 200 documents without it costing a fortune, the same
+agent with the same population answered from its own general knowledge and
+never searched at all — and answered reasonably, which is worse, because
+nothing signals that a house procedure went unread. The moment the request was
+shaped like a request to look, the right fragment arrived.
+
+That is the argument for the runtime deciding rather than the model, and it is
+why matching is the primary path and fetching is the addition. A fragment the
+runtime expands is in front of the model whether or not the model would have
+thought to ask.
+
+<p class="related"><strong>Related</strong>
+<a href="#what-the-prompt-becomes-and-who-decides">the two paths that do not
+require the model to ask</a></p>
 </details>
 
 ## Matching is a query, not a second index
@@ -437,10 +489,10 @@ this mirrors</a> ·
 rows</a></p>
 </details>
 
-## What measuring it changed
+## What the numbers say
 
-The design above is not what was specified first. Two measurements changed it,
-and one of them reversed a decision the other had just produced.
+Two things here are only settleable by measurement, and both were measured
+against a fleet of 23 fragments, 31 labelled requests and a real model.
 
 <div class="evidence" markdown="1">
 <div class="label">behaviour probe: 4 procedures, 3 arms, 5 samples per cell, one model at temperature 0</div>
@@ -468,13 +520,15 @@ not behaviour but **specificity**: told only that a fragment about destructive
 SQL existed, the model proposed the statement and declined to run it, which is
 correct, and never asked for the primary-key predicate the body requires.
 
-That reversed a default. The cost accounting had found the index to be the one
-term that grows with the fleet — one line per fragment on every turn, and at
-short body lengths listing everything costs *more* than expanding everything —
-so `index` had been defaulted to `none`. That was the right reading of cost
-made without the benefit side. Per character, the index turns out to be the
-most efficient instruction-carrier in the design. So `index` defaults to
-`bound` and `top_k` came down from 3 to 2: **index everything, expand few.**
+Per character, the index is the most efficient instruction-carrier in the
+design, which is what sets the defaults: `index` is `bound` and `top_k` is 2
+rather than 3. **Index everything, expand few.**
+
+The index is also the one cost that grows with the surface — one line per
+attached fragment, every turn — and it is worth knowing where that turns.
+Listing the unexpanded fragments beats expanding all of them exactly when a
+body is longer than its own listing. A fragment terser than its own description
+should be always-on rather than lazy: cheaper to have than to advertise.
 
 A rule about authoring follows, and it is measured rather than stylistic: write
 the description as an instruction, because that is what the model acts on.

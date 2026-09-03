@@ -16,10 +16,34 @@ What we are trying to do here is install the pipeline that turns any arriving
 file into searchable chunks.
 {: .goal }
 
+The model has to be registered before the pipeline can name it, so this is two
+statements and the first one is not optional:
+
 ```sql
+insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)
+values ('text-embedding-3-small', 1536, 'openai',
+        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true);
+select aiq.register_embedding_space('text-embedding-3-small');
+
 select content.install_ingest_workflow('text-embedding-3-small');
 -- ingest_file: parse, embed with text-embedding-3-small in batches
 ```
+
+Skip the first two and the third refuses rather than installing something that
+would fail later, which is the behaviour you want but does read as an error on
+a fresh install:
+
+```
+ERROR:  embedding model 'text-embedding-3-small' is not registered, so an
+        ingestion pipeline naming it would fail at every run. Register it
+        first, or call this with no argument to install the parse-only pipeline.
+```
+
+**Both of the steps it writes run on the `ingest` queue, so something has to be
+polling that queue.** The compose file ships an `ingest-worker` service for
+exactly this; a deployment that runs only the `http` worker accepts uploads and
+never reads them — `POST /files` returns 201, the run starts, and `parse` sits
+at `ready` with nothing erroring.
 
 <details class="why" markdown="1">
 <summary>Why it works — it writes an ordinary workflow document, and no step
@@ -53,6 +77,46 @@ here is naming a model that is registered.
 the model first</a> ·
 <a href="grammar-workflow.html">what `work:` steps compile to</a></p>
 </details>
+
+## Uploading one
+
+What we are trying to do here is put a file in and get chunks out, with nothing
+to run afterwards.
+{: .goal }
+
+`POST /files` takes the bytes as the body — the Content-Type is what picks the
+family — and the Content Server is on port 8081 in the compose stack.
+
+```bash
+curl -s http://localhost:8081/files \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: text/markdown' \
+  -H 'x-p8-title: Aurora Kestrel note' \
+  --data-binary @note.md
+```
+
+<div class="evidence" markdown="1">
+<div class="label">201, then the run the upload started</div>
+
+```
+{"resource_id":"44057672-…","checksum":"b440dc19…","bytes":144}
+
+ step_key | queue  | status | attempts
+----------+--------+--------+----------
+ parse    | ingest | done   |        1
+ embed    | ingest | ready  |        4
+
+ resources | chunks
+-----------+--------
+         1 |      1
+```
+</div>
+
+`embed` retrying is what a keyless install looks like: parsing and chunking need
+no model, so the file is chunked and text-searchable, and the vector arrives
+once `LLM_API_KEY` is set on the ingest worker. `x-p8-channel` picks the channel
+whose workflow runs — omitted, it is the default one — and `$TOKEN` is the one
+from [install](install.html#the-first-user-and-a-token).
 
 ## What we do with each format
 

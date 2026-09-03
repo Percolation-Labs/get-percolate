@@ -48,13 +48,29 @@ curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/mai
 docker compose up -d
 ```
 
-Postgres 19 with the extensions baked in, PostgREST, the worker, the Content
-Server, the Agent Runtime, and MinIO. Nothing to compile.
+Postgres 19 with the extensions baked in, PostgREST, two workers — one for
+outbound HTTP, one for ingestion — the Content Server, the Agent Runtime, and
+MinIO. Nothing to compile.
+
+A workflow has to be defined before it can be started, and both are ordinary
+SQL, so this is the whole round trip against a fresh stack:
 
 ```bash
-psql postgres://p8:p8@localhost:5432/percolate \
-  -c "select workflow.start_workflow('my_flow','{}'::jsonb)"
+psql postgres://p8:p8@localhost:5432/percolate <<'SQL'
+select workflow.define_yaml($$
+name: hello
+steps:
+  - id: now
+    sql: {function: p8ql, args: ['SELECT now()']}
+$$);
+select workflow.start_workflow('hello', '{}'::jsonb);
+SQL
 ```
+
+The run has already finished by the time `start_workflow` returns — a `sql` step
+executes in the transaction that made it ready, with no worker involved. If you
+have no `psql` on the host, `docker compose exec db psql -U p8 -d percolate`
+uses the one in the image.
 
 ### 2. Helm — a cluster, with Flux or Argo
 
@@ -69,8 +85,8 @@ the chart itself. `helm repo add percolate https://percolating-sirsh.github.io/g
 also works if you prefer a classic repo, and Flux and Argo can point straight at
 `charts/percolate` in this git repo without any published artifact at all.
 
-The chart brings up the database, PostgREST, the three services and one worker
-pool you can scale. It is a plain chart with no CRDs, so Flux
+The chart brings up the database, PostgREST, the three services and two worker
+pools you can scale — `http` for outbound calls, `ingest` for uploaded files. It is a plain chart with no CRDs, so Flux
 (`HelmRelease`) and Argo CD (`Application` with a Helm source) both consume it
 directly — see [`charts/percolate/README.md`](charts/percolate/README.md).
 
@@ -109,7 +125,7 @@ you build the parser — it does not pretend to have succeeded.
 | **Workflow engine** | DAG, saga compensation, retry with backoff, matrix fan-out, timers, signals, scheduling — all as rows. `SKIP LOCKED` claiming; the database is the queue. |
 | **Agents** | An agent is a row. Prompt, tools and delegation are data. Tools are MCP or OpenAPI endpoints, discovered rather than declared. |
 | **Query layer** | `LOOKUP`, `FUZZY`, `GRAPH`, `TEXT`, `SEMANTIC`, `SEARCH` and plain SQL in one dialect, over PG19 property graphs plus pgvector. |
-| **Content plane** | Channels, files, resources, chunks. Post a file and it is parsed, chunked and embedded with nothing else to run — PDF, DOCX, HTML, markdown and audio; a CSV becomes a Parquet dataset instead, because a table is not prose. |
+| **Content plane** | Channels, files, resources, chunks. Post a file and the ingest worker parses and chunks it with nothing else to write — PDF, DOCX, HTML, markdown and audio; embedding needs a registered model and its key; a CSV becomes a Parquet dataset instead, because a table is not prose. |
 | **Identity** | Users, roles, API keys, sessions, and RLS that is actually on. No role in the system is a superuser. |
 
 ---

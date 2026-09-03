@@ -113,6 +113,13 @@ Secrets, Sealed Secrets, SOPS) with keys: `postgres-password`,
 `claim_task` and an autoscaler see. One pool per queue is how a slow model
 endpoint stops starving a fast ingestion queue.
 
+Two pools ship by default: `http`, for steps that leave the machine, and
+`ingest`, which is not optional if anyone uploads a file. The ingestion
+workflow puts both of its steps on the `ingest` queue, so with no pool for it
+`POST /files` returns 201 and the file is never read — nothing errors, the
+`parse` task simply stays `ready`. Replacing this list replaces both, so keep
+`ingest` in whatever you set.
+
 ```yaml
 workers:
   - name: http

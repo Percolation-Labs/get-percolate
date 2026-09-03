@@ -80,6 +80,15 @@ spec:
               value: {{ include "percolate.serviceDsn" $root | quote }}
             - name: LLM_API_KEY
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key}}
+            # The provider's own variable. LLM_API_KEY above is the worker's
+            # credential_ref mechanism and this runtime never reads it, so
+            # without this the agent answers 200 and errors inside the stream.
+            - name: OPENAI_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: openai-api-key}}
+            {{- with $root.Values.agent.openaiBaseUrl }}
+            - name: OPENAI_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
             {{- end }}
             {{- include "percolate.commonEnv" $root | nindent 12 }}
           {{- end }}

@@ -27,8 +27,18 @@ secrets:
   workerPassword: ""
   # HS256, so at least 32 bytes: openssl rand -base64 48
   jwtSecret: ""
-  # Resolved by NAME when a step names it as credential_ref. Empty is fine if
-  # no step calls a model.
+  # THE AGENT RUNTIME'S PROVIDER KEY, which is not llmApiKey. The runtime calls
+  # models through pydantic-ai, which reads the variable its provider names --
+  # OPENAI_API_KEY -- and never looks at LLM_API_KEY. Set only the latter and
+  # you get a saved agent, a 200 on /chat, and a RUN_ERROR about missing
+  # credentials inside the stream. The image ships the OpenAI provider only, so
+  # `anthropic:` models fail on ImportError however this is spelled; point
+  # agent.openaiBaseUrl at an OpenAI-shaped gateway for anything else.
+  openaiApiKey: ""
+
+  # Resolved by NAME when a step names it as credential_ref -- the WORKER'S
+  # mechanism, for http_call and embedding steps. Empty is fine if no step
+  # calls a model.
   llmApiKey: ""
 
 # ---------------------------------------------------------------------------
@@ -93,6 +103,8 @@ content:
 agent:
   enabled: true
   replicas: 1
+  # Any OpenAI-shaped endpoint. Empty means api.openai.com.
+  openaiBaseUrl: ""
   resources:
     requests: {cpu: 200m, memory: 512Mi}
     limits: {memory: 2Gi}
@@ -133,6 +145,29 @@ workers:
       # window -- 300s by default, a kube-controller-manager flag no value in
       # this file can reach.
       queueDepthPerPod: 20
+
+  # Ingestion, and it is a SEPARATE POOL for the reason stated at the top of
+  # this list rather than a new one. `content.install_ingest_workflow()` puts
+  # both of its steps on the `ingest` queue, and a worker polls exactly one
+  # queue -- so without this pool a POST /files returns 201, registers the
+  # resource, starts the run, and `parse` sits at `ready` with nothing polling
+  # for it. Nothing errors, nothing retries, and the file is never read.
+  #
+  # Parsing is CPU and memory rather than network -- pymupdf on a large PDF is
+  # the peak -- so it asks for more memory than the http pool and scales on a
+  # shallower queue: an ingest task is seconds to minutes, not milliseconds.
+  - name: ingest
+    queue: ingest
+    replicas: 1
+    drainSeconds: 300
+    resources:
+      requests: {cpu: 250m, memory: 512Mi}
+      limits: {memory: 2Gi}
+    autoscaling:
+      enabled: false
+      minReplicas: 0
+      maxReplicas: 5
+      queueDepthPerPod: 4
 
 # ---------------------------------------------------------------------------
 # Object storage. Required: an oversized step output is offloaded to it and

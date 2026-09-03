@@ -194,6 +194,28 @@ What we are trying to do here is talk to the agent we just saved, with an
 ordinary HTTP client and no bespoke fields.
 {: .goal }
 
+Two things have to be true before this returns anything but an error, and
+neither is about the agent:
+
+- **`$TOKEN` is a JWT you sign**, and a fresh install has nobody to sign one
+  for. [Install § the first user, and a token](install.html#the-first-user-and-a-token)
+  is the whole of it; without it this endpoint answers `401 a verified bearer
+  token is required` before the stream opens.
+- **The model has to be one the runtime can load.** The published
+  `percolate-core` image ships `pydantic-ai-slim` with the **OpenAI provider
+  only**, so the `anthropic:` model in the spec above — which is what the row
+  should say once you are running against Anthropic — comes back as
+  `ImportError: Please install the anthropic package` inside the stream, as a
+  `RUN_ERROR` event on an otherwise-200 response. On the compose stack, point
+  the row at an `openai:` model and give the runtime the provider's own key
+  (`OPENAI_API_KEY`, not `LLM_API_KEY`, which is the worker's credential
+  mechanism and not read here); `OPENAI_BASE_URL` aims the same client at any
+  OpenAI-shaped gateway.
+
+```sql
+update agentic.agents set model = 'openai:gpt-4o-mini' where name = 'harbourmaster';
+```
+
 ```bash
 curl -N http://localhost:8080/chat \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \

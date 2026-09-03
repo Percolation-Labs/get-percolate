@@ -99,6 +99,42 @@ services:
       # never contains a secret and a task stays replayable.
       LLM_API_KEY: ${LLM_API_KEY:-}
 
+  # A SECOND worker, because a worker polls exactly one queue and ingestion
+  # does not run on `http`.
+  #
+  # `content.install_ingest_workflow()` writes both of its steps onto the
+  # `ingest` queue. Without this service a POST /files returns 201, stores the
+  # bytes, registers the resource, starts the run -- and then `parse` sits at
+  # `ready` forever, because nothing is polling that queue. Nothing errors and
+  # nothing retries; the file is simply never read, which is the failure this
+  # file existed to prevent people hitting.
+  #
+  # `--queue` is singular by design (one worker, one queue, so a slow queue
+  # cannot starve a fast one), so the answer is another process rather than
+  # another flag.
+  ingest-worker:
+    image: percolationlabs/percolate-core:0.1.6
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      minio: {condition: service_started}
+    command: ["worker", "--queue", "ingest"]
+    environment:
+      P8_DSN: postgres://worker:${P8_WORKER_PASSWORD:-workerpass}@db:5432/percolate
+      P8_WORKER_ID: ingest-1
+      # Required here, not optional: the parse step READS the uploaded bytes
+      # back out of object storage, so this worker is a client of MinIO in a
+      # way the http worker is not.
+      P8_S3_ENDPOINT: http://minio:9000
+      P8_S3_KEY: ${MINIO_USER:-p8admin}
+      P8_S3_SECRET: ${MINIO_PASSWORD:-p8password}
+      P8_BUCKET: p8-content
+      # The `embed` step calls the embedding endpoint named by
+      # aiq.embedding_models.credential_ref, which is LLM_API_KEY by
+      # convention. Parsing and chunking work without it; embedding retries and
+      # then fails, so an upload is searchable by text and not by vector.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+
   content:
     image: percolationlabs/percolate-core:0.1.6
     restart: unless-stopped
@@ -142,8 +178,21 @@ services:
       # only the unset one on the path that fails.
       P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
-      # An agent is a row; the model it uses is a column. This is only the
-      # key that column's provider needs.
+      # THE PROVIDER'S OWN VARIABLE, not LLM_API_KEY. An agent is a row and the
+      # model it uses is a column, but the call is made by pydantic-ai, which
+      # reads the key its provider names -- OPENAI_API_KEY, ANTHROPIC_API_KEY.
+      # LLM_API_KEY is the worker's `credential_ref` mechanism and this runtime
+      # never looks at it, so setting only that gets you a saved agent, a
+      # 200 on /chat, and `OpenAIError: Missing credentials ... set the
+      # OPENAI_API_KEY environment variable` as a RUN_ERROR inside the stream.
+      #
+      # The image ships pydantic-ai-slim with the OPENAI provider only, so
+      # `openai:` models work with a key and `anthropic:` models fail on
+      # `ImportError: Please install the anthropic package` however the key is
+      # spelled. Point OPENAI_BASE_URL at any OpenAI-shaped gateway for
+      # anything else.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
     ports: ["8080:8080"]
 

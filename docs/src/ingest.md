@@ -112,6 +112,23 @@ curl -s http://localhost:8081/files \
 ```
 </div>
 
+**`x-p8-org` decides who can read it back, and its absence is a decision.** A
+resource uploaded without one has a null org, which in this collection means the
+shared tier — so `GET /files/{resource_id}` returns those bytes to an
+*unauthenticated* caller, exactly as a shared `LOOKUP` resolves for one. That is
+the same rule everywhere and it is the right default for a port a whole
+deployment reads, but it is the wrong one for company documents. Uploads that
+belong to a tenant must say so:
+
+```
+  no x-p8-org       anonymous GET -> 200, the bytes
+  x-p8-org: <a>     anonymous GET -> 404 "no such file, or not yours"
+                    as tenant <b> -> 404, the same answer
+```
+
+The wrong tenant and the missing file are deliberately indistinguishable: a
+404 that meant "exists, not yours" would confirm the resource id.
+
 `embed` retrying is what a keyless install looks like: parsing and chunking need
 no model, so the file is chunked and text-searchable, and the vector arrives
 once `LLM_API_KEY` is set on the ingest worker. `x-p8-channel` picks the channel

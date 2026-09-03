@@ -58,6 +58,12 @@ else
 fi
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# Returns nonzero instead of exiting, for the things that have a fallback.
+# `fetch` below dies, which is right for the extension itself and wrong for
+# anything optional -- an early version used `fetch ... || fetch ...` and the
+# first call exited the script before the second could run.
+try_fetch() { curl -fsSL "$1" -o "$2" 2>/dev/null; }
+
 fetch() {
   curl -fsSL "$1" -o "$2" 2>/dev/null \
     || die "could not download $1
@@ -121,16 +127,42 @@ install -m 755 "$TMP/percolate_parser.so" "$PKGLIBDIR/" \
   || die "cannot write to $PKGLIBDIR -- rerun with sudo"
 install -m 644 "$TMP/percolate_parser.control" "$TMP/percolate_parser--$QV.sql" "$SHAREDIR/"
 
+# ------------------------------------------------------- bootstrap.sql
+# Fetched, not just mentioned. `CREATE EXTENSION percolate` on its own cannot
+# work whoever runs it -- as a superuser the extension refuses to load, and as
+# anybody else the roles it needs do not exist yet -- so telling someone to run
+# it is telling them to hit an error. This script used to end by doing exactly
+# that.
+# The release first, then main -- bootstrap.sql does not name a version, so
+# either is correct, and preferring the release keeps a pinned install
+# self-consistent.
+if ! try_fetch "$BASE/bootstrap.sql" ./bootstrap.sql &&
+   ! try_fetch "https://raw.githubusercontent.com/$REPO/main/bootstrap.sql" ./bootstrap.sql
+then
+  say ""
+  say "!! Could not download bootstrap.sql. The extension files are installed,"
+  say "   but the database still needs the roles it creates. Get it from"
+  say "   https://github.com/$REPO/blob/main/bootstrap.sql"
+  exit 4
+fi
+
 say ""
-say "Installed. Now, in the database that will hold it:"
+say "Installed. The files are in place; the database does not have them yet."
 say ""
-say "  CREATE EXTENSION IF NOT EXISTS vector;          -- prerequisite, packaged everywhere"
-say "  CREATE EXTENSION percolate CASCADE;             -- pulls in percolate_parser"
+say "Run ./bootstrap.sql (downloaded here) as a SUPERUSER, against the database"
+say "that will hold it:"
 say ""
-say "CASCADE matters: percolate depends on percolate_parser, pgcrypto and pg_trgm,"
-say "and none of them is a trusted extension, so the CREATE must be superuser."
-say "Everything percolate itself creates is owned by a non-superuser on purpose --"
-say "a superuser bypasses row-level security unconditionally, which would leave"
-say "every policy in the schema inert."
+say "  psql -d yourdb -v ON_ERROR_STOP=1 \\"
+say "       -v auth_pw=\"\$(openssl rand -base64 24)\" \\"
+say "       -v worker_pw=\"\$(openssl rand -base64 24)\" \\"
+say "       -f bootstrap.sql"
+say ""
+say "It creates the cluster roles, installs vector and percolate_parser, and then"
+say "installs percolate AS app_owner. That last part is why a bare"
+say "\`CREATE EXTENSION percolate CASCADE\` is not enough: the extension REFUSES to"
+say "load as a superuser, because a superuser owner bypasses row-level security"
+say "unconditionally and would leave every policy in the collection inert while"
+say "looking correct. Creating a role needs a superuser; owning the schema must"
+say "not be one, so the two are separate steps."
 say ""
 say "Verify: select * from workflow.compiler_capabilities();"

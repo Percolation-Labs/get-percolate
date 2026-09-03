@@ -242,9 +242,26 @@ is the failure this collection refuses to install into: every schema checks at
 load time that its owner is not a superuser, because an owner-privileged view
 owned by one silently disables RLS for every caller of that view.
 
-**Forgetting `request.jwt.claims`** leaves the caller anonymous, which is a
-legitimate identity with legitimately narrow visibility. The fix is the claim,
-not a policy change.
+**No token at all** is not narrow visibility, it is a wall: PostgREST falls back
+to `web_anon`, which holds no table grants and no `usage` on `aiq`, so
+`/rpc/query` answers `permission denied for schema aiq` with a 401. That is a
+different failure from the one below and it says so.
+
+**A token with no `orgs` claim** is the quiet one. It authenticates, RLS applies,
+and tenanted rows are simply not there — so the query succeeds, returns zero
+rows, and `LOOKUP` reports the name unresolved. Nothing distinguishes that from
+data you never loaded, which is why it is worth minting the claim deliberately:
+
+```bash
+percolate auth token --email you@example.com --orgs <org-uuid>
+```
+
+The fix in both cases is the identity, not a policy change.
+
+**Reading a base table over REST** is also a 403 by design — `authenticated`
+holds grants on the `_api` views, not on `agentic.agents` or `aiq.nodes`
+themselves. `GET /agents_api` is the readable surface; the base tables are
+reached through the `SECURITY DEFINER` functions and nothing else.
 
 Row-level security here is inside the ranking rather than a filter applied after
 it, which is worth seeing once — the cookbook runs one `SEARCH` under two claims

@@ -35,6 +35,36 @@ percolate sample load samples/harbour --skip-documents --as-email you@example.co
 `LOOKUP`, `FUZZY`, `GRAPH` and `TEXT` all work without it. Only `SEMANTIC` and
 `SEARCH` need the vectors.
 
+## Two tenants, so your token has to pick one
+
+Most of what the sample loads is **tenanted**, and a token minted without an
+`orgs` claim sees only the shared tier — the three ports and Nordvik
+Chartering. That is the policies working, but it does not look like it:
+`LOOKUP "Meridian Dawn"` comes back with zero rows and the name reported
+unresolved, which reads as *the sample did not load* rather than *you are not
+in that tenant*.
+
+| Tenant | org id |
+|---|---|
+| Meridian | `d0000000-0000-0000-0000-00000000000a` |
+| Kestrel | `d0000000-0000-0000-0000-00000000000b` |
+
+```bash
+percolate auth token --email you@example.com \
+  --orgs d0000000-0000-0000-0000-00000000000a
+```
+
+```
+LOOKUP "Meridian Dawn"    rows: 1    # your tenant
+LOOKUP "Aurora Kestrel"   rows: 0    # Kestrel's, and correctly invisible
+LOOKUP "Rotterdam"        rows: 1    # shared, visible to both
+```
+
+Swap the org id for the other one and the first two answers swap over. That is
+the whole of scenario 4 in the [cookbook](https://percolating-sirsh.github.io/get-percolate/cookbook.html),
+and it is worth doing once by hand: nothing in the query mentions an
+organisation.
+
 ## What is in it
 
 | File | What it is | Applied by |

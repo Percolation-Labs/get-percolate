@@ -109,11 +109,14 @@ If you already run Postgres and want the extension in it:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh
-psql -d yourdb -c "CREATE EXTENSION percolate CASCADE"
+psql -d yourdb -v auth_pw=... -v worker_pw=... -f bootstrap.sql
 ```
 
 `install.sh` finds your `pg_config`, downloads the matching release assets, and
-puts them where Postgres looks. It installs two extensions:
+puts them where Postgres looks. `bootstrap.sql` then creates the cluster roles
+and installs the extension **as `app_owner`** — a bare `CREATE EXTENSION
+percolate` is refused, because a superuser owner would bypass every RLS policy
+in the collection. Two extensions are installed:
 
 | Extension | What it is | How it ships |
 |---|---|---|

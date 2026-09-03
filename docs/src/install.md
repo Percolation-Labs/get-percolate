@@ -145,10 +145,14 @@ and `p8ql:` steps will not resolve until the parser is built, and exits non-zero
 so a half install does not look like a successful one.
 
 `CASCADE` is needed because `percolate` depends on `percolate_parser`, `pgcrypto`
-and `pg_trgm`, and none of those is a trusted extension. Everything `percolate`
-itself creates is owned by a **non-superuser**, which is not a detail: a
-superuser bypasses RLS unconditionally, so a superuser-owned install would leave
-every policy in the collection inert while looking correct.
+and `pg_trgm`, and none of those is a trusted extension — so those come from
+the superuser half of `bootstrap.sql`, before it hands over. Everything
+`percolate` itself creates is then owned by a **non-superuser**, which is not a
+detail: a superuser bypasses RLS unconditionally, so a superuser-owned install
+would leave every policy in the collection inert while looking correct. The
+extension asserts this about itself rather than trusting the installer to get
+it right, which is what makes the bare `CREATE EXTENSION` fail loudly instead
+of quietly.
 
 <p class="related"><strong>Related</strong>
 <a href="index.html#no-role-is-a-superuser">why no role here is a superuser</a> ·
@@ -317,6 +321,14 @@ harbour 1.0.0
   edge operator:MERB -subsidiary_of-> operator:MERI
   plugin harbour (0 servers, 1 skills, 1 agents)
   workflow harbour_deficiencies
+```
+
+**Most of it is tenanted**, so mint a token that names one of the two
+organisations or you will see only the shared tier and think nothing loaded:
+
+```bash
+percolate auth token --email me@example.com \
+  --orgs d0000000-0000-0000-0000-00000000000a     # Meridian; ...000b is Kestrel
 ```
 
 **It needs an embedding key**, in `LLM_API_KEY`, because the corpus goes in

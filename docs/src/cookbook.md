@@ -199,11 +199,18 @@ select aiq.query('TEXT "PSC-441" FROM chunks LIMIT 3');
 ```
 </div>
 
+`:query_vector` is the embedding of *"a boiler fault"*, and it is an argument
+because the database makes no model calls — which is the whole reason a vector
+query compiles to two tasks. Embed the phrase with the model the corpus was
+embedded with and paste the array in, or run it as a two-step workflow and let
+the compiler write the embed step. Do not substitute a short literal to see it
+run: the wrong width is caught, and the wrong *provenance* is not.
+
 ```sql
 select round((r->>'distance')::numeric,3) as distance, left(c.content,56) as content
 from jsonb_array_elements(
        aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3',
-                 '[0,0,0.707,0.707]')->'rows') r
+                 :query_vector)->'rows') r
 join content.resource_chunks c on c.id = (r->>'chunk_id')::uuid
 order by 1;
 ```
@@ -221,7 +228,7 @@ order by 1;
 </div>
 
 ```sql
-select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', '[0,0,0.707,0.707]');
+select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :query_vector);
 ```
 
 <div class="evidence" markdown="1">

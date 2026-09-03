@@ -38,7 +38,7 @@ select agentic.upsert_skill($j${
   "description": "When a LOOKUP returns nothing, use FUZZY LOOKUP instead of guessing another spelling.",
   "when_to_use": "A LOOKUP came back empty, or you are about to try a second spelling of a name, ticker or code.",
   "content": "WHEN A LOOKUP FINDS NOTHING, USE `FUZZY LOOKUP` -- do not guess another spelling. The names in this store follow conventions you cannot deduce. Asked about sterling, a model tried `sterling`, `gbp`, `gbp/usd`, `GBPUSD` and `fx_pair` in five separate calls and gave up, while `FUZZY LOOKUP \"gbp\"` returns `usd/gbp` on the first try.",
-  "requires_tools": ["p8-query"],
+  "requires_tools": ["harbour-query"],
   "category": "procedure",
   "tags": ["query", "p8ql"]
 }$j$::jsonb);
@@ -110,14 +110,16 @@ What we are trying to do here is give an agent eleven procedures it may use,
 while its prompt carries the text of almost none of them.
 {: .goal }
 
+Eleven skills is the shape this is sized for; the two below are the ones this
+page has actually written, and **pinning a skill that does not exist is
+refused** — `pins skill(s) p8ql-graph-walk, ... which do not exist`, rather than
+an agent quietly carrying a reference to nothing. Add the rest as you author
+them.
+
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
-  "skills": ["house-style", "safety-no-destructive-sql",
-             "p8ql-schema-first", "p8ql-fuzzy-lookup", "p8ql-graph-walk",
-             "p8ql-content-search", "p8ql-read-the-plan", "p8ql-unresolved-names",
-             "workflow-define-then-start", "workflow-never-poll",
-             "workflow-diagnose-failure"],
+  "skills": ["house-style", "p8ql-fuzzy-lookup"],
   "context_policy": {"skills": {
     "always":    ["house-style", "safety-no-destructive-sql"],
     "match": true, "top_k": 2, "min_score": 0.28,
@@ -188,11 +190,11 @@ What we are trying to do here is add one fragment to an agent without knowing,
 or overwriting, the rest of the list it already carries.
 {: .goal }
 
-The skill written above declares `requires_tools: ["p8-query"]`, and attaching a
+The skill written above declares `requires_tools: ["harbour-query"]`, and attaching a
 skill to an agent that does not bind the server it names is **refused**:
 
 ```
-ERROR: agent harbourmaster: p8ql-fuzzy-lookup needs p8-query -- a tool server
+ERROR: agent harbourmaster: p8ql-fuzzy-lookup needs harbour-query -- a tool server
        this agent does not bind. Bind it, unpin the skill, or do not remove
        the binding.
 ```
@@ -203,12 +205,12 @@ fragment — but it does mean the server and the binding come first:
 
 ```sql
 select agentic.upsert_tool_server($j${
-  "name": "p8-query", "kind": "mcp", "url": "http://query-mcp:8090"
+  "name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090"
 }$j$::jsonb);
 
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
-  "tools": [{"server": "p8-query", "tools": ["query"]}]
+  "tools": [{"server": "harbour-query", "tools": ["query"]}]
 }$j$::jsonb);
 ```
 
@@ -462,13 +464,23 @@ out later.
 ```sql
 select agentic.apply_plugin($j${
   "name": "harbour", "version": "0.2.0",
-  "tool_servers": [{"name": "p8-query", "kind": "mcp", "url": "http://query-mcp:8090"}],
+  "tool_servers": [{"name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090"}],
   "skills":       [{"name": "p8ql-fuzzy-lookup", "description": "...", "content": "...",
-                    "requires_tools": ["p8-query"]}],
+                    "requires_tools": ["harbour-query"]}],
   "agents":       [{"name": "harbourmaster", "skills": ["p8ql-fuzzy-lookup"],
-                    "tools": [{"server": "p8-query", "tools": ["query"]}]}]
+                    "system_prompt": "You answer questions about the fleet.",
+                    "tools": [{"server": "harbour-query", "tools": ["query"]}]}]
 }$j$::jsonb);
 ```
+
+**The agents in a manifest are ROWS, not schema documents**, and the difference
+is silent. `apply_plugin` passes each one to `upsert_agent`, which reads
+`system_prompt` and `structured_output_schema` — so an agent written the way
+[agents](agents.html) authors them, with `description` and `properties`, is
+accepted, stored, and left with an empty prompt and no output contract. It
+resolves by name and can do nothing. Either spell the row keys here, as above,
+or translate first: `percolate agent push` and `percolate sample load` both run
+the schema document through `authoring.from_json_schema` on your behalf.
 
 <div class="evidence" markdown="1">
 <div class="label">re-applying the same plugin with one agent dropped from the document</div>

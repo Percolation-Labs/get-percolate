@@ -148,6 +148,24 @@ curl -s http://localhost:3000/rpc/upsert_agent \
   -d '{"p_spec": {"name": "harbourmaster", "model": "anthropic:claude-sonnet-5"}}'
 ```
 
+Or push the file you wrote at the top of this page, unchanged:
+
+```bash
+P8_USER_ID=<your user id> percolate agent push harbourmaster.yaml
+```
+
+That is the only one of the three that takes the **schema document** — the form
+with `description` and `properties`. The function and the REST call both take
+the row, where those two are `system_prompt` and `structured_output_schema`, and
+they ignore what they do not recognise: push the documented form at
+`upsert_agent` directly and you get a 200 and an agent with an empty prompt.
+
+`P8_USER_ID` is not optional and there is no privileged fallback. The upsert is
+gated inside the database on the caller's permission, so the CLI has to connect
+*as somebody*; without it you get `not authorized to author agents`, which is
+the check working rather than a misconfiguration.
+`percolate auth bootstrap` prints the id it creates.
+
 <details class="why" markdown="1">
 <summary>Why it works — an omitted key means "leave it alone", and getting that
 wrong is a silent total loss</summary>

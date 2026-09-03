@@ -144,9 +144,16 @@ jobs:
       - name: Refuse the fast path when the compiled half changed
         if: inputs.push && !inputs.verify_binaries
         run: |
+          # `.Image` is a MAP KEYED BY PLATFORM on a multi-arch manifest, not
+          # a single config, so the obvious `.Image.Config.Labels` silently
+          # returns empty and the check reports "no label" for an image that
+          # has one -- a false negative that sends you down the slow path
+          # forever. Both platforms carry identical labels here, so reading the
+          # first entry is the whole answer.
           prev=$(docker buildx imagetools inspect \
-                   percolationlabs/percolate-postgres:19 --format \
-                   '{{ index .Image.Config.Labels "org.percolate.dockerfile-sha" }}' \
+                   percolationlabs/percolate-postgres:19 --format '{{ json .Image }}' \
+                 2>/dev/null \
+                 | jq -r 'to_entries[0].value.config.Labels["org.percolate.dockerfile-sha"] // empty' \
                  2>/dev/null || true)
           now='${{ hashFiles('dev/Dockerfile.pg19') }}'
           echo "published Dockerfile sha: ${prev:-unknown}"

@@ -130,6 +130,38 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # BEFORE THE BUILD, not after it. Put after, this check cost nine
+      # minutes to tell you the run was never going to be allowed -- the same
+      # ordering mistake as pushing a tag before the gate that inspects it, one
+      # step along. Nothing here needs the image: the precondition is a
+      # property of this tree and of what is already published.
+      #
+      # The fast path is only legitimate while the compiled half is identical
+      # to a build that already passed the gate. That is checkable rather than
+      # a matter of discipline: the previous image carries the hash of the
+      # Dockerfile it was built from, and if this tree's differs then something
+      # compiled DID change and the full path is the one that was needed.
+      - name: Refuse the fast path when the compiled half changed
+        if: inputs.push && !inputs.verify_binaries
+        run: |
+          prev=$(docker buildx imagetools inspect \
+                   percolationlabs/percolate-postgres:19 --format \
+                   '{{ index .Image.Config.Labels "org.percolate.dockerfile-sha" }}' \
+                 2>/dev/null || true)
+          now='${{ hashFiles('dev/Dockerfile.pg19') }}'
+          echo "published Dockerfile sha: ${prev:-unknown}"
+          echo "this tree's:              $now"
+          if [ -z "$prev" ]; then
+            echo "::error::the published image carries no Dockerfile hash, so the" >&2
+            echo "::error::fast path cannot prove the compiled half is unchanged." >&2
+            echo "::error::Re-run with verify_binaries: true once, to establish it." >&2
+            exit 1
+          fi
+          [ "$prev" = "$now" ] || {
+            echo "::error::dev/Dockerfile.pg19 changed since the published image." >&2
+            echo "::error::That is the FULL path -- re-run with verify_binaries: true." >&2
+            exit 1; }
+
       - uses: docker/build-push-action@v6
         with:
           context: dev
@@ -167,32 +199,6 @@ jobs:
           # opens the door and then inspects the visitor is a report.
           tags: |
             percolationlabs/percolate-postgres:19-${{ inputs.version }}
-
-      # The fast path is only legitimate while the compiled half is identical
-      # to a build that already passed the gate. That is checkable rather than
-      # a matter of discipline: the previous image carries the hash of the
-      # Dockerfile it was built from, and if this tree's differs then something
-      # compiled DID change and the full path is the one that was needed.
-      - name: Refuse the fast path when the compiled half changed
-        if: inputs.push && !inputs.verify_binaries
-        run: |
-          prev=$(docker buildx imagetools inspect \
-                   percolationlabs/percolate-postgres:19 --format \
-                   '{{ index .Image.Config.Labels "org.percolate.dockerfile-sha" }}' \
-                 2>/dev/null || true)
-          now='${{ hashFiles('dev/Dockerfile.pg19') }}'
-          echo "published Dockerfile sha: ${prev:-unknown}"
-          echo "this tree's:              $now"
-          if [ -z "$prev" ]; then
-            echo "::error::the published image carries no Dockerfile hash, so the" >&2
-            echo "::error::fast path cannot prove the compiled half is unchanged." >&2
-            echo "::error::Re-run with verify_binaries: true once, to establish it." >&2
-            exit 1
-          fi
-          [ "$prev" = "$now" ] || {
-            echo "::error::dev/Dockerfile.pg19 changed since the published image." >&2
-            echo "::error::That is the FULL path -- re-run with verify_binaries: true." >&2
-            exit 1; }
 
       - name: Confirm both architectures are in the manifest
         if: inputs.push

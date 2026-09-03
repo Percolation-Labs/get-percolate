@@ -51,6 +51,11 @@ docker compose up -d
 Postgres 19 with the extensions baked in, PostgREST, the worker, the Content
 Server, the Agent Runtime, and MinIO. Nothing to compile.
 
+This pins `percolate-postgres:19`, the newest build in that major. Pin
+`percolate-postgres:19-0.1.1` instead for a deployment that should not move —
+pre-1.0 there is no in-place extension upgrade, so the tag is the upgrade
+lever.
+
 ```bash
 psql postgres://p8:p8@localhost:5432/percolate \
   -c "select workflow.start_workflow('my_flow','{}'::jsonb)"
@@ -73,6 +78,10 @@ The chart brings up the database, PostgREST, the three services and one worker
 pool you can scale. It is a plain chart with no CRDs, so Flux
 (`HelmRelease`) and Argo CD (`Application` with a Helm source) both consume it
 directly — see [`charts/percolate/README.md`](charts/percolate/README.md).
+
+Same pinning applies here: `postgres.image.tag` defaults to `19`, and
+`19-0.1.1` is the immutable one to set if a cluster needs to stay on a known
+build.
 
 ### 3. Your own Postgres 19
 

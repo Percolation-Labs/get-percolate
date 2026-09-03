@@ -46,6 +46,13 @@ probes the installed build with one canary per feature. If it lists anything you
 have version skew, which otherwise shows up looking like a syntax error in a
 workflow that is not wrong.
 
+The compose file pins `percolate-postgres:19`, which moves to whatever the
+newest build in that major is — fine for trying this out, not for a deployment
+you want to hold still. `percolate-postgres:19-0.1.1` is the immutable tag
+behind today's `:19`; pin that instead if you need one. Pre-1.0 there is no
+in-place extension upgrade, so the image tag is the only lever for keeping a
+deployment on a known version rather than the next build that lands.
+
 <p class="related"><strong>Related</strong>
 <a href="operating.html#version-skew">what skew looks like in production</a> ·
 <a href="first-workflow.html">the first thing to run against it</a></p>
@@ -86,6 +93,12 @@ comes out different between `helm template` and `helm install`, and between a
 GitOps dry run and the apply after it — so a controller that diffs continuously
 will either report drift forever or "fix" it by rewriting the database password
 underneath a running StatefulSet.
+
+`postgres.image.tag` defaults to `19` for the same reason the compose file
+does — it tracks the newest build in that major, not one release. Set it to
+`19-0.1.1` to pin instead; pre-1.0 there is no in-place extension upgrade, so
+the tag is what keeps a cluster on a known version rather than whatever `19`
+build lands next.
 
 <p class="related"><strong>Related</strong>
 <a href="operating.html#scaling-on-queue-depth">turning autoscaling on</a></p>

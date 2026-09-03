@@ -11,6 +11,22 @@
 # only call SECURITY DEFINER functions, or as `authenticator`, which owns no
 # privileges of its own and SET ROLEs per request so RLS sees the caller rather
 # than the service.
+#
+# SIX SERVICES BECAUSE THERE ARE SIX ROLES, NOT BECAUSE YOU NEED SIX PROCESSES.
+# This file is spelled out so that each thing the system does has somewhere
+# obvious to look: the REST surface is postgrest, outbound HTTP is worker,
+# reading uploaded files is ingest-worker, uploads are content, model turns are
+# agent, bytes are minio. Read it as the list of roles, not as a deployment
+# target.
+#
+# In practice one or two processes cover all of it. The three
+# percolate-core services are ONE IMAGE under three commands, so a small
+# deployment runs the image once per thing it actually does -- often just a
+# worker, since `sql` and `p8ql` steps need no process at all -- and a large one
+# splits further than this file does, a pool per queue. What must NOT be
+# collapsed is the two workers: `--queue` takes one queue by design, so
+# combining them means picking which of outbound calls and ingestion silently
+# does not happen.
 name: percolate
 
 services:
@@ -178,21 +194,39 @@ services:
       # only the unset one on the path that fails.
       P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
-      # THE PROVIDER'S OWN VARIABLE, not LLM_API_KEY. An agent is a row and the
-      # model it uses is a column, but the call is made by pydantic-ai, which
-      # reads the key its provider names -- OPENAI_API_KEY, ANTHROPIC_API_KEY.
-      # LLM_API_KEY is the worker's `credential_ref` mechanism and this runtime
-      # never looks at it, so setting only that gets you a saved agent, a
-      # 200 on /chat, and `OpenAIError: Missing credentials ... set the
-      # OPENAI_API_KEY environment variable` as a RUN_ERROR inside the stream.
+      # THE PROVIDER'S OWN VARIABLE, not LLM_API_KEY, and one line per provider
+      # because `model` is a COLUMN. The image carries every provider
+      # pydantic-ai can drive, so which of these matters is decided by an
+      # UPDATE to agentic.agents rather than by a rebuild -- set the one your
+      # rows name and leave the rest empty.
       #
-      # The image ships pydantic-ai-slim with the OPENAI provider only, so
-      # `openai:` models work with a key and `anthropic:` models fail on
-      # `ImportError: Please install the anthropic package` however the key is
-      # spelled. Point OPENAI_BASE_URL at any OpenAI-shaped gateway for
-      # anything else.
+      # LLM_API_KEY is NOT among them. That is the worker's `credential_ref`
+      # mechanism, resolved by name for http_call and embedding steps; this
+      # runtime never reads it, so setting only that gets you a saved agent, a
+      # 200 on /chat, and a RUN_ERROR about missing credentials inside the
+      # stream. It is passed anyway for the delegation case, where an agent's
+      # tool call is an http_call like any other.
+      #
+      # OPENAI_BASE_URL is the escape hatch and covers more than it looks like:
+      # openrouter, cerebras, xai, zai, vLLM and Ollama are all OpenAI-shaped,
+      # so they need an `openai:` model and this URL, not an SDK.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # Each name is the one that provider's own SDK reads, checked against
+      # the image rather than remembered: cohere really is CO_API_KEY and
+      # huggingface really is HF_TOKEN.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      CO_API_KEY: ${CO_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      # Bedrock authenticates as AWS does, so it takes a region and the
+      # standard credential chain rather than one key.
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
     ports: ["8080:8080"]
 

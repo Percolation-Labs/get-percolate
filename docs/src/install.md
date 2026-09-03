@@ -16,6 +16,16 @@ curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/mai
 docker compose up -d
 ```
 
+Six services come up, and that is a list of **roles rather than a recommended
+process count**: PostgREST for the REST surface, a `worker` for steps that leave
+the machine, an `ingest-worker` for reading uploaded files, the Content Server
+for uploads, the Agent Runtime for model turns, and MinIO for bytes. Three of
+those are one image under three commands, so a real deployment usually runs
+fewer — often just a worker, since `sql` and `p8ql` steps need no process at
+all — or many more, a pool per queue. The one pairing not to collapse is the two
+workers: `--queue` takes a single queue, so merging them means choosing which of
+outbound calls and ingestion silently stops happening.
+
 Give it a minute, then ask it whether it is really there. If you have no `psql`
 on the host — and nothing above installed one — the database container has its
 own:
@@ -277,6 +287,76 @@ is what "getting a token" means today.
 <a href="agents.html#call-it-over-rest">the calls that need it</a> ·
 <a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">what an
 anonymous caller sees instead</a></p>
+</details>
+
+## The sample, which nothing loads for you
+
+A fresh install is **empty**, and almost every worked example in these pages
+reads data. There is a sample for that, and loading it is a step you take
+rather than something a container did while you were not looking.
+
+What we are trying to do here is get the domain the rest of this documentation
+queries, and be able to tell it apart from our own data afterwards.
+{: .goal }
+
+```bash
+percolate sample load samples/harbour --as-email me@example.com
+```
+
+A port-operations company: two tenants, four operators, five vessels, three
+ports, inspections, a corpus of reports and a graph tying them together.
+
+```
+harbour 1.0.0
+  sql schema.sql
+  embedding model text-embedding-3-small (1536d)
+  entity operator <- harbour.operators
+  entity vessel <- harbour.vessels
+  entity port <- harbour.ports
+  ...
+  edge operator:MERB -subsidiary_of-> operator:MERI
+  plugin harbour (0 servers, 1 skills, 1 agents)
+  workflow harbour_deficiencies
+```
+
+**It needs an embedding key**, in `LLM_API_KEY`, because the corpus goes in
+through `POST /files` and is embedded by the running pipeline. `--dry-run` says
+what a load would need without writing anything; `--skip-documents` loads
+everything else, and `LOOKUP`, `FUZZY`, `GRAPH` and `TEXT` all work without it
+— only `SEMANTIC` and `SEARCH` need vectors.
+
+<details class="why" markdown="1">
+<summary>Why it works — a directory of the documents you would have written
+anyway, and why the vectors are not in it</summary>
+
+The sample is `samples/harbour/` in the repository, and it is worth opening
+before you run it. `schema.sql` is the company's own tables — nothing in it
+mentions Percolate, which is the point, because Percolate indexes tables you
+already have. Everything else is a document in the format you would author by
+hand: `sources.yaml` is what is addressable, `graph.yaml` is the relation
+vocabulary with edges named `vessel:Meridian Dawn` rather than by uuid,
+`plugin.yaml` is skills and agents as one removable bundle, `workflows/` are
+workflow documents and `documents/` is markdown. Reading it teaches the
+formats; a `.sql` dump would have hidden all of them behind four hundred
+INSERTs.
+
+**The vectors are deliberately not in the files.** An earlier version of this
+fixture shipped literal four-dimension vectors so it would load with nothing
+running. It reproduced beautifully and taught the wrong thing: a reader who
+copied the pattern had a corpus no model had ever seen and rankings that meant
+nothing. Here the documents are embedded by the same pipeline yours will be, so
+what you search is what a model produced — and the sample costs one embedding
+call per document, which is the honest price of retrieval rather than an
+inconvenience.
+
+Nothing loads on first boot for the same reason. Rows that appear because a
+container started are rows nobody chose, and a demo you cannot tell apart from
+a deployment is a bad demo. `select agentic.remove_plugin('harbour'); drop
+schema harbour cascade;` takes the bulk of it back out.
+
+<p class="related"><strong>Related</strong>
+<a href="cookbook.html">the ten scenarios it was built for</a> ·
+<a href="ingest.html">what happens to each document on the way in</a></p>
 </details>
 
 Next: [agents](agents.html), which is the shortest useful thing to do

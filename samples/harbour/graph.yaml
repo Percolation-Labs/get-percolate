@@ -1,0 +1,67 @@
+# The relation catalogue, then the edges.
+#
+# `relations` is a vocabulary and it is checked: an edge naming a relation that
+# is not declared here is refused, so the graph cannot quietly grow a fifth
+# kind of arrow nobody documented. The `inverse_label` is what makes a walk
+# readable in both directions -- `operated_by` one way is `operates` the other,
+# and storing the edge once means the two can never disagree.
+
+relations:
+  - src_type: vessel
+    relation: operated_by
+    dst_type: operator
+    inverse_label: operates
+    description: who runs the ship
+
+  - src_type: operator
+    relation: subsidiary_of
+    dst_type: operator
+    inverse_label: parent_of
+    description: ownership as an authored claim
+
+  - src_type: vessel
+    relation: last_called
+    dst_type: port
+    inverse_label: received
+    description: most recent port of call
+
+  - src_type: operator
+    relation: competes_with
+    dst_type: operator
+    inverse_label: competes_with
+    description: symmetric; stored once, walked both ways
+
+# Edges name their endpoints the way a person would -- `vessel:Meridian Dawn`
+# -- and the loader resolves them through the keys the sources step registered.
+# A fixture of literal uuids is unreadable and, worse, unwritable: nobody can
+# add an edge to it without going and looking two ids up first.
+#
+# WEIGHTS ARE NOT DECORATION. A rivalry asserted by one trade paper sits at 0.4
+# beside a registry-backed 1.0, so an ordering assertion has something to
+# order, and `provenance` says which is which. A graph where every edge is 1.0
+# cannot demonstrate ranking, and cannot be argued with.
+edges:
+  - {src: "vessel:Meridian Dawn",   relation: operated_by, dst: "operator:MERI", weight: 1.0,
+     provenance: {source: registry}, org: d0000000-0000-0000-0000-00000000000a}
+  - {src: "vessel:Meridian Star",   relation: operated_by, dst: "operator:MERI", weight: 1.0,
+     provenance: {source: registry}, org: d0000000-0000-0000-0000-00000000000a}
+  - {src: "vessel:Bulk Harmony",    relation: operated_by, dst: "operator:MERB", weight: 1.0,
+     provenance: {source: registry}, org: d0000000-0000-0000-0000-00000000000a}
+  - {src: "vessel:Aurora Kestrel",  relation: operated_by, dst: "operator:KEST", weight: 1.0,
+     provenance: {source: registry}, org: d0000000-0000-0000-0000-00000000000b}
+
+  # The ownership chain the GRAPH examples walk: Bulk Harmony -> Meridian Bulk
+  # -> Meridian Line is a two-hop answer to "who ultimately runs it", which one
+  # join could not have given you.
+  - {src: "operator:MERB", relation: subsidiary_of, dst: "operator:MERI", weight: 0.95,
+     provenance: {source: registry}, org: d0000000-0000-0000-0000-00000000000a}
+
+  - {src: "operator:MERI", relation: competes_with, dst: "operator:KEST", weight: 0.40,
+     provenance: {source: trade press}}
+
+  - {src: "vessel:Meridian Dawn",  relation: last_called, dst: "port:Rotterdam", weight: 1.0,
+     provenance: {source: ais}, org: d0000000-0000-0000-0000-00000000000a}
+  - {src: "vessel:Bulk Harmony",   relation: last_called, dst: "port:Rotterdam", weight: 1.0,
+     provenance: {source: ais}, org: d0000000-0000-0000-0000-00000000000a}
+  - {src: "vessel:Aurora Kestrel", relation: last_called, dst: "port:Gothenburg", weight: 1.0,
+     provenance: {source: ais}, org: d0000000-0000-0000-0000-00000000000b}

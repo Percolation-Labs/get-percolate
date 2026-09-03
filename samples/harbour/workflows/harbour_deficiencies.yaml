@@ -1,0 +1,20 @@
+# Fan out over whatever the fleet currently has open, one task per vessel.
+#
+# `matrix.rows` names a REGISTERED FUNCTION rather than taking an inline
+# SELECT, which is the compiler refusing to let a workflow document smuggle
+# arbitrary SQL past it. `harbour.deficient_vessels` is registered by
+# schema.sql; the width of the fan-out is whatever it returns at run time, so
+# adding an inspection changes the shape of the next run with nothing
+# recompiled.
+name: harbour_deficiencies
+steps:
+  - id: open
+    sql: {function: p8ql, args: ['SELECT count(*) FROM harbour.inspections']}
+
+  - id: each
+    needs: [open]
+    matrix:
+      rows: {function: deficient_vessels, args: []}
+      max_fanout: 20
+      template:
+        sql: {function: p8ql, args: ['SELECT now()']}

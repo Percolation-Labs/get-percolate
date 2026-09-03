@@ -1,0 +1,71 @@
+# What of the harbour schema is addressable, and in what space.
+#
+# `register_entity_table` does not copy anything. It records a projection --
+# which table, which expression is the key people type, what a result should
+# say -- and `rebuild_entity_type` runs it. The attributes stay in the typed
+# tables; the registry stores identity only, which is why registering a table
+# is reversible and cheap.
+
+# The embedding model, registered before anything that names it. `dim` is not
+# advisory: the storage table and its HNSW index are generated FROM this row,
+# which is what stops the stored dimension drifting from what the model
+# actually returns.
+#
+# `credential_ref` NAMES a variable rather than holding a key. The database
+# stores the name; the worker resolves it from its own environment at call
+# time, so a dump of the registry never contains a secret.
+embedding_models:
+  - name: text-embedding-3-small
+    dim: 1536
+    provider: openai
+    endpoint: https://api.openai.com/v1/embeddings
+    credential_ref: LLM_API_KEY
+    is_default: true
+
+entities:
+  # Code first: it is the short stable string a person types. Falling back to
+  # the name keeps an operator with no code addressable.
+  - entity_type: operator
+    source_table: harbour.operators
+    key_expr: coalesce(n.code, n.name)
+    summary_expr: n.name
+    org_expr: n.org_id
+
+  # The summary is what a result SAYS, so it carries the IMO -- two vessels
+  # can share a name and a bare name would make the answer ambiguous at
+  # exactly the moment it matters.
+  - entity_type: vessel
+    source_table: harbour.vessels
+    key_expr: n.name
+    summary_expr: "n.name || ' (IMO ' || n.imo || ')'"
+    org_expr: n.org_id
+    # A scrapped vessel is still a row and no longer an answer.
+    include_where: "n.status <> 'scrapped'"
+
+  - entity_type: port
+    source_table: harbour.ports
+    key_expr: n.name
+    summary_expr: "n.name || ', ' || n.country"
+    org_expr: n.org_id
+
+# Short forms and aliases: editorial, so no projection produces them and
+# nothing overwrites them on rebuild. This is where "what people actually
+# type" lives, as distinct from what the source table happens to call things.
+node_keys:
+  - {node: MERI, key: meridian, kind: short}
+  - {node: MERB, key: meridian bulk, kind: alias}
+  - {node: Meridian Dawn, key: dawn, kind: short}
+
+# `chunks` -- content.resource_chunks -- ships registered as a lexical source,
+# so there is nothing to add here. Listed as an empty key rather than omitted,
+# because "this sample deliberately reuses the built-in source" and "this
+# sample forgot about lexical search" should not look the same.
+lexical_sources: []
+
+# The channel the corpus lands in. A channel is what an upload is posted TO,
+# and it carries the ingestion workflow that runs on arrival -- so it has to
+# exist before the documents step, and before anything that registers an
+# upload against it by name.
+channels:
+  - name: harbour-reports
+    kind: manual

@@ -67,6 +67,19 @@ select workflow.start_workflow('hello', '{}'::jsonb);
 SQL
 ```
 
+Then load the sample, which nothing does for you — a fresh install is empty on
+purpose:
+
+```bash
+percolate sample load samples/harbour --as-email you@example.com
+```
+
+That is `samples/harbour/` in this repository: a port-operations company with
+two tenants, a fleet, a corpus and a graph, and the domain every worked example
+in the documentation queries. It needs an embedding key, because the corpus is
+embedded by the running pipeline rather than shipped as literal vectors;
+`--skip-documents` loads everything else.
+
 The run has already finished by the time `start_workflow` returns — a `sql` step
 executes in the transaction that made it ready, with no worker involved. If you
 have no `psql` on the host, `docker compose exec db psql -U p8 -d percolate`

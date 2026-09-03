@@ -154,8 +154,8 @@ select aiq.register_entity_table(
     p_entity_type  => 'vessel',
     p_source_table => 'harbour.vessels',
     p_key_expr     => 'lower(n.name)',
-    p_summary_expr => "n.name || ' (IMO ' || n.imo || ')'",
-    p_include_where => "n.status <> 'scrapped'");
+    p_summary_expr => $$n.name || ' (IMO ' || n.imo || ')'$$,
+    p_include_where => $$n.status <> 'scrapped'$$);
 ```
 
 <details class="why" markdown="1">

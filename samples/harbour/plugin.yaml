@@ -1,0 +1,68 @@
+# Agents and the prose they share, as one named bundle.
+#
+# `agentic.apply_plugin` takes this whole document and applies it in the only
+# order that can work -- tool servers, then skills, then agents -- because a
+# skill may require a server and an agent may pin a skill. The `name` is what
+# makes it removable later: these rows are stamped with it, so the sample can
+# be taken out again without anyone diffing against a fresh install.
+name: harbour
+version: 1.0.0
+description: A port-operations company, its fleet, and the agent that answers about it.
+
+# NO TOOL SERVERS, and that is a considered omission rather than an oversight.
+# A tool server is an independently deployed process at a URL, and the compose
+# stack does not run one -- so a sample that registered `http://query-mcp:8090`
+# would put a row in the database pointing at nothing, and the first thing the
+# agent did with it would be to fail. Registering one is two lines
+# (`agentic.upsert_tool_server`) once you have something listening; the
+# `skills` page walks through it, including why attaching a skill that
+# `requires_tools` is refused until the agent binds the server it names.
+tool_servers: []
+
+skills:
+  # A skill is a prompt fragment stored once and referenced by every agent that
+  # needs it, rather than copied into each system prompt and left to drift.
+  # This one carries no `requires_tools`, so it attaches to any agent.
+  - name: harbour-house-style
+    description: How answers about the fleet are written.
+    when_to_use: Always. It governs the shape of every answer, not a situation.
+    content: |-
+      Say which vessel or operator an assertion is about, by name and IMO where
+      you have one. A fleet has near-identical names in it and "the bulk
+      carrier" is not an identifier.
+
+      Quote a deficiency code exactly as it appears. PSC-441 and PSC-4410 are
+      different findings and a reader cannot tell which you meant from context.
+
+      If a question is about a vessel you have no record of, say so rather than
+      reasoning from the operator. An absent inspection is not a clear one.
+    category: procedure
+    tags: [harbour, house-style]
+
+agents:
+  # An agent definition is a JSON Schema document: the system prompt is the
+  # schema's `description` and the structured output is its `properties`.
+  # There is no `prompt` key, which is what makes this file and a pydantic
+  # BaseModel the same artifact rather than two formats to keep in step.
+  - name: harbourmaster
+    description: |-
+      You answer questions about the fleet, its operators and their port state
+      control history.
+
+      Start from what you were given. Never infer a vessel's condition from its
+      sister ships or from its operator's other tonnage.
+    # openai: because the sample already requires an OpenAI key for embedding,
+    # so this adds no second thing to obtain. `model` is a column -- change it
+    # to anthropic:, google:, groq: or any other provider the image carries
+    # with an UPDATE, and set that provider's own key on the agent service.
+    model: openai:gpt-4o-mini
+    category: tool_user
+    skills: [harbour-house-style]
+    context_policy:
+      window_messages: 40
+      skills:
+        always: [harbour-house-style]
+    properties:
+      verdict: {type: string}
+      vessel: {type: string}
+    required: [verdict, vessel]

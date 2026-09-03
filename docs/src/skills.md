@@ -188,6 +188,30 @@ What we are trying to do here is add one fragment to an agent without knowing,
 or overwriting, the rest of the list it already carries.
 {: .goal }
 
+The skill written above declares `requires_tools: ["p8-query"]`, and attaching a
+skill to an agent that does not bind the server it names is **refused**:
+
+```
+ERROR: agent harbourmaster: p8ql-fuzzy-lookup needs p8-query -- a tool server
+       this agent does not bind. Bind it, unpin the skill, or do not remove
+       the binding.
+```
+
+That is the guard working rather than something to route around — a prompt
+fragment telling a model to reach for a tool it cannot call is worse than no
+fragment — but it does mean the server and the binding come first:
+
+```sql
+select agentic.upsert_tool_server($j${
+  "name": "p8-query", "kind": "mcp", "url": "http://query-mcp:8090"
+}$j$::jsonb);
+
+select agentic.upsert_agent($j${
+  "name": "harbourmaster",
+  "tools": [{"server": "p8-query", "tools": ["query"]}]
+}$j$::jsonb);
+```
+
 ```sql
 select agentic.attach_skill('harbourmaster', 'p8ql-fuzzy-lookup');
 
@@ -438,10 +462,11 @@ out later.
 ```sql
 select agentic.apply_plugin($j${
   "name": "harbour", "version": "0.2.0",
-  "tool_servers": [{"name": "harbour-query", "kind": "mcp", "url": "http://harbour-mcp:8090"}],
-  "skills":       [{"name": "p8ql-fuzzy-lookup", "description": "...", "content": "..."}],
+  "tool_servers": [{"name": "p8-query", "kind": "mcp", "url": "http://query-mcp:8090"}],
+  "skills":       [{"name": "p8ql-fuzzy-lookup", "description": "...", "content": "...",
+                    "requires_tools": ["p8-query"]}],
   "agents":       [{"name": "harbourmaster", "skills": ["p8ql-fuzzy-lookup"],
-                    "tools": [{"server": "harbour-query", "tools": ["query"]}]}]
+                    "tools": [{"server": "p8-query", "tools": ["query"]}]}]
 }$j$::jsonb);
 ```
 

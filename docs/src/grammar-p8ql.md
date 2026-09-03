@@ -237,9 +237,22 @@ ranking each mode produces.
 
 ```sql
 select aiq.query('TEXT "PSC-441" FROM chunks LIMIT 3');
-select aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3', '[0,0,0.707,0.707]');
-select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', '[0,0,0.707,0.707]');
+select aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3', :query_vector);
+select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :query_vector);
 ```
+
+`TEXT` runs on its own. **The other two take the vector as an argument, because
+the database makes no model calls** — so `:query_vector` is something you supply, and
+that is the whole reason a vector query compiles to two tasks rather than one.
+In a workflow you never write it: the compiler emits an `embed` step that calls
+the model the registry names and hands the result to the query step. By hand,
+embed the phrase yourself and paste the array in, or run it as a two-step
+workflow and read the result.
+
+Do not paste a short literal in to see it work. A vector of the wrong width is
+caught — `query vector has 4 dimensions but model text-embedding-3-small
+expects 1536` — but one of the *right* width and the wrong provenance is not,
+and it ranks confidently against a space it never came from.
 
 <details class="why" markdown="1">
 <summary>Why it works — the database makes no model calls, so the vector is an argument</summary>

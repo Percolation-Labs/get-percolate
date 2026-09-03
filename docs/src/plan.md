@@ -16,6 +16,15 @@ opening four catalogs.
 select workflow.plan_document('sec_revenue');
 ```
 
+`sec_revenue` is the pipeline the output below came from — an agent, an MCP tool
+server and a corpus, which is what makes it worth reading — and it is not
+installed by anything here, so that exact call answers `no workflow definition
+named sec_revenue` on your stack. Every function on this page takes any
+definition name, so substitute one you have. `ingest_file`, from
+[uploading files](ingest.html), is the one you are most likely to already have
+installed, and it exercises the same four: `plan_document`, `plan_graph`,
+`plan_probe` and `plan_status` all resolve against it.
+
 <div class="evidence" markdown="1">
 <div class="label">one step of five</div>
 

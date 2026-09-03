@@ -1,0 +1,40 @@
+# The harbour sample: one domain, loaded on purpose.
+#
+# Nothing here loads itself. A fresh install stays empty until you run
+#
+#     percolate sample load samples/harbour --as-email you@example.com
+#
+# which is a deliberate step rather than a seed on first boot: rows that appear
+# because a container started are rows nobody chose, and a demo you cannot tell
+# apart from a deployment is a bad demo.
+name: harbour
+version: 1.0.0
+description: |-
+  A port-operations company with two tenants, a fleet, a corpus of inspection
+  reports, and a graph tying them together. Everything the documentation's
+  worked examples query.
+
+# THE CORPUS IS EMBEDDED BY THE REAL PIPELINE, so loading it costs one
+# embedding call per document and needs a key. That is the honest shape: an
+# earlier version of this fixture shipped literal four-dimension vectors so it
+# would load with nothing running, and it taught the wrong thing -- a reader
+# who copied it had a corpus no model produced and rankings that meant nothing.
+#
+# The name is what the worker resolves at call time, matching the
+# `credential_ref` in sources.yaml. `--skip-documents` loads everything else if
+# you do not have one yet; graph, lookup and lexical queries all work without
+# it, and only SEMANTIC and SEARCH need vectors.
+requires:
+  credentials: [LLM_API_KEY]
+
+# In order, because each step needs the one before it. The tables have to exist
+# before a projection can read them; the entity types have to be rebuilt before
+# an edge can name a node by key; the tool servers and skills have to be there
+# before an agent pins them.
+load:
+  - sql: schema.sql
+  - sources: sources.yaml
+  - graph: graph.yaml
+  - plugin: plugin.yaml
+  - workflows: workflows
+  - documents: documents

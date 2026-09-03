@@ -267,11 +267,24 @@ and see the answers differ, with nothing in the query filtering by organisation.
 {: .goal }
 
 ```sql
+begin;
 set local role authenticated;
-set local request.jwt.claims = '{"orgs":["…000a"]}';   -- Meridian
+set local request.jwt.claims =
+  '{"orgs":["d0000000-0000-0000-0000-00000000000a"]}';   -- Meridian
 select entity_type, summary from aiq.nodes
 where entity_type in ('vessel','operator') order by entity_type, summary;
+rollback;
 ```
+
+**The `begin` is load-bearing and its absence is silent.** `SET LOCAL` outside a
+transaction warns — `SET LOCAL can only be used in transaction blocks` — and
+then does nothing, so the claims are never set and the query runs with whatever
+identity the connection already had. Paste these three lines into `psql` without
+it and you get a result rather than an error: the superuser's, which bypasses
+RLS entirely and shows both tenants' rows. That looks like the demonstration
+working. `rollback` rather than `commit` because nothing here writes; either
+ends the transaction and discards the settings with it, which is the whole point
+of `LOCAL`.
 
 <div class="evidence" markdown="1">
 <div class="label">as Meridian</div>
@@ -351,7 +364,7 @@ select content.register_upload(
     p_size_bytes   => 48213,
     p_content_type => 'application/pdf',
     p_title        => 'Gothenburg PSC report',
-    p_org_id       => '…000a',
+    p_org_id       => 'd0000000-0000-0000-0000-00000000000a',
     p_external_id  => 'psc-2026-018');
 
 select content.record_chunks(:resource_id, $j$[

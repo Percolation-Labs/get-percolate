@@ -1,0 +1,31 @@
+# Which document goes in as what.
+#
+# THE TWO ORG-SCOPED DOCUMENTS ARE THE POINT OF THIS FILE. Three of these are
+# shared -- a PSC finding is not a secret -- and two are internal to one tenant
+# each. `org` becomes the resource's org_id, which is what the multi-tenancy
+# example reads: the same SEARCH run under two sets of claims has to return
+# different rows, and it can only do that if the corpus has rows that differ.
+#
+# Written so the three retrieval modes DISAGREE, because a corpus where they
+# agree cannot show why there are three. `rotterdam-psc` carries the rare code
+# verbatim, so TEXT finds it and SEMANTIC need not. `auxiliary-machinery` says
+# the same thing in none of the same words -- "secondary steam generator"
+# against "auxiliary boiler" -- so SEMANTIC finds it and TEXT cannot.
+# `accommodation-inspection` shares neither and should rank below both.
+
+- file: rotterdam-psc.md
+  title: Rotterdam PSC report
+
+- file: auxiliary-machinery.md
+  title: Auxiliary machinery note
+
+- file: accommodation-inspection.md
+  title: Accommodation inspection
+
+- file: meridian-exposure.md
+  title: Meridian fleet exposure
+  org: d0000000-0000-0000-0000-00000000000a
+
+- file: kestrel-position.md
+  title: Kestrel fleet position
+  org: d0000000-0000-0000-0000-00000000000b

@@ -1,6 +1,6 @@
 # The P8QL grammar
 
-P8QL is the query dialect this collection speaks: seven modes over one endpoint,
+P8QL is the query dialect this collection speaks: eight modes over one endpoint,
 compiled by a Rust parser that ships with the extension. This page is the whole
 grammar at version 0.1.0, and the last section shows you how to ask your own
 database for its version rather than trusting this one.
@@ -13,7 +13,7 @@ quietly does something other than what it says. That rule costs a little
 convenience and buys the property that a query you can read is a query you can
 trust.
 
-## The seven modes
+## The eight modes
 
 Every mode goes through `aiq.query(text, vector)`, which is `POST /rpc/query`
 over the REST surface. The second argument is the embedding, and only the two
@@ -22,15 +22,23 @@ vector modes use it.
 | Mode | Syntax | What it is for |
 |---|---|---|
 | `LOOKUP` | `[FUZZY] LOOKUP "<key>" [, "<key>" …] [LIMIT n]` | Resolve names to nodes. Takes a list, because an agent almost never holds exactly one entity |
-| `GRAPH` | `GRAPH "<key>" [DEPTH n] [TYPE <relation>] [LIMIT n]` | Walk relationships out from a named node |
+| `GRAPH` | `GRAPH "<key>" [DEPTH n] [TYPE <relation>] [LIMIT n]` | Walk relationships out from a named node, to a bounded depth |
+| `RELEVANCE` | `RELEVANCE "<key>" [, "<key>" …] [TYPE <relation>] [LIMIT n]` | Rank what is most related to one or more nodes. Not a walk — it returns an order |
 | `TEXT` | `TEXT "<text>" FROM <source> [LIMIT n]` | Lexical search, needing no embedding anywhere |
 | `SEMANTIC` | `SEMANTIC "<text>" FROM <source> [USING <model>] [LIMIT n]` | Meaning-based search. You supply the vector |
 | `SEARCH` | `SEARCH "<text>" FROM <source> [USING <model>] [LIMIT n]` | Both rankings, fused |
 | `SCHEMA` | `SCHEMA ["<facet>"] [FROM <name>]` | What this database *is*. The only mode answerable before you know anything |
 | SQL | `<any read-only statement>` | The floor everything else sits on |
 
-`DEPTH` and `TYPE` belong to `GRAPH` alone. `FROM` and `USING` belong to the
-three search modes. `LIMIT` works everywhere except `SCHEMA`.
+`DEPTH` belongs to `GRAPH` alone. `TYPE` belongs to `GRAPH` and `RELEVANCE`.
+`FROM` and `USING` belong to the three search modes. `LIMIT` works everywhere
+except `SCHEMA`. A modifier written where it means nothing is **refused**, never
+ignored — `RELEVANCE "acme" DEPTH 2` is an error, and the error says to reach
+for `GRAPH` instead.
+
+`RELEVANCE` is the one mode that runs in the compiled extension rather than in
+SQL, and the one that ships switched off. [Graph algorithms](graph.html) is its
+page.
 
 ## Resolving a name you are not sure of
 
@@ -94,6 +102,64 @@ port and back in again — from a stored one.
 <p class="related"><strong>Related</strong>
 <a href="query.html">the graph modes with captured output</a> ·
 <a href="grammar-workflow.html">using a walk as a workflow step</a></p>
+</details>
+
+## Ranking, which a walk cannot do
+
+`GRAPH` answers *what is within n hops*. That is the right question one and two
+hops out, and it is the wrong shape for "what matters most about this", because
+a depth cap returns everything at that distance in no particular order and
+leaves the ranking to a caller who cannot do it.
+
+What we are trying to do here is ask what is most related to two entities at
+once, without picking a depth.
+{: .goal }
+
+```sql
+select aiq.query('RELEVANCE "bulk harmony", "rotterdam" LIMIT 3');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">against the harbour fixture, as tenant A</div>
+
+```json
+{"mode": "RELEVANCE",
+ "rows": [{"key": "bulk harmony", "entity_type": "vessel",  "score": 0.2429, …},
+          {"key": "rotterdam",    "entity_type": "port",    "score": 0.2424, …},
+          {"key": "meri",         "entity_type": "operator", "score": 0.1667, …}],
+ "exhausted": false,
+ "unresolved": []}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — a list of seeds, a refused DEPTH, and two envelope keys
+that only this mode carries</summary>
+
+It takes a **list** for the same reason `LOOKUP` does: an agent almost never
+holds exactly one entity, and relatedness to a *set* of seeds is a different and
+usually better question than relatedness to one of them. The two seeds above
+score almost identically because each is strongly related to the other.
+
+`DEPTH` is refused rather than ignored, and the error message is the mode's
+argument in one sentence: it ranks by how much score reaches a node, not by how
+many hops away it is.
+
+Two keys appear on this envelope and on no other. `unresolved` is here for the
+reason it is on `LOOKUP` — the underlying call drops a seed it cannot resolve,
+and through a JSON envelope that makes "no such entity" indistinguishable from
+"that entity has nothing near it". `exhausted` is here because this is the only
+budgeted mode; putting it on the seven that cannot be truncated is how a reader
+learns to stop reading it.
+
+The mode ships switched off, so on a fresh database it answers with a sentence
+containing `aiq.enable_graph_algorithms('<your role>')` rather than a permission
+error naming a compiled function you have never heard of.
+
+<p class="related"><strong>Related</strong>
+<a href="graph.html">the six graph algorithms, five of which are SQL-only</a> ·
+<a href="graph.html#what-it-costs-on-a-graph-that-is-not-a-fixture">what it
+costs at four million edges</a></p>
 </details>
 
 ## The three search modes, and why there are three

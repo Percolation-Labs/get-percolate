@@ -5,8 +5,8 @@ answer, compiled into the extension because they are not expressible as a
 query. They ship switched off, and this page starts there.
 {: .lede }
 
-[Querying](query.html) is the page for the seven dialect modes, and `GRAPH` is
-the right tool for one and two hops — it is a hundred times faster than
+[Querying](query.html) is the page for the dialect, and `GRAPH` is the right
+tool for one and two hops — it is a hundred times faster than
 anything here at that distance. What follows is for the questions that need a
 *ranking* rather than a neighbourhood, a *bound* rather than a depth cap, or a
 search over a space too large to enumerate: what is most related to this, how
@@ -64,6 +64,59 @@ and on a fresh install nobody can.
 <a href="operating.html">what else to size before enabling</a> ·
 <a href="install.html">installing the extension in a Postgres you already
 run</a></p>
+</details>
+
+## One of them is a dialect mode
+
+Five of the six are SQL functions and stay that way. The sixth is a P8QL mode,
+because it is the one an agent asks constantly and the one generated SQL gets
+wrong quietly — a depth-capped walk returns the right rows in the wrong order
+and nothing says so.
+
+What we are trying to do here is ask the ranked question through the same REST
+endpoint as every other query.
+{: .goal }
+
+```sql
+select aiq.query('RELEVANCE "bulk harmony", "rotterdam" LIMIT 3');
+-- POST /rpc/query  {"p_query": "RELEVANCE \"bulk harmony\" LIMIT 3"}
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the envelope, with the two keys only this mode carries</div>
+
+```json
+{"mode": "RELEVANCE",
+ "rows": [{"key": "bulk harmony", "entity_type": "vessel",   "score": 0.2429, …},
+          {"key": "rotterdam",    "entity_type": "port",     "score": 0.2424, …},
+          {"key": "meri",         "entity_type": "operator", "score": 0.1667, …}],
+ "exhausted": false,
+ "unresolved": []}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — eight modes, still six modifiers, and a DEPTH that is
+refused</summary>
+
+The dialect budgeted seven modes and six modifiers so that it fits in a prompt,
+and six new modes would have spent that budget on questions asked far less often
+than `LOOKUP`. This costs one mode and **no new modifiers**: `TYPE` and `LIMIT`
+already mean here exactly what they mean on `GRAPH`.
+
+`DEPTH` is refused, and the refusal is the whole argument in one error message —
+*it ranks by how much score reaches a node, not by how many hops away it is*.
+A caller who writes it is reaching for `GRAPH`, and the error says so.
+
+`unresolved` and `exhausted` appear on this envelope and on no other, each for a
+stated reason: the first because a dropped seed would make "no such entity" look
+like "nothing is related", the second because this is the only budgeted mode and
+a flag on the seven that cannot be truncated is a flag nobody reads.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-p8ql.html#ranking-which-a-walk-cannot-do">the mode in the
+grammar reference</a> ·
+<a href="query.html">the seven modes it joined</a></p>
 </details>
 
 ## What is related to this — ranked, not enumerated
@@ -479,6 +532,73 @@ a sketch built by an administrator and read by a tenant comes back
 
 <p class="related"><strong>Related</strong>
 <a href="operating.html">what to schedule, and what to watch</a></p>
+</details>
+
+## Where this reaches across the extension boundary
+
+Percolate is two extensions, and it has to be. `percolate_parser` carries
+compiled functions, so a superuser installs it. `percolate` owns tables and
+row-level security policies, so a superuser must *not* — extension objects
+belong to whoever runs the script, and a superuser-owned table has policies that
+never fire.
+
+Everything on this page crosses that line, and so does a good deal that is not
+on this page.
+
+What we are trying to do here is find out whether the two halves of this
+database are in step.
+{: .goal }
+
+```sql
+select aiq.extension_boundary();
+```
+
+<div class="evidence" markdown="1">
+<div class="label">twenty-three crossings, across four schemas</div>
+
+```json
+{"ok": true,
+ "provider": {"extension": "percolate_parser", "version": "0.1.0", "functions": 21},
+ "crossings": [{"caller": "aiq.query",     "callee": "aiq_parse",         "present": true},
+               {"caller": "aiq.related",   "callee": "p8_graph_ppr",      "present": true},
+               {"caller": "workflow.define_yaml", "callee": "p8_compile_workflow", "present": true},
+               …],
+ "missing": []}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — late binding is what makes the split possible and the
+failure quiet</summary>
+
+plpgsql resolves a function name when it runs, not when it is created. That is
+what lets the two halves install separately, and it is exactly why the failure
+mode is silent: a database can install cleanly, pass its surface audit, and then
+fail on the first call because the compiled half is older than the SQL half.
+
+That is not an exotic state. **A SQL reload does not carry a `.so`**, so it is
+the normal condition of any stack that pulled a new schema without pulling a new
+image — the case this page's own functions are most likely to be missing in.
+
+Three rules follow, and they are why this is a section rather than a footnote.
+A caller across the boundary checks first, and the check names the *extension*
+rather than raising `function p8_graph_ppr does not exist`, which reads as a
+corrupt schema. The compiled half stays pure or close to it — the parser is
+computation over a string, the graph functions read through SPI as the caller so
+row-level security still applies, and nothing across the boundary writes.
+And version skew is treated as a first-class state rather than an error to
+explain away, because two halves shipping on different rails will diverge.
+
+The report is derived from the catalog rather than from a list somebody
+maintains, since a hand-written list drifts both ways at once — claiming a
+crossing that has gone and missing the one added last week. Deriving it caught a
+false positive worth keeping in mind: the first version matched `aiq_parse()`
+inside the *error message* several functions raise to apologise for its absence,
+and reported four crossings that were apologies rather than calls.
+
+<p class="related"><strong>Related</strong>
+<a href="install.html">installing the two extensions in the right order</a> ·
+<a href="operating.html">what to check after an upgrade</a></p>
 </details>
 
 ## What it costs, on a graph that is not a fixture

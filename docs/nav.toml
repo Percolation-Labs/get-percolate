@@ -93,7 +93,7 @@ name = "Reference"
   [[section.page]]
   file = "grammar-p8ql.md"
   title = "The P8QL grammar"
-  summary = "Every query mode at version 0.1.0, what each modifier belongs to, and how to read the grammar out of your own parser."
+  summary = "Every query mode at version 0.1.0, what each modifier belongs to, which one is refused where, and how to read the grammar out of your own parser."
 
   [[section.page]]
   file = "grammar-workflow.md"

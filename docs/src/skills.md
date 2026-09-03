@@ -302,6 +302,15 @@ runtime has no built-in tools at all — and that is the same move delegation
 already makes, where "hand work to agent B" is an ordinary tool reference
 against a gateway rather than a special case in the engine.
 
+**None of this uses a framework's lazy loading, and it does not need to.**
+pydantic-ai has a `DeferredLoadingToolset` that hides tools from a model until
+a search turns them up, which is the same instinct — but the laziness here is a
+SQL projection. The query behind the index asks for the name, the description
+and the trigger, and never for the body, so a body is not read until it is
+named. That holds under any framework or none. It is also the half that is easy
+to get wrong: the first version of this assembled a lazy prompt out of a query
+that had already pulled every attached body out of the database.
+
 `sticky` is why instructions do not churn. Matching per turn against the latest
 message, on its own, means a fragment expanded on turn three is gone on turn
 four when the subject moves — so a model told to cite its sources quietly stops
@@ -313,8 +322,8 @@ size of the fleet.
 <p class="related"><strong>Related</strong>
 <a href="agents.html#the-rest-of-what-the-row-carries">the rest of
 `context_policy`</a> ·
-<a href="https://pydantic.dev/docs/ai/tools-toolsets/toolsets/">the per-run
-hooks this is built on</a></p>
+<a href="https://pydantic.dev/docs/ai/tools-toolsets/toolsets/">pydantic-ai's
+toolsets, which this deliberately does not use</a></p>
 </details>
 
 ## Matching is a query, not a second index
@@ -533,6 +542,11 @@ they read through, verified on a clean install with the collection's surface
 audit passing. The lost-update comparison, the assembled-prompt accounting, the
 retrieval scores and the behaviour probe are all captured output from a live
 database and a live model, not illustrations.
+
+One thing this page does *not* claim: that any of it runs on pydantic-ai's
+deferred loading. It does not. The path that would use it is the gateway, where
+a model asks for a fragment by name — and that path is specified and not yet
+built.
 
 Two things are honest gaps rather than omissions. The behaviour probe is four
 procedures against one model, which is enough to separate 2/20 from 16/20 and

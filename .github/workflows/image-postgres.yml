@@ -1,5 +1,35 @@
 # percolationlabs/percolate-postgres, built once and called from two places.
 #
+# TWO PATHS THROUGH THIS JOB, and conflating them is what made a release feel
+# like a punishment. Measured on the run that prompted the split: 502 seconds
+# total, of which 446 were `docker build` recompiling pgvector and pg_cron from
+# source for both architectures -- arm64 under QEMU emulation on an amd64
+# runner -- and 32 more were the CPU-portability gate pulling both images back
+# down and disassembling them.
+#
+# Almost none of that work was needed. The overwhelmingly common release
+# changes ONE FILE in this image: the generated extension SQL. The compiled
+# artifacts are identical, and they are COPY'd near the end of the Dockerfile
+# on purpose, so the layer ordering was already right and only the cache was
+# missing.
+#
+#   FAST  (verify_binaries: false)  the extension SQL changed and nothing else.
+#         Three COPY layers over a warm cache; the binary gate is skipped
+#         because the binaries are the ones it already passed. This is most
+#         releases. It refuses to run if dev/Dockerfile.pg19 actually changed,
+#         so the fast path cannot silently become the wrong one.
+#
+#   FULL  (verify_binaries: true)   something COMPILED changed: the Dockerfile,
+#         the pgvector or pg_cron version, the base image, or the parser
+#         release. Everything recompiles and the portability gate runs, because
+#         that gate is a statement about compiled binaries and nothing else.
+#
+# The inner development loop is neither of these and does not build an image at
+# all: regenerate the SQL and load it into a running database
+# (`extension/percolate/build-sql.py`, then psql). Seconds. An image is what
+# other people pull, not what you iterate against -- p8-subsystems PACKAGING.md
+# has that end of it.
+#
 # Reusable rather than copied, because it has two callers with the same job:
 # the extension release (parser.yml, right after the release assets exist) and
 # a manual rebuild (images.yml, when the image needs to move and the extension
@@ -26,6 +56,19 @@ on:
       push:
         type: boolean
         default: false
+      # WHICH PATH THIS RUN IS, and the two are not the same job (see the
+      # header). `false` is the fast path: the compiled artifacts are
+      # unchanged, so the build is three COPY layers over a cache and the
+      # binary gate has nothing new to inspect. It is REFUSED below if the
+      # Dockerfile has in fact changed, so choosing it wrongly fails loudly
+      # rather than skipping a check that was needed.
+      verify_binaries:
+        description: >-
+          full path -- recompile and re-run the CPU-portability gate. Needed
+          only when something COMPILED changed: the Dockerfile, pgvector,
+          pg_cron, the base image, or the parser release.
+        type: boolean
+        default: true
     secrets:
       SOURCE_TOKEN:      {required: true}
       DOCKERHUB_USERNAME: {required: false}
@@ -93,6 +136,21 @@ jobs:
           file: dev/Dockerfile.pg19
           platforms: linux/amd64,linux/arm64
           push: ${{ inputs.push }}
+          # THE REASON A RELEASE TOOK EIGHT MINUTES. Without a cache an
+          # ephemeral runner recompiles pgvector and pg_cron from source for
+          # both architectures on every run, with arm64 under QEMU emulation --
+          # 446 of the 502 seconds, measured. Those layers change when the
+          # Dockerfile does, which is rarely; the extension SQL changes on
+          # every spec edit, which is constantly, and it is COPY'd near the end
+          # on purpose. So the layer ordering was already right and the cache
+          # is what lets it pay off.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Recorded ON the image so the fast path below can check its own
+          # precondition instead of trusting whoever ticked the box.
+          labels: |
+            org.percolate.dockerfile-sha=${{ hashFiles('dev/Dockerfile.pg19') }}
+            org.percolate.parser-release=${{ inputs.parser_release }}
           # Two tags, and the second one is the point. `19` is the Postgres
           # major and is mutable -- it is what the compose file and the chart
           # pull, and it moves every release. `19-<version>` never moves, so a
@@ -109,6 +167,32 @@ jobs:
           # opens the door and then inspects the visitor is a report.
           tags: |
             percolationlabs/percolate-postgres:19-${{ inputs.version }}
+
+      # The fast path is only legitimate while the compiled half is identical
+      # to a build that already passed the gate. That is checkable rather than
+      # a matter of discipline: the previous image carries the hash of the
+      # Dockerfile it was built from, and if this tree's differs then something
+      # compiled DID change and the full path is the one that was needed.
+      - name: Refuse the fast path when the compiled half changed
+        if: inputs.push && !inputs.verify_binaries
+        run: |
+          prev=$(docker buildx imagetools inspect \
+                   percolationlabs/percolate-postgres:19 --format \
+                   '{{ index .Image.Config.Labels "org.percolate.dockerfile-sha" }}' \
+                 2>/dev/null || true)
+          now='${{ hashFiles('dev/Dockerfile.pg19') }}'
+          echo "published Dockerfile sha: ${prev:-unknown}"
+          echo "this tree's:              $now"
+          if [ -z "$prev" ]; then
+            echo "::error::the published image carries no Dockerfile hash, so the" >&2
+            echo "::error::fast path cannot prove the compiled half is unchanged." >&2
+            echo "::error::Re-run with verify_binaries: true once, to establish it." >&2
+            exit 1
+          fi
+          [ "$prev" = "$now" ] || {
+            echo "::error::dev/Dockerfile.pg19 changed since the published image." >&2
+            echo "::error::That is the FULL path -- re-run with verify_binaries: true." >&2
+            exit 1; }
 
       - name: Confirm both architectures are in the manifest
         if: inputs.push
@@ -137,7 +221,7 @@ jobs:
       # function carried the instructions. That is why this looks at the
       # library rather than at whether the extension loads.
       - name: Refuse a build compiled for the builder's own CPU
-        if: inputs.push
+        if: inputs.push && inputs.verify_binaries
         run: |
           # SCOPED TO THE FUNCTION THE INSTRUCTION SITS IN, which the first
           # version of this check was not -- and it refused a correct build.

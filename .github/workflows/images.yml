@@ -26,6 +26,15 @@ on:
         description: push to Docker Hub
         type: boolean
         default: false
+      verify_binaries:
+        description: >-
+          FULL path -- recompile and re-run the CPU-portability gate. Leave
+          off when only the extension SQL changed (the fast path, ~1 min);
+          turn on when the Dockerfile, pgvector, pg_cron, the base image or
+          the parser release changed (~8 min). image-postgres.yml's header
+          says why the two are separate.
+        type: boolean
+        default: false
 
 jobs:
   postgres:
@@ -35,6 +44,7 @@ jobs:
       version: ${{ inputs.version }}
       parser_release: v${{ inputs.version }}
       push: ${{ inputs.push }}
+      verify_binaries: ${{ inputs.verify_binaries }}
     secrets:
       SOURCE_TOKEN: ${{ secrets.SOURCE_TOKEN }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

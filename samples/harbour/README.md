@@ -84,10 +84,35 @@ really is the JSON Schema document `agents.md` describes, and here is one.
 
 ## Loading it twice
 
-Every step is idempotent, so a second run is how you pick up an edit rather
-than something to avoid. The documents step re-uploads, and the Content Server
-addresses files by content hash, so identical bytes do not become a second
-resource.
+Every step is idempotent **except the documents step**, so a second full run
+needs care.
+
+The Content Server addresses the *bytes* by content hash — a re-upload stores
+nothing new — but it registers a **second resource row** pointing at them. Both
+rows carry the same title, and the `document` entity's canonical key is
+`coalesce(n.title, n.uri, n.id::text)` under a unique index on
+`(org_id, key, entity_type)`. So the second resource's `parse` task collides:
+
+```
+duplicate key value violates unique constraint "idx_node_keys_canonical"
+DETAIL: Key (org_id, key, entity_type)=(null, rotterdam psc report, document)
+        already exists.
+```
+
+and, being classified retryable, burns its attempts before failing for good.
+Nothing warns you at upload time; the 201 comes back as usual.
+
+So use `--skip-documents` when reloading, unless you have removed the corpus
+first:
+
+```sql
+delete from content.resources where channel_id =
+  (select id from content.channels where name = 'harbour-reports');
+```
+
+This is a real limitation rather than a quirk of the sample — two documents
+that share a title cannot both be registered, and a title is a free-form
+header.
 
 ## Taking it out
 

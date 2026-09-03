@@ -98,7 +98,7 @@ select aiq.query('PATH "bulk harmony", "rotterdam", "meri"');
 </div>
 
 <details class="why" markdown="1">
-<summary>Why it works — nine modes, still six modifiers, and two refusals that
+<summary>Why it works — eight modes, still six modifiers, and two refusals that
 teach</summary>
 
 The dialect budgeted seven modes and six modifiers so that it fits in a prompt,

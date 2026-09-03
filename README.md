@@ -140,7 +140,7 @@ you build the parser — it does not pretend to have succeeded.
 |---|---|
 | **Workflow engine** | DAG, saga compensation, retry with backoff, matrix fan-out, timers, signals, scheduling — all as rows. `SKIP LOCKED` claiming; the database is the queue. |
 | **Agents** | An agent is a row. Prompt, tools and delegation are data. Tools are MCP or OpenAPI endpoints, discovered rather than declared. |
-| **Query layer** | `LOOKUP`, `FUZZY`, `GRAPH`, `TEXT`, `SEMANTIC`, `SEARCH` and plain SQL in one dialect, over PG19 property graphs plus pgvector. |
+| **Query layer** | Eight modes in one dialect — `LOOKUP`, `GRAPH`, `RELEVANCE`, `PATH`, `TEXT`, `SEMANTIC`, `SEARCH`, `SCHEMA` — over PG19 property graphs plus pgvector. `FUZZY` is a modifier on `LOOKUP`, not a mode. |
 | **Content plane** | Channels, files, resources, chunks. Post a file and the ingest worker parses and chunks it with nothing else to write — PDF, DOCX, HTML, markdown and audio; embedding needs a registered model and its key; a CSV becomes a Parquet dataset instead, because a table is not prose. |
 | **Identity** | Users, roles, API keys, sessions, and RLS that is actually on. No role in the system is a superuser. |
 

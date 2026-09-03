@@ -5,7 +5,7 @@ is about what gets into the graph in the first place, and what a caller sees
 when they ask.
 {: .lede }
 
-[The P8QL grammar](grammar-p8ql.html) is the reference for the nine modes and
+[The P8QL grammar](grammar-p8ql.html) is the reference for the eight modes and
 every modifier, and [Graph algorithms](graph.html) is the page for the
 questions a walk cannot answer at all — ranked relatedness, the best routes
 between two things, what connects a result set, and what all of that costs. The four things a reference cannot tell you are who the dialect

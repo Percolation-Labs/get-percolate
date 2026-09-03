@@ -1,6 +1,6 @@
 # The P8QL grammar
 
-P8QL is the query dialect this collection speaks: nine modes over one endpoint,
+P8QL is the query dialect this collection speaks: eight modes over one endpoint,
 compiled by a Rust parser that ships with the extension. This page is the whole
 grammar at version 0.1.0, and the last section shows you how to ask your own
 database for its version rather than trusting this one.
@@ -13,7 +13,7 @@ quietly does something other than what it says. That rule costs a little
 convenience and buys the property that a query you can read is a query you can
 trust.
 
-## The nine modes
+## The eight modes
 
 Every mode goes through `aiq.query(text, vector)`, which is `POST /rpc/query`
 over the REST surface. The second argument is the embedding, and only the two

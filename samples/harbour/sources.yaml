@@ -22,6 +22,15 @@ embedding_models:
     credential_ref: LLM_API_KEY
     is_default: true
 
+# Registering a model does NOT wire it into ingestion. A fresh database already
+# has an `ingest_file` definition -- the extension installs a parse-only one at
+# bootstrap so a channel never points at a definition that does not exist -- and
+# it stays parse-only until something names a model. Without this the corpus
+# below arrives, parses, chunks, and is never embedded; SEMANTIC and SEARCH then
+# return nothing, with no failed task to explain it.
+ingest_pipelines:
+  - model: text-embedding-3-small
+
 entities:
   # Code first: it is the short stable string a person types. Falling back to
   # the name keeps an operator with no code addressable.

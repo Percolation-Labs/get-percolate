@@ -51,4 +51,46 @@ begin
     on conflict (id) do update
         set slug = excluded.slug,
             name = excluded.name;
+
+    -- AND SOMEBODY TO BE. An org on its own is not enough to read its rows:
+    -- from 0.1.4 `rbac.current_org_ids()` intersects the `orgs` claim with real
+    -- membership, so a token asserting an org nobody is in resolves to nothing.
+    -- Measured on 0.1.4, three seats, one question -- how many orgs resolve:
+    --
+    --     {"orgs":[A]}                      no sub          -> 0
+    --     {"sub":u,"orgs":[A]}              no member row   -> 0
+    --     {"sub":u,"orgs":[A]}              member row      -> 1
+    --
+    -- That is the design working -- meta/postmortems' resource-scoping review
+    -- calls a sub-less claim "a token asserting an org with no user behind it,
+    -- which SHOULD get nothing" -- and it is why every page that shows a
+    -- tenant's view needs a subject, not just an org.
+    --
+    -- So the sample ships its own reader rather than enrolling whoever happens
+    -- to exist. Adding every user in the database to a demo's tenants would be
+    -- a sample writing to identities that are not its own; a reader who wants
+    -- their OWN account scoped adds one row, and the graph page says so.
+    insert into rbac.users (id, email, status) values
+        ('e0000000-0000-0000-0000-00000000000a', 'harbour-reader@example.invalid', 'active')
+    on conflict (id) do update set status = 'active';
+
+    -- MERIDIAN ONLY, and the omission is the point. This sample's argument is
+    -- that two tenants share one table and cannot see each other -- cookbook
+    -- §4 is that demonstration -- and a reader who is a member of BOTH is a
+    -- reader who can never show it.
+    --
+    -- NOTHING WOULD HAVE CAUGHT THE SECOND ROW, which is why it is worth a
+    -- comment rather than a deletion. Measured with a Kestrel membership added
+    -- back: ci/examples.sh stays green on all fourteen pages, because every
+    -- documented preamble claims Meridian alone and a claim is intersected
+    -- with membership -- so the extra membership is simply never exercised.
+    -- It only shows up when somebody widens a claim:
+    --
+    --     orgs:[A]      member of A     -> 9 nodes   (5 Meridian + 4 unscoped)
+    --     orgs:[A,B]    member of A,B   -> 11        (the isolation gone)
+    --
+    -- A sample's job is to be true when read, not only when tested.
+    insert into rbac.org_members (org_id, user_id) values
+        ('d0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a')
+    on conflict do nothing;
 end $$;

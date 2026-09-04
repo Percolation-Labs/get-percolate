@@ -87,7 +87,8 @@ What we are trying to do here is become the caller these outputs belong to.
 begin;
 set local role authenticated;
 set local request.jwt.claims =
-  '{"orgs":["d0000000-0000-0000-0000-00000000000a"]}';   -- Meridian
+  '{"sub":"e0000000-0000-0000-0000-00000000000a",
+    "orgs":["d0000000-0000-0000-0000-00000000000a"]}';   -- Meridian
 -- any example from this page goes here
 rollback;
 ```
@@ -103,6 +104,20 @@ than as Meridian and the cluster comes back with nine members instead of six —
 Kestrel's operator, ship and port are visible to a superuser and belong to the
 other tenant — and the second statement, which selects `where size = 6`, then
 matches no component at all and returns zero rows rather than an error.
+
+The subject matters as much as the org, and this is the part that catches
+people. An `orgs` claim is **intersected with real membership** — it is an
+assertion about who you are, not a grant — so a claim naming an organisation
+with no member behind it resolves to no organisations and every query on this
+page returns zero rows, with no error anywhere. The `sub` above is a reader the
+sample creates and enrols in Meridian for this purpose. To use your own account
+instead, put its id in `sub` and give it the membership the claim asserts:
+
+```sql
+insert into rbac.org_members (org_id, user_id)
+values ('d0000000-0000-0000-0000-00000000000a', '<your user id>')
+on conflict do nothing;
+```
 
 The org id above is the one `samples/harbour` loads, and the sample's own
 [README](https://github.com/Percolation-Labs/get-percolate/blob/main/samples/harbour/README.md)

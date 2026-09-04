@@ -282,7 +282,8 @@ and see the answers differ, with nothing in the query filtering by organisation.
 begin;
 set local role authenticated;
 set local request.jwt.claims =
-  '{"orgs":["d0000000-0000-0000-0000-00000000000a"]}';   -- Meridian
+  '{"sub":"e0000000-0000-0000-0000-00000000000a",
+    "orgs":["d0000000-0000-0000-0000-00000000000a"]}';   -- Meridian
 select entity_type, summary from aiq.nodes
 where entity_type in ('vessel','operator') order by entity_type, summary;
 rollback;

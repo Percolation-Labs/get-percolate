@@ -45,17 +45,22 @@ blocks_with_context, substitute = _er.blocks, _er.substitute
 SRC = HERE.parent / "docs" / "src"
 # The harbour fixture's Meridian org, a fixed literal in samples/harbour/schema.sql.
 ORG_A = "d0000000-0000-0000-0000-00000000000a"
+# The Meridian member that samples/harbour/tenants.sql creates.
+HARBOUR_READER = "e0000000-0000-0000-0000-00000000000a"
+
+# ONE DEFINITION OF THE SEAT, and it is a function rather than two format
+# strings because the two format strings is what went wrong. `wrap` and
+# `returns_empty` both open a tenant-a session; when the seat moved from the
+# bootstrapped administrator to the sample's own reader, only `wrap` was
+# changed. So every page RAN correctly and was then re-checked for emptiness
+# from a seat that could see nothing, and three pages were reported as
+# "returned no rows" while returning rows -- a false FAIL, which is the same
+# defect as a false pass and costs the same hour.
+TENANT_A_CLAIMS = ('{"sub":"%s","role":"authenticated","orgs":["%s"]}'
+                   % (HARBOUR_READER, ORG_A))
 
 
-def admin_sub(dsn: str) -> str:
-    r = subprocess.run(
-        ["psql", dsn, "-tAqc",
-         "select id from rbac.users order by created_at limit 1"],
-        capture_output=True, text=True)
-    return r.stdout.strip()
-
-
-def wrap(kind: str, context: str | None, body: str, sub: str) -> str:
+def wrap(kind: str, context: str | None, body: str) -> str:
     """One block, ready to run inside the page's transaction.
 
     The whole page runs in one `begin; ... rollback;` (see run_page), so nothing
@@ -69,12 +74,17 @@ def wrap(kind: str, context: str | None, body: str, sub: str) -> str:
     if context is None:
         return body + "\n"
     if context == "tenant-a":
-        claims = ('{"sub":"%s","role":"authenticated","orgs":["%s"]}' % (sub, ORG_A))
+        # THE SAMPLE'S READER, not the administrator this run bootstrapped.
+        # From 0.1.4 an `orgs` claim is intersected with real membership, so a
+        # subject who is in no org resolves to none -- and the admin is in none.
+        # samples/harbour/tenants.sql ships a member of both tenants for exactly
+        # this, and the documented preamble on graph.md and cookbook.md names
+        # the same subject, so the harness and the reader are in one seat.
         # SET LOCAL, not select set_config(): a select emits a row, which would
         # count as output when a block's own answer is being weighed for emptiness.
         return (
             "set local role authenticated;\n"
-            f"set local request.jwt.claims = '{claims}';\n"
+            f"set local request.jwt.claims = '{TENANT_A_CLAIMS}';\n"
             + body + "\n"
             "reset role;\n"
         )
@@ -82,7 +92,7 @@ def wrap(kind: str, context: str | None, body: str, sub: str) -> str:
                      f"this runner knows: tenant-a")
 
 
-def run_page(dsn: str, page: pathlib.Path, sub: str) -> tuple[bool, str]:
+def run_page(dsn: str, page: pathlib.Path) -> tuple[bool, str]:
     text = substitute(page.read_text())
     marked = [(k, c, e, b) for k, c, e, b in blocks_with_context(text) if k == "sql"]
     if not marked:
@@ -94,7 +104,7 @@ def run_page(dsn: str, page: pathlib.Path, sub: str) -> tuple[bool, str]:
     script = "\\set ON_ERROR_STOP on\nbegin;\n"
     for i, (k, c, e, b) in enumerate(marked):
         script += f"\\echo '### block {i} (as:{c or 'owner'})'\n"
-        script += wrap(k, c, b, sub)
+        script += wrap(k, c, b)
     script += "rollback;\n"
     r = subprocess.run(["psql", dsn, "-q"], input=script,
                        capture_output=True, text=True)
@@ -110,23 +120,22 @@ def run_page(dsn: str, page: pathlib.Path, sub: str) -> tuple[bool, str]:
     for i, (k, c, e, b) in enumerate(marked):
         if c != "tenant-a" or e:
             continue
-        empty, detail = returns_empty(dsn, b, sub)
+        empty, detail = returns_empty(dsn, b)
         if empty:
             return False, (f"block {i} returned no rows ({detail}) -- if that is "
                            f"correct, mark it `as:tenant-a rows:0`")
     return True, f"{len(marked)} blocks ran"
 
 
-def returns_empty(dsn: str, body: str, sub: str) -> tuple[bool, str]:
+def returns_empty(dsn: str, body: str) -> tuple[bool, str]:
     """Run one tenant read standalone (rolled back) and say whether it is empty.
 
     Empty means: no output rows at all, or a lone `aiq.query`/graph envelope whose
     `rows` array is []. Anything else -- a scalar, a JSON object with no `rows`
     key, one or more table rows -- is a non-empty answer.
     """
-    claims = ('{"sub":"%s","role":"authenticated","orgs":["%s"]}' % (sub, ORG_A))
     script = ("begin;\nset local role authenticated;\n"
-              f"set local request.jwt.claims = '{claims}';\n"
+              f"set local request.jwt.claims = '{TENANT_A_CLAIMS}';\n"
               + body + "\nrollback;\n")
     r = subprocess.run(["psql", dsn, "-tAq", "-v", "ON_ERROR_STOP=1"],
                        input=script, capture_output=True, text=True)
@@ -148,14 +157,21 @@ def main() -> int:
     ap.add_argument("--dsn", required=True)
     ap.add_argument("--page", help="one page (basename), else every page")
     a = ap.parse_args()
-    sub = admin_sub(a.dsn)
-    if not sub:
-        print("no user in rbac.users -- load the sample first", file=sys.stderr)
+    # The seat has to EXIST, or every tenant read comes back empty and the
+    # failure reads as "the documentation is wrong" rather than "the sample
+    # did not load".
+    r = subprocess.run(["psql", a.dsn, "-tAqc",
+                        "select 1 from rbac.org_members m join rbac.users u "
+                        "on u.id = m.user_id where u.id = '%s' and m.org_id = '%s'"
+                        % (HARBOUR_READER, ORG_A)], capture_output=True, text=True)
+    if r.stdout.strip() != "1":
+        print(f"no member {HARBOUR_READER} of org {ORG_A} -- "
+              f"load samples/harbour (tenants.sql creates them)", file=sys.stderr)
         return 2
     pages = [SRC / a.page] if a.page else sorted(SRC.glob("*.md"))
     bad = 0
     for p in pages:
-        ok, msg = run_page(a.dsn, p, sub)
+        ok, msg = run_page(a.dsn, p)
         mark = "ok  " if ok else "FAIL"
         # Pages with no marked blocks are silent unless asked for by name.
         if ok and msg == "no marked sql blocks" and not a.page:

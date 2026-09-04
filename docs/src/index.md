@@ -137,9 +137,9 @@ Everything here describes what is shipped and running, and it was run against a
 live database before it was written down. Where something did not survive that,
 we changed the page rather than the claim.
 
-There is no per-page status label, and its removal was deliberate. A page that
-said "designed" was still a page on the site, and "designed" is indistinguishable
-from "works" to anybody skimming. So a thing that is not built does not get a
+We took the per-page status label off the site. A page that said "designed" was
+still a page on the site, and "designed" is indistinguishable from "works" to
+anybody skimming. So a thing that is not built does not get a
 page here — it gets a spec in
 [p8-subsystems](https://github.com/percolating-sirsh/p8-subsystems). Gaps inside
 a feature that *is* shipped are named where they bite, in the section they belong

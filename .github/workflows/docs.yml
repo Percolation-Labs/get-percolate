@@ -8,7 +8,12 @@ name: docs
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "charts/**", ".github/workflows/docs.yml"]
+    # README.md is here because this job runs `ci/versions.py --check`, and one
+    # of the literals that check verifies -- the documented pip floor -- lives
+    # in the README. Scoping the job without it would have left the only gate on
+    # that literal unreachable by the edit that breaks it.
+    paths: ["docs/**", "charts/**", "README.md", "versions.toml", "ci/versions.py",
+            ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 permissions:

@@ -230,6 +230,42 @@ SHELL = """<!doctype html>
 """
 
 
+def broken_anchors() -> list[str]:
+    """Internal links whose `#anchor` matches no heading on the target page.
+
+    The nav check below refuses a page that does not exist. Nothing refused a
+    LINK INTO a page that does not exist, or into a heading that does not --
+    which renders as a link that quietly lands at the top of the right page, or
+    at a 404, and ships because nobody clicks every link.
+
+    Written after producing three of them in one afternoon while editing three
+    pages, each caught only because a scan was run by hand. The first one, on
+    its own, did not earn this: one instance that never shipped is a risk, not
+    an incident. Three in one sitting, with nothing between them and a reader
+    except somebody remembering, is the other thing.
+
+    The slug rule mirrors what the renderer does with a heading; if the two ever
+    disagree this reports links that are fine, which is the direction that gets
+    noticed rather than the one that does not.
+    """
+    def slug(h: str) -> str:
+        s = re.sub(r"""[`*\[\](),.:;?!'"]""", "", h.strip().lower())
+        return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+    heads = {f.stem: {slug(m.group(2))
+                      for m in re.finditer(r"^(#{2,4})\s+(.*)$", f.read_text(), re.M)}
+             for f in SRC.glob("*.md")}
+    bad = []
+    for f in sorted(SRC.glob("*.md")):
+        for m in re.finditer(r"\]\((?:([a-z0-9-]+)\.html)?#([a-z0-9-]+)\)", f.read_text()):
+            page, anchor = (m.group(1) or f.stem), m.group(2)
+            if page not in heads:
+                bad.append(f"{f.name}: links to {page}.html, which is not a page")
+            elif anchor not in heads[page]:
+                bad.append(f"{f.name}: #{anchor} is not a heading in {page}.md")
+    return bad
+
+
 def build() -> int:
     nav = load_nav()
     versions = load_versions()
@@ -249,6 +285,12 @@ def build() -> int:
         # ships because nobody clicks every link.
         print(f"error: nav.toml names pages that do not exist: {', '.join(missing)}",
               file=sys.stderr)
+        return 1
+
+    dangling = broken_anchors()
+    if dangling:
+        print("error: internal links that go nowhere:\n  "
+              + "\n  ".join(dangling), file=sys.stderr)
         return 1
 
     full_md = [f"# {nav['site_name']} — {nav['site_tagline']}\n",

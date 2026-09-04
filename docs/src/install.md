@@ -27,13 +27,21 @@ all — or many more, a pool per queue. The one pairing not to collapse is the t
 workers: `--queue` takes a single queue, so merging them means choosing which of
 outbound calls and ingestion silently stops happening.
 
-`:19` is a moving tag, so **updating an existing install starts with a pull**:
-`docker compose up -d` on its own will happily keep running the image you
-already have, and report success doing it.
+The db image is **pinned to a version**, so `docker compose up -d` gives every
+reader the same database rather than whatever their machine last pulled.
+Updating therefore means changing the tag, not pulling a moving one:
 
 ```bash
-docker compose pull && docker compose up -d
+# edit compose/docker-compose.yml: percolate-postgres:19-<old> -> :19-<new>
+docker compose up -d
 ```
+
+That is the deliberate half of a trade. `:19` used to float, and a floating tag
+makes "works on my machine" literally true and unfalsifiable — a stale local
+`:19` served @@extension@@'s predecessor here for an afternoon and produced a
+convincing bug report about a defect that had already been fixed. `ci/versions.py`
+now enforces the pinned tag against `versions.toml`, so the number moves in one
+place and every file that repeats it moves with it.
 
 The new image brings the new extension files; one more statement installs them
 into the database that already exists:

@@ -96,10 +96,13 @@ finished by the time `start_workflow` returns to you.
 The rows land on the task, so the graph walk the middle step did is readable
 straight out of `workflow.tasks.output` rather than having to be recomputed.
 
-One trap lives here, and it is the seventh P8QL mode. A `p8ql:` step holding
-*plain SQL* does not execute and the task still reports `done`, because
-executing plain SQL is the `SECURITY INVOKER` passthrough's job and a step has
-no caller to run as.
+One thing to know lives here, and it is the seventh P8QL mode. A `p8ql:` step
+holding *plain SQL* executes, and inside a step the invoker is the **engine
+owner** — which owns every table and is not subject to their row-level
+security. So such a step reads across tenants. It is a deliberate beta trade and
+`percolate.sql_policy = 'registered'` refuses it;
+[the cookbook](cookbook.html#6-a-workflow-with-nothing-running) has the whole of
+it.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-p8ql.html#plain-sql-is-a-mode">why plain SQL behaves that

@@ -337,22 +337,29 @@ it is the job of `aiq.sql_passthrough` — a `SECURITY INVOKER` function, so the
 statement runs as you and not as the definer that would otherwise be reading on
 your behalf.
 
-The consequence catches people in workflows. A `p8ql:` step holding plain SQL has
-no caller to be, so it stores the plan and completes:
+The consequence catches people in workflows, in the other direction from the one
+this page used to describe. `aiq.query` does not run SQL mode — it returns the
+statement and a note — but `workflow.p8ql`, the step function, honours the note
+by putting the statement through the passthrough. So the step **executes**, and
+inside a step the invoker is the engine owner:
 
 <div class="evidence" markdown="1">
-<div class="label">workflow.tasks.output</div>
+<div class="label">workflow.tasks.output, for `p8ql: "select current_user"`</div>
 
 ```
- status | mode |                               note
---------+------+------------------------------------------------------------------
- done   | SQL  | execute via the SECURITY INVOKER read-only passthrough, not here
+  status   | mode |                  rows
+-----------+------+------------------------------
+ succeeded | SQL  | [{"current_user": "app_owner"}]
 ```
 </div>
 
-Treat a step whose output carries that note as a step that did not do what its
-author meant. If you want SQL in a workflow, register a function and use
-`sql: {function: …}`.
+`app_owner` owns every table and bypasses their RLS, so a plain-SQL step reads
+across tenants — a deliberate beta trade, refused by
+`percolate.sql_policy = 'registered'`, and covered in full in
+[the cookbook](cookbook.html#6-a-workflow-with-nothing-running). Called directly
+rather than from a step you are the invoker, which is the case this section is
+about and is unaffected. If you want SQL in a workflow without the owner's
+reach, register a function and use `sql: {function: …}`.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">registering

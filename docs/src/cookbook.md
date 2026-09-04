@@ -477,25 +477,45 @@ that makes it ready. There is no queue to poll and no process to deploy, and the
 rows land on the task, so the graph walk the middle step did is readable
 straight out of `workflow.tasks.output`.
 
-The trap is worth knowing before you write these. A `p8ql:` step holding a
-*dialect* query executes and returns rows, as above. A `p8ql:` step holding
-**plain SQL** does not execute, and the task still goes `succeeded`:
+The thing worth knowing before you write these is **whose privileges a step
+runs with**. A `p8ql:` step holding a *dialect* query executes and returns rows,
+as above, scoped the way every other read is. A `p8ql:` step holding **plain
+SQL** also executes — and it runs as the **engine owner**, not as you:
 
 <div class="evidence" markdown="1">
-<div class="label">workflow.tasks.output</div>
+<div class="label">workflow.tasks.output, for `p8ql: "select current_user"`</div>
 
 ```
-  status   | mode |                               note
------------+------+------------------------------------------------------------------
- succeeded | SQL  | execute via the SECURITY INVOKER read-only passthrough, not here
+  status   | mode |                    rows
+-----------+------+---------------------------------------------
+ succeeded | SQL  | [{"u": "app_owner"}]
 ```
 </div>
 
-Plain SQL goes through `aiq.sql_passthrough`, which runs as the caller rather
-than as the definer, and a step has no caller to be. Treat a step whose output
-carries that note as a step that did not do what its author meant. If you want
-SQL in a workflow, register a function and use `sql: {function: …}`, which is
-scenario 7.
+`app_owner` owns every table and is not subject to their row-level security, so
+a plain-SQL step reads across tenants and reads tables you hold no grant on.
+**Anyone who may define a workflow may therefore read anything in the
+database.** That is a deliberate trade for the beta — expressiveness over
+isolation — and it is stated here rather than discovered, because the previous
+version of this page claimed the opposite: that such a step did not execute and
+returned a note. It executes.
+
+Two things bound it. A step without `write: true` runs in a read-only
+transaction, which the database enforces rather than a keyword filter, so this
+is a read rather than a tamper. And a deployment that will not take the trade
+turns it off:
+
+```sql
+alter database <yourdb> set percolate.sql_policy = 'registered';
+```
+
+Statements are then refused — both spellings, `sql:` at authoring and `p8ql:`
+at execution — and only functions someone registered will run. Calling
+`workflow.p8ql()` directly is unaffected either way: outside a step you are the
+invoker, so it runs as you, under RLS.
+
+If you want SQL in a workflow and do not want the owner's reach, register a
+function and use `sql: {function: …}`, which is scenario 7.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-p8ql.html#plain-sql-is-a-mode">the passthrough, and why SQL is

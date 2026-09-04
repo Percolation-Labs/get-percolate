@@ -160,11 +160,24 @@ catches everything else, including a volatile function that writes, which no
 wrapping sees. The keyword check beside them is a courtesy that turns an abort
 into a sentence naming `write: true`.
 
-Every `{{template}}` is substituted as a **quoted literal**, so a run input of
-`'; drop table x; --` becomes a string containing that text. Quotes you write
-yourself are consumed rather than doubled, so `cik = '{{run.cik}}'` and
-`cik = {{run.cik}}` mean the same thing. The one thing you cannot template is
-an identifier — `from {{run.table}}` becomes `from 'sec.facts'`, a syntax error.
+Every `{{template}}` becomes a **bound parameter**. The statement is rewritten
+so each reference reads `$1->>'<ref>'` and the values are bound alongside it, so
+a run input of `'; drop table x; --` is a string — not because it was escaped,
+but because it never reaches the parser. Quotes you write yourself are consumed
+rather than doubled, so `cik = '{{run.cik}}'` and `cik = {{run.cik}}` mean the
+same thing.
+
+This covers `{{item.*}}` inside a `matrix:` template as well, which matters
+because those values are rows rather than something the author typed. A JSON
+number binds as `::numeric` and a boolean as `::boolean`, so `where n =
+{{run.n}}` still works against an integer column; a text value compared against
+a non-text column needs your own cast, because `->>` is text where a quoted
+literal used to be coerced by context.
+
+The one thing you cannot template is an identifier — `from {{run.table}}`
+becomes `from ($1->>'run.table')` and fails with `syntax error at or near "$1"`.
+That is the parameterisation working, not a gap: values can be bound and names
+cannot, which is where every database driver draws the same line.
 
 **What it costs.** A statement runs as the engine owner, which owns every table
 and bypasses row-level security, so anyone who may define a workflow may read

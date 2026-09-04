@@ -17,12 +17,16 @@ file into searchable chunks.
 {: .goal }
 
 The model has to be registered before the pipeline can name it, so this is two
-statements and the first one is not optional:
+statements and the first one is not optional. `on conflict` because the harbour
+sample registers this same model — if you followed the install guide it is
+already there, and the insert is then a no-op rather than a duplicate-key error
+on the first line of this page:
 
 ```sql
 insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)
 values ('text-embedding-3-small', 1536, 'openai',
-        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true);
+        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true)
+on conflict (name) do nothing;
 select aiq.register_embedding_space('text-embedding-3-small');
 
 select content.install_ingest_workflow('text-embedding-3-small');

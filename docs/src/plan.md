@@ -20,10 +20,18 @@ select workflow.plan_document('sec_revenue');
 server and a corpus, which is what makes it worth reading — and it is not
 installed by anything here, so that exact call answers `no workflow definition
 named sec_revenue` on your stack. Every function on this page takes any
-definition name, so substitute one you have. `ingest_file`, from
-[uploading files](ingest.html), is the one you are most likely to already have
-installed, and it exercises the same four: `plan_document`, `plan_graph`,
-`plan_probe` and `plan_status` all resolve against it.
+definition name, so substitute one you have.
+
+**`harbour_deficiencies`, from the sample the install guide loads, is the one to
+use** — it has an agent and a corpus behind it, so all four functions have
+something to say about it. `ingest_file` from [uploading files](ingest.html)
+also resolves, but `plan_probe` finds nothing to report on it.
+
+And **`plan_status` reports on runs, so it is empty until you start one.**
+Measured on `harbour_deficiencies`: no rows before, four after a single
+`start_workflow`. An empty result there is the absence of runs, not a workflow
+that failed to resolve — which is the one reading of these four that looks like
+a broken install and is not.
 
 <div class="evidence" markdown="1">
 <div class="label">one step of five</div>

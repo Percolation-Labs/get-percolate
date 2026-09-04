@@ -20,8 +20,11 @@ steps:
     sql: {function: p8ql, args: ['SELECT now()']}
 $$);
 
-select workflow.start_workflow('hello', '{}'::jsonb);
+select workflow.start_workflow('hello', '{}'::jsonb) as run \gset
 ```
+
+`\gset` puts the run id in a `psql` variable, because the next thing you will
+want is to look at it and the id is the only handle you get.
 
 <details class="why" markdown="1">
 <summary>Why it works — the run has already finished by the time
@@ -136,9 +139,16 @@ over HTTP.
 {: .goal }
 
 ```sql
-select status, count(*) from workflow.tasks_api where run_id = :run group by 1;
-select * from workflow.runs_api where id = :run;
+select status, count(*) from workflow.tasks_api where run_id = :'run'::uuid group by 1;
+select * from workflow.runs_api where id = :'run'::uuid;
 ```
+
+`:'run'` with the quotes, not `:run` — psql interpolates a bare `:run` as a raw
+token and a uuid is not one, so the unquoted form is a syntax error rather than
+an empty result. It comes from the `\gset` above; if you have started a new
+shell since then, start another run rather than hunting for the id, because
+`workflow.definitions` is not readable by an application role and there is no
+by-name lookup for a run.
 
 **These need an identity, and say nothing when there isn't one.** Both are
 RLS-filtered, so on an install where you have not yet run

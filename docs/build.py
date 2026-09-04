@@ -51,13 +51,23 @@ def load_claims() -> dict:
     return json.loads(f.read_text())
 
 
-def claim_footnote(page_file: str, claims: dict) -> str:
+def claim_footnote(page_file: str, claims: dict, versions: dict) -> str:
     """A quiet line of claim ids at the foot of a page.
 
     Small on purpose. It is a reference for somebody checking whether a promise
     on this page is tested, not something a reader of the page needs -- so it
     sits under everything, in the smallest legible type, and says the status
     plainly rather than colour-coding it.
+
+    THE CLAIM TEXT GOES THROUGH substitute() LIKE EVERY OTHER STRING THAT
+    REACHES A PAGE. claims.json holds each claim's invocable surface as it was
+    extracted from the source markdown -- BEFORE substitution -- so a claim
+    whose surface is `pip install 'percolate-core>=@@core_min@@'` carried the
+    raw placeholder into the rendered tooltip, while the code block three lines
+    above it resolved correctly. Cosmetic, and it is a placeholder reaching
+    output, which the strict unknown-placeholder check exists everywhere else
+    to prevent -- it never fired here because this path never called the
+    function that raises it. One renderer, one substitution.
     """
     rows = claims.get(page_file) or []
     if not rows:
@@ -67,8 +77,9 @@ def claim_footnote(page_file: str, claims: dict) -> str:
         if r["id"] in seen:
             continue
         seen.add(r["id"])
+        claim_text = substitute(r["claim"], versions, f'claims.json ({r["id"]})')
         items.append(
-            f'<span class="claim-id" title="{html.escape(r["claim"])}">'
+            f'<span class="claim-id" title="{html.escape(claim_text)}">'
             f'{html.escape(r["id"])}<em>{html.escape(r["status"])}</em></span>')
     covered = sum(1 for r in rows if r["status"] == "covered")
     return (
@@ -317,7 +328,7 @@ def build() -> int:
             url=page["url"],
             summary=html.escape(summary),
             sidebar=sidebar(nav, page["url"]),
-            body=body + claim_footnote(page["file"], claims),
+            body=body + claim_footnote(page["file"], claims, versions),
             pager=pager(all_pages, i),
         ))
 

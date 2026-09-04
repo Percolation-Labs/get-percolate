@@ -39,13 +39,13 @@ select aiq.enable_graph_algorithms('authenticated', false);
 <div class="label">what the grant reports</div>
 
 ```json
-{"role": "authenticated", "enabled": true, "functions": 25,
+{"role": "authenticated", "enabled": true, "functions": 27,
  "note": "the first call in each backend builds an adjacency snapshot; …"}
 ```
 </div>
 
 <details class="why" markdown="1">
-<summary>Why it works — twenty-five functions, because a grant on half of them
+<summary>Why it works — twenty-seven functions, because a grant on half of them
 is half a grant</summary>
 
 The wrappers in `aiq` are `SECURITY INVOKER`, so they run as the caller and the
@@ -65,6 +65,46 @@ and on a fresh install nobody can.
 <a href="install.html">installing the extension in a Postgres you already
 run</a></p>
 </details>
+
+## Every output on this page is a tenant's view
+
+These run as the caller and the adjacency snapshot is built as the caller, so
+every number below depends on who is asking. The outputs on this page were
+taken as tenant A — Meridian — and they are *not* what the
+`postgres://p8:p8@localhost:5432/percolate` connection on the install page
+returns, because that role is a superuser and a superuser bypasses RLS
+unconditionally. You get more rows, different scores, and no error to tell you
+which you are looking at.
+
+What we are trying to do here is become the caller these outputs belong to.
+{: .goal }
+
+```sql
+begin;
+set local role authenticated;
+set local request.jwt.claims =
+  '{"orgs":["d0000000-0000-0000-0000-00000000000a"]}';   -- Meridian
+-- any example from this page goes here
+rollback;
+```
+
+Wrap each example below in those four lines. The `begin` is load-bearing and
+its absence is silent: `SET LOCAL` outside a transaction warns and then does
+nothing, so the claims are never set and you get the superuser's answer, which
+looks like the example working.
+
+It is worth seeing the difference once, because it does not announce itself.
+Run [the components query](#what-is-linked-to-what-at-all) as the owner rather
+than as Meridian and the cluster comes back with nine members instead of six —
+Kestrel's operator, ship and port are visible to a superuser and belong to the
+other tenant — and the second statement, which selects `where size = 6`, then
+matches no component at all and returns zero rows rather than an error.
+
+The org id above is the one `samples/harbour` loads, and the sample's own
+[README](https://github.com/percolating-sirsh/get-percolate/blob/main/samples/harbour/README.md)
+lists both. [Two tenants, one
+table](cookbook.html#4-two-tenants-one-table) is the same mechanism shown from
+the other side.
 
 ## Two of them are dialect modes
 
@@ -194,13 +234,32 @@ What we are trying to do here is find how a ship reaches its ultimate parent,
 and see the second-best route as well as the first.
 {: .goal }
 
+`graph_paths` answers in node ids, because ids are what a caller joins on. The
+projection back to names is the join you would write anyway, and it is spelled
+out here rather than elided so the table below is something you can produce:
+
 ```sql
-select (v->>'hops')::int as hops, round((v->>'cost')::numeric, 2) as cost, …
-from jsonb_array_elements(aiq.graph_paths('bulk harmony', 'meri', 2)->'paths') v;
+with paths as (
+    select row_number() over (order by (v->>'cost')::numeric) as route,
+           (v->>'hops')::int as hops,
+           round((v->>'cost')::numeric, 2) as cost,
+           v->'path' as path
+    from jsonb_array_elements(aiq.graph_paths('bulk harmony', 'meri', 2)->'paths') v
+), hop as (
+    select p.route, p.hops, p.cost, e.ord,
+           (select key from aiq.node_keys where node_id = (e.el->>'from')::uuid and kind = 'canonical') as src,
+           (select key from aiq.node_keys where node_id = (e.el->>'to')::uuid   and kind = 'canonical') as dst,
+           e.el->>'relation' as relation
+    from paths p, lateral jsonb_array_elements(p.path) with ordinality e(el, ord)
+)
+select route, hops, cost,
+       min(src) filter (where ord = 1) || ' -> ' || string_agg(dst, ' -> ' order by ord) as route_taken,
+       string_agg(relation, ', ' order by ord) as relations
+from hop group by route, hops, cost order by route;
 ```
 
 <div class="evidence" markdown="1">
-<div class="label">projected into node keys — `dev/examples/11-graph.sql` has the full query</div>
+<div class="label">projected into node keys, as Meridian</div>
 
 ```
  route | hops | cost |                    route_taken                     |               relations
@@ -561,7 +620,7 @@ select aiq.extension_boundary();
 ```
 
 <div class="evidence" markdown="1">
-<div class="label">twenty-three crossings, across four schemas</div>
+<div class="label">twenty-three crossings, across two schemas</div>
 
 ```json
 {"ok": true,

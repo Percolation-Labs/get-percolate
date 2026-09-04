@@ -20,31 +20,33 @@ rather than after the Postgres features that implement them. Resolve a name,
 walk out from a thing, find things that mean the same, find things that say the
 same, ask what exists at all.
 
-What we are trying to do here is find a company from a name somebody typed
+What we are trying to do here is find an operator from a name somebody typed
 badly, and compare that against writing the same intent in SQL.
 {: .goal }
 
 ```sql
-select aiq.query('FUZZY LOOKUP "acme robotic" LIMIT 5');
+select aiq.query('FUZZY LOOKUP "meridien" LIMIT 5');
 ```
 
 ```sql
 -- the obvious hand-written equivalent
-select n.entity_type, k.key, similarity(k.key, 'acme robotic') as score
+select n.entity_type, k.key, similarity(k.key, 'meridien') as score
 from aiq.node_keys k join aiq.nodes n on n.id = k.node_id
-where k.key % 'acme robotic'
-order by similarity(k.key, 'acme robotic') desc limit 5;
+where k.key % 'meridien'
+order by similarity(k.key, 'meridien') desc limit 5;
 ```
 
 <div class="evidence" markdown="1">
-<div class="label">the hand-written one, against the sample fixture</div>
+<div class="label">the hand-written one, against the harbour fixture</div>
 
 ```
  entity_type |      key      | score
 -------------+---------------+-------
- company     | acme robotics | 0.800
- company     | acme          | 0.385
- company     | acme          | 0.385
+ operator    | meridian      | 0.500
+ operator    | meri          | 0.400
+ operator    | meridian bulk | 0.353
+ vessel      | meridian dawn | 0.353
+ vessel      | meridian star | 0.353
 ```
 </div>
 
@@ -53,10 +55,19 @@ order by similarity(k.key, 'acme robotic') desc limit 5;
 
 ```json
 {"mode": "LOOKUP",
- "plan": {"ok": true, "args": ["acme robotic"], "fuzzy": true, "limit": 5, …},
- "rows": [{"node_id": "d767d1c8…", "entity_type": "company",
-           "key": "acme robotics", "match_kind": "fuzzy", "score": 0.8,
-           "input_key": "acme robotic"}],
+ "plan": {"ok": true, "args": ["meridien"], "fuzzy": true, "limit": 5, …},
+ "rows": [{"node_id": "1cf8519b…", "entity_type": "operator",
+           "key": "meridian", "match_kind": "fuzzy", "score": 0.5,
+           "input_key": "meridien"},
+          {"node_id": "d18825eb…", "entity_type": "operator",
+           "key": "meridian bulk", "match_kind": "fuzzy", "score": 0.3529412,
+           "input_key": "meridien"},
+          {"node_id": "eac3f853…", "entity_type": "vessel",
+           "key": "meridian dawn", "match_kind": "fuzzy", "score": 0.3529412,
+           "input_key": "meridien"},
+          {"node_id": "fbaa9eb3…", "entity_type": "vessel",
+           "key": "meridian star", "match_kind": "fuzzy", "score": 0.3529412,
+           "input_key": "meridien"}],
  "unresolved": []}
 ```
 </div>
@@ -65,18 +76,20 @@ order by similarity(k.key, 'acme robotic') desc limit 5;
 <summary>Why it works — the abstraction is over an investigation procedure, not
 over one query</summary>
 
-Those are the same company three times and the same company once. One node
-carries three keys — `acme` canonical, `acme` short, `acme robotics` alias — so
-the trigram query returns a row per matching *key*, and a caller that hydrates
-each one fetches the same entity three times. `LOOKUP` answers "which nodes
-match this string", which is the question that was actually asked, and it
-reports which key matched so nothing is hidden by the deduplication.
+Those are five keys and four things. Meridian Line carries two of them — `meri`
+canonical and `meridian` short — so the trigram query returns a row per matching
+*key*, and a caller that hydrates each one fetches the same operator twice.
+`LOOKUP` answers "which nodes match this string", which is the question that was
+actually asked, so it returns the operator once and reports which key matched,
+and nothing is hidden by the deduplication.
 
 The mode is also a cascade rather than a query: exact canonical first, then
 short and alias, and only then trigram, each stage short-circuiting if it found
-anything. Fuzzy matching a name that is spelled correctly is a way to get a
-worse answer slowly, and that ordering is the sort of thing you write once
-rather than in every prompt.
+anything. You can watch it short-circuit — `FUZZY LOOKUP "meridian"` comes back
+with `"match_kind": "short"` and `"score": 1`, having never reached the trigram
+stage, because the string it was given is a key that exists. Fuzzy matching a
+name that is spelled correctly is a way to get a worse answer slowly, and that
+ordering is the sort of thing you write once rather than in every prompt.
 
 Each mode stands over a different Postgres feature — `pg_trgm` here, `pgvector`
 under `SEMANTIC`, `tsvector` under `TEXT`, SQL/PGQ `GRAPH_TABLE` under `GRAPH` —
@@ -226,9 +239,21 @@ What we are trying to do here is query as a real caller, with their own identity
 attached.
 {: .goal }
 
+```bash
+curl -X POST http://localhost:3000/rpc/query \
+  -H 'Content-Type: application/json' \
+  -H 'Content-Profile: aiq' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"p_query": "LOOKUP \"meridian\""}'
 ```
-POST /rpc/query   {"p_query": "LOOKUP \"acme\""}
-```
+
+**`Content-Profile: aiq` is not optional.** PostgREST exposes several schemas
+and the *first* one in `PGRST_DB_SCHEMAS` is the default, which in the shipped
+compose file is `content` — so a `POST /rpc/query` without the header looks for
+`content.query`, does not find it, and answers `404` with `PGRST202: Could not
+find the function content.query`. That reads like the function was never
+installed. It is there; you asked the wrong schema for it. Reads use
+`Accept-Profile` and writes and RPC use `Content-Profile`.
 
 <details class="why" markdown="1">
 <summary>Why it works — and why an empty result is usually correct</summary>

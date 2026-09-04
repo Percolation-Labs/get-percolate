@@ -445,15 +445,27 @@ steps:
     p8ql: 'TEXT "PSC-441" FROM chunks LIMIT 3'
 ```
 
+`worker` and `rows_out` are not columns — `claimed_by` carries the worker and
+the rows are inside the task's output document, so the query that produced the
+table below is:
+
+```sql
+select step_key, kind, status, claimed_by as worker,
+       jsonb_array_length(output->'result'->'rows') as rows_out
+from workflow.tasks
+where run_id = (select id from workflow.runs order by created_at desc limit 1)
+order by step_key;
+```
+
 <div class="evidence" markdown="1">
 <div class="label">workflow.tasks</div>
 
 ```
- step_key | kind | status |   worker    | rows_out
-----------+------+--------+-------------+----------
- fleet    | sql  | done   | in-database |        4
- operator | sql  | done   | in-database |        1
- reports  | sql  | done   | in-database |        2
+ step_key | kind |  status   |   worker    | rows_out
+----------+------+-----------+-------------+----------
+ fleet    | sql  | succeeded | in-database |        4
+ operator | sql  | succeeded | in-database |        1
+ reports  | sql  | succeeded | in-database |        2
 ```
 </div>
 
@@ -467,15 +479,15 @@ straight out of `workflow.tasks.output`.
 
 The trap is worth knowing before you write these. A `p8ql:` step holding a
 *dialect* query executes and returns rows, as above. A `p8ql:` step holding
-**plain SQL** does not execute, and the task still goes `done`:
+**plain SQL** does not execute, and the task still goes `succeeded`:
 
 <div class="evidence" markdown="1">
 <div class="label">workflow.tasks.output</div>
 
 ```
- status | mode |                               note
---------+------+------------------------------------------------------------------
- done   | SQL  | execute via the SECURITY INVOKER read-only passthrough, not here
+  status   | mode |                               note
+-----------+------+------------------------------------------------------------------
+ succeeded | SQL  | execute via the SECURITY INVOKER read-only passthrough, not here
 ```
 </div>
 
@@ -511,12 +523,12 @@ vessel with an open deficiency, without deciding the width outside the database.
 <div class="label">workflow.tasks — two vessels had open deficiencies</div>
 
 ```
- step_key |  kind  | status |   worker
-----------+--------+--------+-------------
- fan      | matrix | done   | in-database
- fan[0]   | sql    | done   | in-database
- fan[1]   | sql    | done   | in-database
- report   | sql    | done   | in-database
+ step_key |  kind  |  status   |   worker
+----------+--------+-----------+-------------
+ fan      | matrix | succeeded | in-database
+ fan[0]   | sql    | succeeded | in-database
+ fan[1]   | sql    | succeeded | in-database
+ report   | sql    | succeeded | in-database
 ```
 </div>
 
@@ -537,7 +549,7 @@ mandatory</summary>
 
 The children are inserted by the statement that completes the parent, so nothing
 outside the database decides the width and there is no window where the parent
-is `done` and the children do not exist.
+is `succeeded` and the children do not exist.
 
 `rows:` takes the `SELECT` that decides the width, or a registered function
 where you want the operation blessed. Either way it runs read-only: the row
@@ -591,11 +603,11 @@ and then a human decision, with no process doing the waiting.
 
 ```
   step_key   |  kind  | status  | still_waiting
--------------+--------+---------+---------------
- approve     | signal | pending | f
- cooling_off | timer  | ready   | t
- notice      | sql    | done    | f
- release     | sql    | pending | f
+  step_key   |  kind  |  status   | still_waiting
+-------------+--------+-----------+---------------
+ approve     | signal | pending   | f
+ cooling_off | timer  | ready     | t
+ notice      | sql    | succeeded | f
 ```
 </div>
 
@@ -608,12 +620,12 @@ select workflow.signal_task(:run_id, 'approve',
 <div class="label">after the signal</div>
 
 ```
-  step_key   |  kind  | status
--------------+--------+--------
- approve     | signal | done
- cooling_off | timer  | done
- notice      | sql    | done
- release     | sql    | done
+  step_key   |  kind  |  status
+-------------+--------+-----------
+ approve     | signal | succeeded
+ cooling_off | timer  | succeeded
+ notice      | sql    | succeeded
+ release     | sql    | succeeded
 ```
 </div>
 
@@ -662,11 +674,11 @@ succeeded, after a later step fails terminally.
 <div class="label">before anything fails — the compensations are not tasks yet</div>
 
 ```
-   step_key    |   kind    | status
----------------+-----------+--------
- book_pilot    | sql       | done
+   step_key    |   kind    |  status
+---------------+-----------+-----------
+ book_pilot    | sql       | succeeded
  confirm_tide  | http_call | ready
- reserve_berth | sql       | done
+ reserve_berth | sql       | succeeded
 ```
 </div>
 
@@ -675,13 +687,13 @@ succeeded, after a later step fails terminally.
 
 ```
                       step_key                      |   kind    | status
-----------------------------------------------------+-----------+--------
- book_pilot                                         | sql       | done
- cancel_pilot:1d05408d-98c4-4b96-9d08-cb63dd0b166d  | sql       | done
+                      step_key                      |   kind    |  status
+----------------------------------------------------+-----------+-----------
+ book_pilot                                         | sql       | succeeded
+ cancel_pilot:1d05408d-98c4-4b96-9d08-cb63dd0b166d  | sql       | succeeded
  confirm_tide                                       | http_call | failed
- release_berth:e765c77e-87e1-4be6-ade7-096c551af57b | sql       | done
- reserve_berth                                      | sql       | done
-```
+ release_berth:e765c77e-87e1-4be6-ade7-096c551af57b | sql       | succeeded
+ reserve_berth                                      | sql       | succeeded
 
 ```
  status | compensation_state
@@ -786,25 +798,32 @@ that makes an upsert safe</a></p>
 
 ## Running all of it
 
-The fixture and the ten scripts live in `dev/examples/` in the specs repository.
+The fixture is `samples/harbour` in
+[get-percolate](https://github.com/percolating-sirsh/get-percolate), and the ten
+scripts are the blocks on this page — there is nothing else to fetch.
 
 What we are trying to do here is get back to a known state and run any subset of
 the ten against it.
 {: .goal }
 
 ```bash
-cd dev/examples
-./run.sh          # the fixture, then every example
-./run.sh 07       # just the fan-out
-DSN="postgres://…" ./run.sh
+export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
+percolate sample load samples/harbour --as-email you@example.com
 ```
 
-<details class="why" markdown="1">
-<summary>Why it works — each example rolls back, so they are order-independent</summary>
+Then paste any example above into `psql`. The ones that read tenanted rows —
+2, 3, 4 and the [graph algorithms](graph.html) page — need the claims wrapper
+from [scenario 4](#4-two-tenants-one-table) around them, or they answer as the
+superuser and quietly show you both tenants.
 
-Every example runs in its own transaction and rolls back, which is what makes
-them safe to run in any order and as many times as you like. The fixture is
-idempotent, and re-running it is how you get back to a known state.
+<details class="why" markdown="1">
+<summary>Why it works — the loader is idempotent, so re-running it is the reset</summary>
+
+Re-running the loader is how you get back to a known state: it upserts, so a
+second run leaves the same 11 nodes, 9 edges and 14 keys rather than doubling
+them. Each example that changes anything runs in its own transaction and rolls
+back, which is what makes them safe to run in any order and as many times as
+you like.
 
 <p class="related"><strong>Related</strong>
 <a href="install.html">getting a database to run them against</a> ·

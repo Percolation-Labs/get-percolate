@@ -18,8 +18,8 @@
 # never before: docs that name a version ahead of its artifact send people to
 # a `docker pull` that 404s.
 extension = "0.1.2"   # percolate + percolate_parser, and the :19-<v> image tag
-core      = "0.1.6"   # percolate-core on PyPI and Docker Hub
-chart     = "0.1.2"   # the Helm chart's own version, not what it deploys
+core      = "0.1.7"   # percolate-core on PyPI and Docker Hub
+chart     = "0.1.3"   # the Helm chart's own version, not what it deploys
 
 [requires]
 # The lowest version the DOCUMENTATION's own examples work against, which is a

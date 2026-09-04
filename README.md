@@ -81,6 +81,11 @@ select workflow.start_workflow('hello', '{}'::jsonb);
 SQL
 ```
 
+The run has already finished by the time `start_workflow` returns, because a
+`sql` step executes in the transaction that made it ready and no worker is
+involved. If you have no `psql` on the host, `docker compose exec db psql -U p8
+-d percolate` uses the one in the image.
+
 Then load the sample, since a fresh install stays empty until you put something
 in it. `percolate` is the CLI from `percolate-core` (Python 3.11+) and
 `samples/harbour` lives in this repository, so you need both on your machine and
@@ -103,10 +108,31 @@ against. It needs an embedding key, because the corpus is embedded by the
 running pipeline rather than shipped as literal vectors, and `--skip-documents`
 loads everything else if you would rather not supply one yet.
 
-The run has already finished by the time `start_workflow` returns, because a
-`sql` step executes in the transaction that made it ready and no worker is
-involved. If you have no `psql` on the host, `docker compose exec db psql -U p8
--d percolate` uses the one in the image.
+Now ask it something. `LOOKUP` resolves a name to a node and `GRAPH` walks out
+from it, and neither needs the corpus, so both answer with `--skip-documents`:
+
+```bash
+psql postgres://p8:p8@localhost:5432/percolate -c \
+  "select r->>'key' as node, r->>'depth' as depth, r->'path_relations' as via
+     from jsonb_array_elements(aiq.query('GRAPH \"Meridian Dawn\" DEPTH 2')->'rows') r"
+```
+
+```
+     node      | depth |               via
+---------------+-------+----------------------------------
+ meri          | 1     | ["operated_by"]
+ rotterdam     | 1     | ["last_called"]
+ bulk harmony  | 2     | ["last_called", "last_called"]
+ meridian star | 2     | ["operated_by", "operated_by"]
+ merb          | 2     | ["operated_by", "subsidiary_of"]
+ kest          | 2     | ["operated_by", "competes_with"]
+```
+
+A vessel, its operator, the port it last called at, and at depth 2 the sister
+ship, the parent company and a competitor — one row per node at its shortest
+path, with the relations it came through. From here the
+[documentation](https://percolating-sirsh.github.io/get-percolate) covers the
+other seven modes, agents, and ingesting your own documents.
 
 ### 2. Helm — a cluster, with Flux or Argo
 

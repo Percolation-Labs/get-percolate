@@ -374,16 +374,25 @@ your PATH. It needs **Python 3.11 or newer**; on a Mac the system `python3` is
 older than that and `pip` will report the package as simply not existing rather
 than as unsupported.
 
+The extras are not optional decoration: `sample` is the YAML reader and `agent`
+is what turns `plugin.yaml`'s agents — which are JSON Schema documents, not
+prompt strings — into rows. Without them the load refuses before it writes
+anything, which is the right behaviour and still a stop.
+
+<!-- run: pip -->
 ```bash
-pip install 'percolate-core>=@@core_min@@'
+pip install 'percolate-core[sample,agent]>=@@core_min@@'
 ```
 
 `samples/harbour` is a path **inside this repository**, so it needs to be on
-disk — a compose install has only the one file you curled:
+disk — a compose install has only the one file you curled. The DSN has to be
+the owner's, because the load writes `rbac.*`; the CLI names the compose one in
+its own error if you forget:
 
 ```bash
 git clone https://github.com/percolating-sirsh/get-percolate
 cd get-percolate
+export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
 percolate sample load samples/harbour --as-email me@example.com
 ```
 

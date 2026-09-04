@@ -164,9 +164,28 @@ say "install.md: the CLI it tells you to install exists and has the commands it 
 # wrong interpreter. install.md now names the requirement for the same reason.
 echo "(using $PY_BIN: $("$PY_BIN" --version))"
 "$PY_BIN" -m venv "$WORK/cli-venv"
+# THE SPEC COMES OUT OF THE PAGE, like every other command here. It did not,
+# and that is exactly the drift this file's header warns about: the default
+# here read `percolate-core[sample]` while install.md said plain
+# `percolate-core`, so CI installed one thing and every reader installed
+# another. CI was green and the documented path stopped at
+#   "reading a sample needs PyYAML: pip install 'percolate-core[sample]'"
+# on the very next command. Both were then wrong together, because the shipped
+# sample also needs [agent] to translate plugin.yaml's JSON-Schema agents --
+# which nothing caught, because the check below only asked whether the
+# subcommand EXISTED.
+#
+# `run: pip` rather than `run: shell`: steps.sh is executed verbatim in this
+# shell, and a `pip install` there would install into whatever interpreter is
+# on PATH instead of the venv. The block is still the single home for the
+# string.
+PIP_SPEC=$("$PY_BIN" "$ROOT/ci/extract-runnable.py" "$ROOT/docs/src/install.md" --kind pip \
+           | sed -n "s/^pip install '\(.*\)'$/\1/p")
+[ -n "$PIP_SPEC" ] || fail "install.md has no '<!-- run: pip -->' block naming what to install"
+echo "(installing what install.md says: $PIP_SPEC)"
 "$WORK/cli-venv/bin/pip" install --quiet \
-    "${PERCOLATE_CORE_SPEC:-percolate-core[sample]}" || \
-    fail "pip install percolate-core failed -- install.md tells a reader to run this"
+    "${PERCOLATE_CORE_SPEC:-$PIP_SPEC}" || \
+    fail "pip install $PIP_SPEC failed -- install.md tells a reader to run this"
 # `percolate sample load` is step three of the README. It was documented for
 # weeks while no published wheel or image had the command at all, because the
 # version in the tree still named the release that predated it.
@@ -180,5 +199,29 @@ for cmd in sample auth; do
     "$WORK/cli-venv/bin/percolate" "$cmd" --help >/dev/null 2>&1 || \
         fail "'percolate $cmd' is documented but missing from the installed CLI"
 done
+
+say "install.md: the sample it tells you to load, actually loads"
+# ASKING THE COMMAND TO DO ITS JOB, not whether it exists. `--help` passing is
+# what let two separate extras gaps ship: the loader refuses on a missing
+# extra long before it writes anything, and a `--help` check cannot tell the
+# difference between a CLI that can load the sample and one that will stop on
+# its first line.
+#
+# --skip-documents because the corpus step needs a real embedding key and this
+# check must run without one; everything the extras are needed FOR -- the YAML
+# reader and the JSON-Schema agent translation in plugin.yaml -- is on this
+# path. Idempotent by design, so a re-run is not a special case.
+P8_ADMIN_DSN="postgres://p8:p8@localhost:5432/percolate" \
+    "$WORK/cli-venv/bin/percolate" sample load "$ROOT/samples/harbour" \
+        --as-email me@example.com --skip-documents > "$WORK/sample.log" 2>&1 || {
+    sed 's/^/    /' "$WORK/sample.log" >&2
+    fail "'percolate sample load' failed -- install.md tells a reader to run this"; }
+grep -q '^  plugin harbour' "$WORK/sample.log" || {
+    sed 's/^/    /' "$WORK/sample.log" >&2
+    fail "the sample loaded without applying plugin.yaml -- the agent half is what needs [agent]"; }
+# And the rows are really there, read back through the database rather than
+# from the loader's own account of itself.
+[ "$(psql_ -tAc "select count(*) from agentic.agents where name = 'harbourmaster'")" = "1" ] || \
+    fail "sample load reported success and agentic.agents has no harbourmaster"
 
 printf '\nCOLD START OK\n'

@@ -65,8 +65,15 @@ def rules(v: dict) -> list[tuple[str, re.Pattern, str, str]]:
         ("charts/percolate/Chart.yaml",
          re.compile(r"^version: ([0-9]+\.[0-9]+\.[0-9]+)", re.M),
          v["chart"], "the chart's own version"),
+        # The extras are part of the string a reader copies -- the sample
+        # needs [sample] to read YAML and [agent] to translate plugin.yaml's
+        # JSON-Schema agents -- so the pattern has to survive them being
+        # there. It did not, and the previous version matched only the bare
+        # name: the day the extras were added this rule reported "the file
+        # changed shape" rather than a version mismatch, which is the right
+        # failure and still a stop.
         ("README.md",
-         re.compile(r"percolate-core>=([0-9]+\.[0-9]+\.[0-9]+)"),
+         re.compile(r"percolate-core(?:\[[a-z,]+\])?>=([0-9]+\.[0-9]+\.[0-9]+)"),
          v["core_min"], "the documented pip floor"),
     ]
 

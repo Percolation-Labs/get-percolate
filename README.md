@@ -87,10 +87,15 @@ in it. `percolate` is the CLI from `percolate-core` (Python 3.11+) and
 a compose install gives you neither:
 
 ```bash
-pip install 'percolate-core>=0.1.7'
+pip install 'percolate-core[sample,agent]>=0.1.7'
 git clone https://github.com/percolating-sirsh/get-percolate && cd get-percolate
+export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
 percolate sample load samples/harbour --as-email you@example.com
 ```
+
+The two extras are what the sample is made of — `sample` reads the YAML and
+`agent` translates `plugin.yaml`'s JSON-Schema agents — and the DSN has to be
+the owner's, because loading writes `rbac.*`.
 
 The sample is a port-operations company with two tenants, a fleet, a corpus and
 a graph, and it is the domain every worked example in the documentation queries

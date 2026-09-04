@@ -110,16 +110,23 @@ What we are trying to do here is give an agent eleven procedures it may use,
 while its prompt carries the text of almost none of them.
 {: .goal }
 
-Eleven skills is the shape this is sized for; the two below are the ones this
-page has actually written, and **pinning a skill that does not exist is
-refused** — `pins skill(s) p8ql-graph-walk, ... which do not exist`, rather than
-an agent quietly carrying a reference to nothing. Add the rest as you author
-them.
+Eleven skills is the shape this is sized for. This block is about
+`context_policy` — which skills reach the prompt, and when — so it pins none,
+and the reason is the next section: `p8ql-fuzzy-lookup` declares
+`requires_tools`, and pinning it before the agent binds that server is refused.
+The pins come after the binding, further down.
+
+Two things about `skills` and `context_policy.skills.always`, because they look
+alike and are not. **A pin is validated**: `pins skill(s) p8ql-graph-walk, ...
+which do not exist` rather than an agent quietly carrying a reference to
+nothing. **`always` is not** — the two names below do not exist yet, this is
+accepted, and each resolves to nothing the agent silently never receives, which
+is exactly what the refusal one field to the left exists to prevent. Worth
+knowing before you put something load-bearing in `always`.
 
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
-  "skills": ["house-style", "p8ql-fuzzy-lookup"],
   "context_policy": {"skills": {
     "always":    ["house-style", "safety-no-destructive-sql"],
     "match": true, "top_k": 2, "min_score": 0.28,
@@ -463,7 +470,7 @@ out later.
 
 ```sql
 select agentic.apply_plugin($j${
-  "name": "harbour", "version": "0.2.0",
+  "name": "harbour-extras", "version": "0.2.0",
   "tool_servers": [{"name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090"}],
   "skills":       [{"name": "p8ql-fuzzy-lookup", "description": "...", "content": "...",
                     "requires_tools": ["harbour-query"]}],
@@ -472,6 +479,15 @@ select agentic.apply_plugin($j${
                     "tools": [{"server": "harbour-query", "tools": ["query"]}]}]
 }$j$::jsonb);
 ```
+
+**A manifest PRUNES.** Anything stamped with that plugin name and absent from
+the manifest is removed — that is what makes a plugin removable, and it is why
+the name above is `harbour-extras` rather than `harbour`. Applying a manifest
+under the sample's own name would delete the skill the sample ships and rewrite
+its agent, silently, on a database the install guide has just told you to load.
+Measured before this was changed: `harbour-house-style` gone, `harbourmaster`'s
+skills replaced, the plugin row left reading version 0.2.0. Use a name of your
+own unless you mean to replace the whole plugin.
 
 **The agents in a manifest are ROWS, not schema documents**, and the difference
 is silent. `apply_plugin` passes each one to `upsert_agent`, which reads

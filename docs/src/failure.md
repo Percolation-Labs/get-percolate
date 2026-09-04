@@ -106,6 +106,7 @@ What we are trying to do here is get work back when the process holding it stops
 existing.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.reap_stale_tasks();     -- one pg_cron job, once a minute
 ```

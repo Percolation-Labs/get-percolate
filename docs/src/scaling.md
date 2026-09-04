@@ -18,6 +18,7 @@ What we are trying to do here is check that claiming a task from a deep queue
 uses an index rather than sorting the backlog.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 explain (analyze, buffers, costs off)
 select * from workflow.tasks
@@ -142,6 +143,7 @@ What we are trying to do here is let the pool size follow the work that is
 actually waiting.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.queue_depth('http');
 ```
@@ -236,6 +238,7 @@ What we are trying to do here is get that work back without ever taking it from 
 worker that is merely slow.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.reap_stale_tasks();   -- one pg_cron job, once a minute
 ```

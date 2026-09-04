@@ -60,6 +60,7 @@ What we are trying to do here is throttle a source in a way that works with any
 worker, including one somebody else wrote.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 insert into workflow.rate_limits (key, capacity, tokens, refill_rate)
 values ('openai-completions', 20, 20, 1);
@@ -125,6 +126,7 @@ because the engine gives no other signal.
 What we are trying to do here is find tasks that no worker will ever pick up.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select reason, count(*), min(waiting) from workflow.v_unclaimable group by 1;
 select remedy from workflow.v_unclaimable limit 1;
@@ -178,6 +180,7 @@ What we are trying to do here is drop runs that finished long enough ago to stop
 mattering.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select * from workflow.purge_completed(interval '30 days');
 ```
@@ -226,6 +229,7 @@ What we are trying to do here is find out whether the compiled parser and the
 SQL schema still agree, without comparing version strings.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.compiler_capabilities();
 ```
@@ -310,6 +314,7 @@ What we are trying to do here is move the schema forward and then check that the
 two release trains still agree.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 alter extension percolate update;
 

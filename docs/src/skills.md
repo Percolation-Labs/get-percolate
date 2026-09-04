@@ -32,6 +32,7 @@ What we are trying to do here is turn a paragraph that four different agents
 have been carrying in their own prompts into one row that all four reference.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_skill($j${
   "name": "p8ql-fuzzy-lookup",
@@ -124,6 +125,7 @@ accepted, and each resolves to nothing the agent silently never receives, which
 is exactly what the refusal one field to the left exists to prevent. Worth
 knowing before you put something load-bearing in `always`.
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
@@ -210,6 +212,7 @@ That is the guard working rather than something to route around — a prompt
 fragment telling a model to reach for a tool it cannot call is worse than no
 fragment — but it does mean the server and the binding come first:
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_tool_server($j${
   "name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090"
@@ -221,6 +224,7 @@ select agentic.upsert_agent($j${
 }$j$::jsonb);
 ```
 
+<!-- run: sql -->
 ```sql
 select agentic.attach_skill('harbourmaster', 'p8ql-fuzzy-lookup');
 
@@ -280,6 +284,7 @@ pick up whatever else the current question calls for, and know what else it
 could ask for.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",

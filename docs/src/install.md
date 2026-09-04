@@ -210,7 +210,6 @@ it right, which is what makes the bare `CREATE EXTENSION` fail loudly instead
 of quietly.
 
 <p class="related"><strong>Related</strong>
-<a href="index.html#no-role-is-a-superuser">why no role here is a superuser</a> ·
 <a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">what that
 looks like when it goes wrong</a></p>
 </details>

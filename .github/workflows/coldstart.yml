@@ -12,9 +12,37 @@
 name: coldstart
 
 on:
+  # Only when something this actually exercises moves. It brings up the whole
+  # compose stack, pulls four images and pip-installs a CLI, so running it for a
+  # typo in an unrelated README is a minute of everybody's time for no signal.
+  #
+  # The daily schedule below is what makes the narrow list safe: anything that
+  # breaks a reader WITHOUT a commit here -- a new percolate-core release, a
+  # moved image tag, a changed raw.githubusercontent path -- is caught within a
+  # day regardless of what these paths say.
   push:
     branches: [main]
+    # Repeated rather than shared with a YAML anchor: GitHub Actions does not
+    # support anchors or aliases in workflow files, and an unsupported one is a
+    # parse error at the moment you need the workflow.
+    paths:
+      - 'docs/src/**'
+      - 'compose/**'
+      - 'install.sh'
+      - 'bootstrap.sql'
+      - 'ci/**'
+      - 'versions.toml'
+      - '.github/workflows/coldstart.yml'
   pull_request:
+    paths:
+      - 'docs/src/**'
+      - 'compose/**'
+      - 'install.sh'
+      - 'bootstrap.sql'
+      - 'ci/**'
+      - 'versions.toml'
+      - '.github/workflows/coldstart.yml'
+
   # A reader's experience can break without anybody touching this repository:
   # a new percolate-core release, a moved image tag, a raw.githubusercontent
   # path. None of those arrive as a commit here.

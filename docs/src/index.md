@@ -53,91 +53,13 @@ full</a> ·
 <a href="first-workflow.html">a four-step pipeline end to end</a></p>
 </details>
 
-## Three ideas everything else follows from
-
-### The database never blocks on HTTP
-
-There is no HTTP client extension installed. When a step needs the network it
-becomes a row, `pg_notify` nudges a worker, and the worker is the thing that
-blocks.
-
-<details class="why" markdown="1">
-<summary>Why it works — the alternative costs connection slots instead of worker
-capacity</summary>
-
-If the database made the call itself it would hold a backend and an open
-transaction for the length of somebody else's latency, so a slow model endpoint
-would cost you connection slots rather than worker capacity.
-
-This one decision shapes most of the rest. It is why there is a worker at all,
-why `mode: async` exists, and why an agent step turns out to be an ordinary REST
-call with the URL filled in for you.
-
-<p class="related"><strong>Related</strong>
-<a href="grammar-workflow.html#rest-steps-and-where-the-credential-lives">what a
-`rest:` step carries</a> ·
-<a href="failure.html">why the worker decides what retries</a></p>
-</details>
-
-### Fan-out needs no controller
-
-A `matrix` step expands a query result into N children in the transaction that
-completes it, and rewires whatever depended on the parent onto the children.
-
-<details class="why" markdown="1">
-<summary>Why it works — there is no window, because there is no second step</summary>
-
-Argo does the equivalent with a controller pod that reads a JSON array, which
-costs three processes and a serialisation round trip, and leaves a window where
-the parent is `done` and the children do not exist yet. If the controller dies in
-that window the fan-out is stranded with nothing to resume from.
-
-Here the children are inserted by the statement that marks the parent done, so
-the window does not exist to be lost in.
-
-<p class="related"><strong>Related</strong>
-<a href="cookbook.html#7-fan-out-over-a-query-result">a fan-out with its rows
-captured</a> ·
-<a href="grammar-workflow.html#matrix-the-work-to-do-is-a-query-result">every
-matrix key</a></p>
-</details>
-
-### No role is a superuser
-
-A superuser bypasses row-level security completely, and so does a view owned by
-the same role that owns the table. So `app_owner` owns the tables and functions
-and `api_viewer` owns only the `*_api` views, which is what makes reads through
-those views RLS-filtered.
-
-<details class="why" markdown="1">
-<summary>Why it works — it is checked at load time, because getting it wrong
-leaves every policy inert</summary>
-
-Every schema checks this when it loads and refuses to install if it does not
-hold. That is worth a check rather than a comment: if you get it wrong, every
-policy in the schema is still there and none of them do anything.
-
-It was found the hard way. With a superuser schema owner, a non-admin user
-reading through `users_api` saw every row in the table — with correct policies in
-place, and those same policies provably working on a direct read by the same role
-in the same session. The test harness had been running as a superuser for that
-schema's entire history and never caught it, because no test read through the
-views as a non-owner until one was written specifically to.
-
-<p class="related"><strong>Related</strong>
-<a href="install.html#into-a-postgres-19-you-already-run">why the extension is
-non-superuser installable</a> ·
-<a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">what it
-looks like from a caller</a></p>
-</details>
-
 ## Expressive, secure, scalable
 
 Those are the three properties the design is answerable to, and **expressive** is
-the load-bearing one. It is not a claim about syntax: the question is whether a
-mixed collective of people, models and processes can have its coordination
-written down, rather than forced into a request/response shape that has both the
-latency and the authority the wrong way round.
+the one I would defend first. It is not a claim about syntax: the question is
+whether a mixed collective of people, models and processes can have its
+coordination written down, rather than forced into a request/response shape that
+has both the latency and the authority the wrong way round.
 
 What makes it possible is where the coordination lives. State is the substrate
 and tools, models, sources and people attach to it at the edges — so a
@@ -148,10 +70,11 @@ result](cookbook.html#7-fan-out-over-a-query-result) rather than by a controller
 holding the plan, and [waiting for a
 person](cookbook.html#8-wait-for-a-person-or-for-a-clock) is a row in
 `waiting_external` with no process doing the waiting. **Secure** is that the
-substrate enforces it and refuses to install when it cannot: the superuser rule
-above is checked at load time, and the tools an agent may call, the rows a query
-returns and the tasks a worker may claim are one RLS decision rather than an
-authorization system per service. **Scalable** is that no component holds the
+substrate enforces it and refuses to install when it cannot: [no role in the
+collection is a superuser](install.html#into-a-postgres-19-you-already-run) and
+every schema checks that when it loads, and the tools an agent may call, the rows
+a query returns and the tasks a worker may claim are one RLS decision rather than
+an authorisation system per service. **Scalable** is that no component holds the
 plan and the hot paths were [measured rather than asserted](scaling.html),
 including the one that turned out to be two orders of magnitude slower than it
 should have been.

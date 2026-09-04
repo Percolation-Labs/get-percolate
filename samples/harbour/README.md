@@ -120,8 +120,17 @@ header.
 together. The rest is an ordinary schema:
 
 ```sql
-select agentic.remove_plugin('harbour');
+select agentic.apply_plugin('{"name":"harbour","version":"1.0.0"}'::jsonb);
 drop schema harbour cascade;
+```
+
+That is the install call with an empty manifest, not a second function: it
+prunes each row through the path that knows what else references it, and
+returns a receipt of what went.
+
+```
+{"agents": [], "plugin": "harbour", "skills": [], "tool_servers": [],
+ "removed": ["agent:harbourmaster", "skill:harbour-house-style"], "version": "1.0.0"}
 ```
 
 The registry rows and the corpus are left for you to remove deliberately —

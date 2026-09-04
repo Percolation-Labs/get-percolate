@@ -452,8 +452,18 @@ inconvenience.
 
 Nothing loads on first boot for the same reason. Rows that appear because a
 container started are rows nobody chose, and a demo you cannot tell apart from
-a deployment is a bad demo. `select agentic.remove_plugin('harbour'); drop
-schema harbour cascade;` takes the bulk of it back out.
+a deployment is a bad demo. Applying the plugin with an empty manifest takes
+the skills and agents back out and says what it removed, and `drop schema
+harbour cascade` takes the rest:
+
+```sql
+select agentic.apply_plugin('{"name":"harbour","version":"1.0.0"}'::jsonb);
+drop schema harbour cascade;
+```
+
+Uninstalling is the same call as installing rather than a second function,
+because the pruning path is the one that knows what else references a row —
+which is why the `plugin` columns are `on delete restrict`.
 
 <p class="related"><strong>Related</strong>
 <a href="cookbook.html">the ten scenarios it was built for</a> ·

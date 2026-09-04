@@ -224,4 +224,36 @@ grep -q '^  plugin harbour' "$WORK/sample.log" || {
 [ "$(psql_ -tAc "select count(*) from agentic.agents where name = 'harbourmaster'")" = "1" ] || \
     fail "sample load reported success and agentic.agents has no harbourmaster"
 
+say "every function the documentation names exists in this install"
+# `agentic.remove_plugin('harbour')` was documented in two places -- install.md
+# and samples/harbour/README.md -- as the way to take the sample back out, and
+# it has never existed in any release or in the source tree. The capability is
+# real and is spelled `apply_plugin` with an empty manifest, which agentic's
+# schema states outright: uninstalling goes through the pruning path because
+# that is the one that knows what else references a row.
+#
+# A name in a code fence is a promise, and this is the cheapest possible check
+# of it: every `schema.function(` the pages write down, against pg_proc on the
+# database the guide just built. It found one that had shipped.
+#
+# Names only, not signatures. Arity and argument types drift for good reasons
+# and a doc example is allowed to omit a defaulted parameter; a function that
+# does not exist at all is never right.
+docs_fns=$("$PY_BIN" - "$ROOT" <<'EOF'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+pat = re.compile(r'\b(rbac|workflow|aiq|content|agentic|percolate)\.([a-z_]+)\(')
+names = set()
+for f in list((root / "docs/src").glob("*.md")) + list(root.glob("samples/*/README.md")):
+    names |= {f"{m.group(1)}.{m.group(2)}" for m in pat.finditer(f.read_text())}
+print("\n".join(sorted(names)))
+EOF
+)
+live_fns=$(psql_ -tAc "select n.nspname||'.'||p.proname
+                         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                        where n.nspname in ('rbac','workflow','aiq','content','agentic','percolate')" | sort -u)
+absent=$(comm -23 <(echo "$docs_fns") <(echo "$live_fns") | tr '\n' ' ')
+[ -z "${absent// /}" ] || fail "the documentation names function(s) this install does not have: $absent"
+echo "    $(echo "$docs_fns" | wc -l | tr -d ' ') documented function names, all present"
+
 printf '\nCOLD START OK\n'

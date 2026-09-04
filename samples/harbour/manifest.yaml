@@ -32,6 +32,11 @@ requires:
 # an edge can name a node by key; the tool servers and skills have to be there
 # before an agent pins them.
 load:
+  # The orgs first, because everything after this points at them. Separate from
+  # schema.sql because an organisation is a Percolate concern and that file's
+  # argument is that it is not one -- see tenants.sql for what shipped without
+  # it and which foreign key found out.
+  - sql: tenants.sql
   - sql: schema.sql
   - sources: sources.yaml
   - graph: graph.yaml

@@ -348,3 +348,12 @@ p.goal {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .hl .k { font-weight: 500; }
 }
+
+/* ---- claim ids: a reference line, not part of the reading experience ---- */
+.claims{margin:56px 0 0; padding-top:14px; border-top:1px solid var(--rule,#d9e0e7);
+  font-size:.68rem; line-height:1.9; color:var(--ink-3,#69757f)}
+.claims a{color:inherit; text-decoration:underline; text-underline-offset:2px}
+.claims a:hover{color:var(--accent,#2f5d7c)}
+.claim-id{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; white-space:nowrap;
+  margin-left:.5em; opacity:.75}
+.claim-id em{font-style:normal; opacity:.7; margin-left:.35em}

@@ -1,0 +1,562 @@
+{
+ "agents.md": [
+  {
+   "id": "docs.Ee519a",
+   "status": "covered",
+   "claim": "select agentic.upsert_agent($j${"
+  },
+  {
+   "id": "docs.E41b04",
+   "status": "covered",
+   "claim": "curl -s http://localhost:3000/rpc/upsert_agent \\"
+  },
+  {
+   "id": "docs.Ed2248",
+   "status": "covered",
+   "claim": "P8_USER_ID=<your user id> percolate agent push harbourmaster.yaml"
+  },
+  {
+   "id": "docs.E7e130",
+   "status": "covered",
+   "claim": "update agentic.agents set model = 'openai:gpt-4o-mini' where name = 'harbourmaster';"
+  },
+  {
+   "id": "docs.Efc40b",
+   "status": "ill-defined",
+   "claim": "curl -N http://localhost:8080/chat \\"
+  },
+  {
+   "id": "docs.Ef0eda",
+   "status": "ill-defined",
+   "claim": "curl -N http://localhost:8080/chat -H \"X-P8-Session-Id: 8f2c\u2026\" \u2026"
+  },
+  {
+   "id": "docs.E54826",
+   "status": "covered",
+   "claim": "select agentic.upsert_tool_server($j${"
+  },
+  {
+   "id": "docs.E54826-1",
+   "status": "covered",
+   "claim": "select agentic.upsert_tool_server($j${"
+  },
+  {
+   "id": "docs.Ee519a-1",
+   "status": "covered",
+   "claim": "select agentic.upsert_agent($j${"
+  },
+  {
+   "id": "docs.Ec10f1",
+   "status": "uncovered",
+   "claim": "select seq, role, citations from agentic.messages_api"
+  },
+  {
+   "id": "docs.Ee519a-2",
+   "status": "covered",
+   "claim": "select agentic.upsert_agent($j${"
+  }
+ ],
+ "cookbook.md": [
+  {
+   "id": "docs.Ee73a1",
+   "status": "covered",
+   "claim": "select aiq.query('LOOKUP \"meridien dawn\"'); -- 0 rows"
+  },
+  {
+   "id": "docs.Ec5e53",
+   "status": "covered",
+   "claim": "select aiq.add_node_key('Meridian Dawn', 'dawn', 'short');"
+  },
+  {
+   "id": "docs.Ec9705",
+   "status": "covered",
+   "claim": "select aiq.query('GRAPH \"Bulk Harmony\" DEPTH 2');"
+  },
+  {
+   "id": "docs.E409a8",
+   "status": "covered",
+   "claim": "select aiq.query('GRAPH \"MERB\" DEPTH 2 TYPE subsidiary_of');"
+  },
+  {
+   "id": "docs.Ee0c41",
+   "status": "covered",
+   "claim": "select aiq.query('TEXT \"PSC-441\" FROM chunks LIMIT 3');"
+  },
+  {
+   "id": "docs.Ee8f2d",
+   "status": "ill-defined",
+   "claim": "select round((r->>'distance')::numeric,3) as distance, left(c.content,56) as content"
+  },
+  {
+   "id": "docs.E7b4ad",
+   "status": "covered",
+   "claim": "select aiq.query('SEARCH \"PSC-441 boiler\" FROM chunks LIMIT 3', :query_vector);"
+  },
+  {
+   "id": "docs.E31eb8",
+   "status": "ill-defined",
+   "claim": "begin;"
+  },
+  {
+   "id": "docs.E33e65",
+   "status": "covered",
+   "claim": "select content.register_upload("
+  },
+  {
+   "id": "docs.E4249e",
+   "status": "covered",
+   "claim": "select workflow.signal_task(:run_id, 'approve',"
+  },
+  {
+   "id": "docs.E54826-2",
+   "status": "covered",
+   "claim": "select agentic.upsert_tool_server($j${"
+  },
+  {
+   "id": "docs.E80dda",
+   "status": "ill-defined",
+   "claim": "cd dev/examples"
+  }
+ ],
+ "failure.md": [
+  {
+   "id": "docs.E466e0",
+   "status": "covered",
+   "claim": "select workflow.reap_stale_tasks(); -- one pg_cron job, once a minute"
+  }
+ ],
+ "first-workflow.md": [
+  {
+   "id": "docs.Ea92a2",
+   "status": "covered",
+   "claim": "select workflow.define_yaml($$"
+  },
+  {
+   "id": "docs.E7a49a",
+   "status": "uncovered",
+   "claim": "select status, count(*) from workflow.tasks_api where run_id = :run group by 1;"
+  }
+ ],
+ "grammar-p8ql.md": [
+  {
+   "id": "docs.Ee73a1-1",
+   "status": "covered",
+   "claim": "select aiq.query('LOOKUP \"meridien dawn\"'); -- 0 rows"
+  },
+  {
+   "id": "docs.Ec9705-1",
+   "status": "covered",
+   "claim": "select aiq.query('GRAPH \"Bulk Harmony\" DEPTH 2');"
+  },
+  {
+   "id": "docs.E51379",
+   "status": "covered",
+   "claim": "select aiq.query('RELEVANCE \"bulk harmony\", \"rotterdam\" LIMIT 3');"
+  },
+  {
+   "id": "docs.Ee9b53",
+   "status": "covered",
+   "claim": "select aiq.query('PATH \"bulk harmony\", \"meri\" LIMIT 2');"
+  },
+  {
+   "id": "docs.Ee0c41-1",
+   "status": "covered",
+   "claim": "select aiq.query('TEXT \"PSC-441\" FROM chunks LIMIT 3');"
+  },
+  {
+   "id": "docs.E179c3",
+   "status": "covered",
+   "claim": "select aiq.query('SCHEMA'); -- the index of facets"
+  },
+  {
+   "id": "docs.Ef7bc5",
+   "status": "covered",
+   "claim": "select aiq.query('select count(*) from aiq.nodes');"
+  },
+  {
+   "id": "docs.E87a4d",
+   "status": "ill-defined",
+   "claim": "select p8_query_grammar(); -- every mode, syntax and example"
+  }
+ ],
+ "grammar-workflow.md": [
+  {
+   "id": "docs.Eca6c4",
+   "status": "covered",
+   "claim": "alter database <db> set percolate.sql_policy = 'registered';"
+  },
+  {
+   "id": "docs.E2d793",
+   "status": "covered",
+   "claim": "select workflow.register_step_function("
+  },
+  {
+   "id": "docs.E4249e-1",
+   "status": "covered",
+   "claim": "select workflow.signal_task(:run_id, 'approve',"
+  },
+  {
+   "id": "docs.E0d3c7",
+   "status": "ill-defined",
+   "claim": "select p8_workflow_grammar(); -- the document, step keys, actions"
+  }
+ ],
+ "graph.md": [
+  {
+   "id": "docs.E31e30",
+   "status": "covered",
+   "claim": "select aiq.enable_graph_algorithms('authenticated');"
+  },
+  {
+   "id": "docs.E51379-1",
+   "status": "covered",
+   "claim": "select aiq.query('RELEVANCE \"bulk harmony\", \"rotterdam\" LIMIT 3');"
+  },
+  {
+   "id": "docs.E74f18",
+   "status": "ill-defined",
+   "claim": "select key, entity_type, round(score::numeric, 4) as score, budget_exhausted"
+  },
+  {
+   "id": "docs.Eec0b2",
+   "status": "ill-defined",
+   "claim": "select (v->>'hops')::int as hops, round((v->>'cost')::numeric, 2) as cost, \u2026"
+  },
+  {
+   "id": "docs.E0d1ae",
+   "status": "covered",
+   "claim": "select aiq.graph_paths('bulk harmony', 'kest', 2) - 'meta' as answer;"
+  },
+  {
+   "id": "docs.E51c64",
+   "status": "ill-defined",
+   "claim": "select key, confidence, support"
+  },
+  {
+   "id": "docs.Ed7cb8",
+   "status": "ill-defined",
+   "claim": "select jsonb_array_length(v->'nodes') as nodes, (v->>'connected')::int as terminals_joined, \u2026"
+  },
+  {
+   "id": "docs.E7b3a0",
+   "status": "ill-defined",
+   "claim": "select c.size, string_agg(k.key, ', ') as members"
+  },
+  {
+   "id": "docs.E012e5",
+   "status": "covered",
+   "claim": "select aiq.graph_snapshot(true, array['operated_by','subsidiary_of'], 0.6);"
+  },
+  {
+   "id": "docs.Eafbfb",
+   "status": "covered",
+   "claim": "select aiq.graph_reach_build(3) -> 'depth' as sketch_depth;"
+  },
+  {
+   "id": "docs.E8deb8",
+   "status": "covered",
+   "claim": "select aiq.extension_boundary();"
+  }
+ ],
+ "ingest.md": [
+  {
+   "id": "docs.Eb62ed",
+   "status": "covered",
+   "claim": "insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)"
+  },
+  {
+   "id": "docs.E5f0ed",
+   "status": "ill-defined",
+   "claim": "curl -s http://localhost:8081/files \\"
+  },
+  {
+   "id": "docs.E694b9",
+   "status": "covered",
+   "claim": "select content.dataset_uri('incidents');"
+  },
+  {
+   "id": "docs.E12e11",
+   "status": "covered",
+   "claim": "update content.channels"
+  },
+  {
+   "id": "docs.Eb1fa7",
+   "status": "covered",
+   "claim": "select aiq.install_structure_null('gpt-4o-mini');"
+  }
+ ],
+ "install.md": [
+  {
+   "id": "docs.Ecb397",
+   "status": "covered",
+   "claim": "curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/compose/docker-compose.yml \\"
+  },
+  {
+   "id": "docs.E0851a",
+   "status": "ill-defined",
+   "claim": "docker compose pull && docker compose up -d"
+  },
+  {
+   "id": "docs.E138db",
+   "status": "ill-defined",
+   "claim": "set role app_owner;"
+  },
+  {
+   "id": "docs.E45bfc",
+   "status": "covered",
+   "claim": "docker compose exec db psql -U p8 -d percolate -c \"select * from workflow.compiler_capabilities()\""
+  },
+  {
+   "id": "docs.E37a6b",
+   "status": "ill-defined",
+   "claim": "select * from percolate_build();"
+  },
+  {
+   "id": "docs.Ec362a",
+   "status": "covered",
+   "claim": "helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \\"
+  },
+  {
+   "id": "docs.E088a2",
+   "status": "covered",
+   "claim": "curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh"
+  },
+  {
+   "id": "docs.Efe367",
+   "status": "ill-defined",
+   "claim": "-- then, as a superuser"
+  },
+  {
+   "id": "docs.Ecb610",
+   "status": "covered",
+   "claim": "select cron.schedule('workflow-tick', '* * * * *', $$select workflow.tick()$$);"
+  },
+  {
+   "id": "docs.E08ee3",
+   "status": "covered",
+   "claim": "select rbac.bootstrap_admin('me@example.com', 'a long passphrase') as uid \\gset"
+  },
+  {
+   "id": "docs.E85348",
+   "status": "covered",
+   "claim": "pip install 'percolate-core>=@@core_min@@'"
+  },
+  {
+   "id": "docs.E01fb9",
+   "status": "covered",
+   "claim": "git clone https://github.com/percolating-sirsh/get-percolate"
+  },
+  {
+   "id": "docs.E7fde6",
+   "status": "covered",
+   "claim": "percolate auth token --email me@example.com \\"
+  }
+ ],
+ "operating.md": [
+  {
+   "id": "docs.Ee11cc",
+   "status": "ill-defined",
+   "claim": "-- the KEDA trigger, which is a SQL query rather than a CPU metric"
+  },
+  {
+   "id": "docs.Ea3073",
+   "status": "covered",
+   "claim": "insert into workflow.rate_limits (key, capacity, tokens, refill_rate)"
+  },
+  {
+   "id": "docs.Ea5999",
+   "status": "covered",
+   "claim": "select reason, count(*), min(waiting) from workflow.v_unclaimable group by 1;"
+  },
+  {
+   "id": "docs.E5296b",
+   "status": "covered",
+   "claim": "select * from workflow.purge_completed(interval '30 days');"
+  },
+  {
+   "id": "docs.Eed1b8",
+   "status": "covered",
+   "claim": "select workflow.compiler_capabilities();"
+  },
+  {
+   "id": "docs.E37710",
+   "status": "covered",
+   "claim": "alter extension percolate update;"
+  }
+ ],
+ "plan.md": [
+  {
+   "id": "docs.E115e2",
+   "status": "covered",
+   "claim": "select workflow.plan_document('sec_revenue');"
+  },
+  {
+   "id": "docs.Ec71fc",
+   "status": "covered",
+   "claim": "select workflow.plan_graph('sec_revenue');"
+  },
+  {
+   "id": "docs.Ed6b93",
+   "status": "covered",
+   "claim": "select workflow as wf, severity, code, node from workflow.plan_defects() order by 1, 2;"
+  },
+  {
+   "id": "docs.E6d99f",
+   "status": "covered",
+   "claim": "select * from workflow.plan_probe('sec_revenue');"
+  },
+  {
+   "id": "docs.Ea33b8",
+   "status": "covered",
+   "claim": "select * from workflow.plan_status('sec_revenue');"
+  }
+ ],
+ "query.md": [
+  {
+   "id": "docs.Ed3d4c",
+   "status": "covered",
+   "claim": "select aiq.query('FUZZY LOOKUP \"acme robotic\" LIMIT 5');"
+  },
+  {
+   "id": "docs.Ecb47d",
+   "status": "ill-defined",
+   "claim": "-- the obvious hand-written equivalent"
+  },
+  {
+   "id": "docs.Ea31d5",
+   "status": "covered",
+   "claim": "select aiq.query('SCHEMA');"
+  },
+  {
+   "id": "docs.Eee3e5",
+   "status": "covered",
+   "claim": "select aiq.register_entity_table("
+  },
+  {
+   "id": "docs.Ef6651",
+   "status": "covered",
+   "claim": "select * from aiq.nodes where entity_type = 'vessel'; -- ordinary SQL"
+  },
+  {
+   "id": "docs.E6c265",
+   "status": "covered",
+   "claim": "percolate auth token --email you@example.com --orgs <org-uuid>"
+  }
+ ],
+ "recipes.md": [
+  {
+   "id": "docs.Eb62ed-1",
+   "status": "covered",
+   "claim": "insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)"
+  },
+  {
+   "id": "docs.E2d793-1",
+   "status": "covered",
+   "claim": "select workflow.register_step_function("
+  },
+  {
+   "id": "docs.Ea3073-1",
+   "status": "covered",
+   "claim": "insert into workflow.rate_limits (key, capacity, tokens, refill_rate)"
+  },
+  {
+   "id": "docs.E54826-3",
+   "status": "covered",
+   "claim": "select agentic.upsert_tool_server($j${"
+  },
+  {
+   "id": "docs.Eed1b8-1",
+   "status": "covered",
+   "claim": "select workflow.compiler_capabilities();"
+  },
+  {
+   "id": "docs.E95ead",
+   "status": "covered",
+   "claim": "insert into content.channels (name, kind, config, poll_interval)"
+  },
+  {
+   "id": "docs.Ed9143",
+   "status": "covered",
+   "claim": "select workflow.schedule_workflow("
+  },
+  {
+   "id": "docs.E9f2fc",
+   "status": "ill-defined",
+   "claim": "create function harbour.land_notices(p_items jsonb) returns jsonb as $$"
+  },
+  {
+   "id": "docs.Eb1fa7-1",
+   "status": "covered",
+   "claim": "select aiq.install_structure_null('gpt-4o-mini');"
+  },
+  {
+   "id": "docs.Ee519a-3",
+   "status": "covered",
+   "claim": "select agentic.upsert_agent($j${"
+  },
+  {
+   "id": "docs.E4249e-2",
+   "status": "covered",
+   "claim": "select workflow.signal_task(:run_id, 'approve',"
+  },
+  {
+   "id": "docs.Eb40ea",
+   "status": "covered",
+   "claim": "select workflow.begin_compensation(:run_id, 'booking');"
+  }
+ ],
+ "scaling.md": [
+  {
+   "id": "docs.E788ce",
+   "status": "ill-defined",
+   "claim": "explain (analyze, buffers, costs off)"
+  },
+  {
+   "id": "docs.Ee6e05",
+   "status": "uncovered",
+   "claim": "select workflow.queue_depth('http');"
+  },
+  {
+   "id": "docs.E466e0-1",
+   "status": "covered",
+   "claim": "select workflow.reap_stale_tasks(); -- one pg_cron job, once a minute"
+  }
+ ],
+ "skills.md": [
+  {
+   "id": "docs.Eeeede",
+   "status": "uncovered",
+   "claim": "select agentic.upsert_skill($j${"
+  },
+  {
+   "id": "docs.Ee519a-4",
+   "status": "covered",
+   "claim": "select agentic.upsert_agent($j${"
+  },
+  {
+   "id": "docs.E54826-4",
+   "status": "covered",
+   "claim": "select agentic.upsert_tool_server($j${"
+  },
+  {
+   "id": "docs.E32017",
+   "status": "covered",
+   "claim": "select agentic.attach_skill('harbourmaster', 'p8ql-fuzzy-lookup');"
+  },
+  {
+   "id": "docs.Ee519a-5",
+   "status": "covered",
+   "claim": "select agentic.upsert_agent($j${"
+  },
+  {
+   "id": "docs.E28660",
+   "status": "ill-defined",
+   "claim": "select s.name, round((1 - m.distance)::numeric, 3) as score"
+  },
+  {
+   "id": "docs.E0d072",
+   "status": "covered",
+   "claim": "select agentic.apply_plugin($j${"
+  }
+ ]
+}

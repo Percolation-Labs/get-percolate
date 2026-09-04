@@ -59,6 +59,16 @@ def rules(v: dict) -> list[tuple[str, re.Pattern, str, str]]:
         ("compose/docker-compose.yml",
          re.compile(r"image: percolationlabs/percolate-core:([0-9]+\.[0-9]+\.[0-9]+)"),
          v["core"], "the compose file pulls this image"),
+        # The database image was the one line in this file that floated: a bare
+        # `:19` tag moves under an existing install, so `docker compose up`
+        # reuses whatever is cached and two machines run different builds while
+        # both read `:19`. It is now pinned to `:19-<extension>`, enforced here
+        # the way the core image already was -- four services pinned and one
+        # floating was the file being inconsistent about the single thing this
+        # script exists to make consistent.
+        ("compose/docker-compose.yml",
+         re.compile(r"image: percolationlabs/percolate-postgres:19-([0-9]+\.[0-9]+\.[0-9]+)"),
+         v["extension"], "the compose file pulls this database image"),
         ("charts/percolate/Chart.yaml",
          re.compile(r"^appVersion: \"([0-9]+\.[0-9]+\.[0-9]+)\"", re.M),
          v["core"], "appVersion is what the chart deploys"),

@@ -31,7 +31,7 @@ name: percolate
 
 services:
   db:
-    image: percolationlabs/percolate-postgres:19
+    image: percolationlabs/percolate-postgres:19-0.1.3
     restart: unless-stopped
     # pg_cron is a background worker, so it must be preloaded at startup --
     # there is no CREATE EXTENSION that can add it later. cron.database_name
@@ -52,7 +52,7 @@ services:
       # .env; override both for anything reachable by anyone else.
       P8_AUTHENTICATOR_PASSWORD: ${P8_AUTHENTICATOR_PASSWORD:-authpass}
       P8_WORKER_PASSWORD: ${P8_WORKER_PASSWORD:-workerpass}
-    ports: ["5432:5432"]
+    ports: ["${P8_PG_PORT:-5432}:5432"]
     # MOUNTED AT /var/lib/postgresql, NOT .../data, and on 18+ that is the
     # difference between a stack that starts and one that restart-loops.
     #
@@ -92,7 +92,7 @@ services:
       PGRST_DB_ANON_ROLE: web_anon
       PGRST_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
       PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
-    ports: ["3000:3000"]
+    ports: ["${P8_REST_PORT:-3000}:3000"]
 
   # The only process a workflow needs, and only for steps that leave the
   # machine. p8ql and sql steps run inside Postgres with nothing running here.
@@ -165,7 +165,7 @@ services:
       P8_S3_SECRET: ${MINIO_PASSWORD:-p8password}
       P8_BUCKET: p8-content
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
-    ports: ["8081:8081"]
+    ports: ["${P8_CONTENT_PORT:-8081}:8081"]
 
   agent:
     image: percolationlabs/percolate-core:0.1.7
@@ -228,16 +228,16 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
-    ports: ["8080:8080"]
+    ports: ["${P8_AGENT_PORT:-8080}:8080"]
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-p8admin}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-p8password}
-    ports: ["9000:9000", "9001:9001"]
+    ports: ["${P8_MINIO_PORT:-9000}:9000", "${P8_MINIO_CONSOLE_PORT:-9001}:9001"]
     volumes: ["miniodata:/data"]
 
 volumes:

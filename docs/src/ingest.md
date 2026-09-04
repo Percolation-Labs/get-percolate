@@ -22,6 +22,7 @@ sample registers this same model — if you followed the install guide it is
 already there, and the insert is then a no-op rather than a duplicate-key error
 on the first line of this page:
 
+<!-- run: sql -->
 ```sql
 insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)
 values ('text-embedding-3-small', 1536, 'openai',
@@ -317,6 +318,7 @@ What we are trying to do here is turn the graph index on, which is a flag on the
 same install call.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.install_structure_null('gpt-4o-mini');
 select content.install_ingest_workflow(

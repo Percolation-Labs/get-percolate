@@ -30,7 +30,17 @@ import pathlib
 import re
 import sys
 
-MARKER = re.compile(r'^<!--\s*run:\s*([a-z]+)\s*-->\s*$')
+# A marker may carry an execution context after the kind: `<!-- run: sql as:tenant-a -->`.
+# The context names the identity the block runs under; ci/run_examples.py reads it,
+# and the bare `<!-- run: sql -->` form (context None, meaning the owner seat a
+# reader is in at a psql prompt) is unchanged, so ci/coldstart.sh is unaffected.
+# A marker may carry an execution context after the kind: `<!-- run: sql as:tenant-a -->`.
+# A tenant read is expected to return at least one row -- an empty answer is the
+# `FUZZY LOOKUP "acme"` failure, a query against a fixture that was never loaded,
+# which runs cleanly and returns nothing. A block that is legitimately empty
+# (a route to a node another tenant owns) opts out with a trailing `rows:0`.
+MARKER = re.compile(
+    r'^<!--\s*run:\s*([a-z]+)(?:\s+as:([a-z0-9-]+))?(?:\s+(rows:0))?\s*-->\s*$')
 FENCE = re.compile(r'^```')
 PLACEHOLDER = re.compile(r'@@([a-z_]+)@@')
 
@@ -65,6 +75,8 @@ def blocks(text):
             i += 1
             continue
         kind = m.group(1)
+        context = m.group(2)   # e.g. 'tenant-a', or None for the owner seat
+        allow_empty = m.group(3) is not None   # 'rows:0' -- an empty answer is correct here
         # The fence must be the very next line. A marker that has drifted away
         # from its block is a silent no-op otherwise, and this file exists
         # because silent no-ops are expensive.
@@ -79,7 +91,7 @@ def blocks(text):
             j += 1
         if j >= len(lines):
             raise SystemExit(f"line {i+1}: unterminated fenced block")
-        yield kind, "\n".join(body)
+        yield kind, context, allow_empty, "\n".join(body)
         i = j + 1
 
 
@@ -97,16 +109,17 @@ def main() -> int:
     # where only one resolves placeholders is exactly the drift this repository
     # keeps finding.
     text = substitute(pathlib.Path(a.path).read_text())
-    found = [(k, b) for k, b in blocks(text) if not a.kind or k == a.kind]
+    found = [(k, c, e, b) for k, c, e, b in blocks(text) if not a.kind or k == a.kind]
     if a.list:
-        for k, b in found:
-            print(f"{k}: {b.splitlines()[0][:70] if b.splitlines() else '(empty)'}")
+        for k, c, e, b in found:
+            ctx = f" as:{c}" if c else ""
+            print(f"{k}{ctx}: {b.splitlines()[0][:70] if b.splitlines() else '(empty)'}")
         return 0
     if not found:
         print(f"{a.path}: no runnable blocks"
               + (f" of kind '{a.kind}'" if a.kind else ""), file=sys.stderr)
         return 1
-    for _, b in found:
+    for _, _, _, b in found:
         print(b)
     return 0
 

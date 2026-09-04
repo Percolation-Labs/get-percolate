@@ -66,3 +66,24 @@ jobs:
       - name: What the stack said, if it failed
         if: failure()
         run: docker compose -p percolate logs --tail=80 || true
+
+  # The reference pages, run the way coldstart runs the install page. Separate
+  # job, same triggers: a page's examples break for the same reasons the install
+  # guide does -- a column renamed, a fixture never loaded, a function whose name
+  # drifted -- and only running them says so. Each page runs against a fresh
+  # rolled-back transaction so nothing one page writes hides another's defect.
+  examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run every page's examples
+        run: ci/examples.sh
+
+      - name: What the database said, if it failed
+        if: failure()
+        run: docker compose -p p8examples logs --tail=80 || true

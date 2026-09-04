@@ -28,10 +28,27 @@
 --
 -- IDEMPOTENT, like every other step here: `sample load` is documented as safe
 -- to re-run, and a second run is how you pick up an edit.
+--
+-- AND GUARDED, because `rbac.orgs` does not exist before 0.1.4 -- the tenancy
+-- work is what introduced it. A sample is loaded into whatever version the
+-- reader installed, so an unguarded insert here fails on 0.1.3 with `relation
+-- "rbac.orgs" does not exist` and turns a fix for one version into a break on
+-- the other. Measured both ways: the first version of this file passed against
+-- a locally built 0.1.4 and failed against the published 0.1.3.
+--
+-- The skip is silent on purpose. On a release with no rbac.orgs there is
+-- nothing for these ids to reference and nothing to warn about; the rows are
+-- bare uuids there, which is exactly the state 0.1.4 stopped accepting.
+do $$
+begin
+    if to_regclass('rbac.orgs') is null then
+        return;
+    end if;
 
-insert into rbac.orgs (id, slug, name) values
-    ('d0000000-0000-0000-0000-00000000000a', 'meridian', 'Meridian Line'),
-    ('d0000000-0000-0000-0000-00000000000b', 'kestrel',  'Kestrel Shipping')
-on conflict (id) do update
-    set slug = excluded.slug,
-        name = excluded.name;
+    insert into rbac.orgs (id, slug, name) values
+        ('d0000000-0000-0000-0000-00000000000a', 'meridian', 'Meridian Line'),
+        ('d0000000-0000-0000-0000-00000000000b', 'kestrel',  'Kestrel Shipping')
+    on conflict (id) do update
+        set slug = excluded.slug,
+            name = excluded.name;
+end $$;

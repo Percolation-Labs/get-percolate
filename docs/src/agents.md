@@ -134,12 +134,25 @@ all reach it the same way:
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
-  "model": "anthropic:claude-sonnet-5",
+  "model": "openai:gpt-4o-mini",
   "category": "tool_user",
-  "system_prompt": "You answer questions about the fleet.",
-  "tools": [{"server": "harbour-query", "tools": ["query"]}]
+  "system_prompt": "You answer questions about the fleet."
 }$j$::jsonb);
 ```
+
+**This writes over the agent the sample loaded**, because `harbourmaster` is the
+name it ships — an upsert, so the fields you leave out (its skills, its output
+schema) survive and the ones you name are replaced. That is the point of the
+example and it is worth knowing before you run it against a database you just
+loaded.
+
+Two things are deliberately not in it. The model matches the sample's, which is
+`openai` because the sample already needs an OpenAI key to embed its corpus and
+a second provider is a second key to obtain. And there is no `tools` array: a
+binding names a server by name, the compose stack runs no tool server, and the
+sample registers none for that reason — so binding one here would write a row
+pointing at nothing. [Tools and MCP](#tools-are-external-and-they-are-rows) below
+registers a server first and then binds it, which is the order that works.
 
 ```bash
 curl -s http://localhost:3000/rpc/upsert_agent \

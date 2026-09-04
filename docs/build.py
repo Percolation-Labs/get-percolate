@@ -85,15 +85,20 @@ def load_versions() -> dict:
     stale -- three pages claimed the dialect was 0.1.0 for an entire release
     after it became 0.1.1, and they read exactly as convincingly as the pages
     that were right.
+
+    IMPORTED from ci/versions.py rather than flattened again here, which is the
+    fix ci/extract-runnable.py already carries and this file never got. Its
+    docstring records what the third copy costs: "It was repeated, and the
+    copies drifted within the hour." They drifted again -- versions.py grew
+    `extension_min` (the [requires] extension, the version the pages' own
+    examples need) and this one did not, so a page could not ask for it and a
+    sentence about which release closes a gap had to name a literal, which is
+    the exact thing versions.toml exists to stop.
     """
-    with (HERE.parent / "versions.toml").open("rb") as fh:
-        v = tomllib.load(fh)
-    return {
-        "extension": v["published"]["extension"],
-        "core": v["published"]["core"],
-        "chart": v["published"]["chart"],
-        "core_min": v["requires"]["core"],
-    }
+    import sys
+    sys.path.insert(0, str(HERE.parent / "ci"))
+    from versions import load
+    return load()
 
 
 # @@name@@, NOT {{name}}. `{{...}}` is the workflow engine's own template

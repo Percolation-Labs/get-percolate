@@ -100,7 +100,7 @@ One thing to know lives here, and it is the seventh P8QL mode. A `p8ql:` step
 holding *plain SQL* executes, and inside a step the invoker is the **engine
 owner** — which owns every table and is not subject to their row-level
 security. So such a step reads across tenants. It is a deliberate beta trade and
-`percolate.sql_policy = 'registered'` refuses it;
+`percolate.sql_policy = 'registered'` refuses it from @@extension_min@@ onward;
 [the cookbook](cookbook.html#6-a-workflow-with-nothing-running) has the whole of
 it.
 
@@ -176,7 +176,7 @@ boundary sets one thing —
 alter database <db> set percolate.sql_policy = 'registered';
 ```
 
-— and statements are refused at authoring time and at dispatch, with registered
+— and statements are refused at authoring time and, from @@extension_min@@, at dispatch too, with registered
 functions still running.
 
 <p class="related"><strong>Related</strong>

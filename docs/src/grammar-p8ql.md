@@ -355,7 +355,7 @@ inside a step the invoker is the engine owner:
 
 `app_owner` owns every table and bypasses their RLS, so a plain-SQL step reads
 across tenants — a deliberate beta trade, refused by
-`percolate.sql_policy = 'registered'`, and covered in full in
+`percolate.sql_policy = 'registered'` from @@extension_min@@ onward, and covered in full in
 [the cookbook](cookbook.html#6-a-workflow-with-nothing-running). Called directly
 rather than from a step you are the invoker, which is the case this section is
 about and is unaffected. If you want SQL in a workflow without the owner's

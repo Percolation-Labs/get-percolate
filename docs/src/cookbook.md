@@ -509,8 +509,13 @@ turns it off:
 alter database <yourdb> set percolate.sql_policy = 'registered';
 ```
 
-Statements are then refused — both spellings, `sql:` at authoring and `p8ql:`
-at execution — and only functions someone registered will run. Calling
+Statements are then refused and only functions someone registered will run.
+**Both spellings from @@extension_min@@ onward**: `sql:` at authoring, and
+`p8ql:` at execution. Before that release the policy refused `sql:` only — a
+`p8ql:` step is not a `statement` in the compiled spec, so it went round the
+check — which means on an older extension setting this leaves the door this
+section is about still open. `select * from percolate_build()` says which you
+are running. Calling
 `workflow.p8ql()` directly is unaffected either way: outside a step you are the
 invoker, so it runs as you, under RLS.
 

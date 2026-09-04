@@ -135,12 +135,21 @@ say "first-workflow.md: define, start, and see it"
 # Read it back AS THE ADMIN, through the RLS-filtered view the page tells you
 # to use. Reading workflow.runs instead would pass while the documented query
 # returned nothing, which is exactly the failure that shipped.
+#
+# The successful-state word is joined from workflow.lifecycle_states rather than
+# written here. efebac2 renamed it and left three hardcoded copies behind -- CI,
+# the release rehearsal, and this file -- each of which failed separately, on a
+# different day, and each of which failed by finding NOTHING rather than by
+# erroring. That is the worst shape a stale literal can take in a check: it does
+# not say the word is wrong, it says your feature is broken.
 seen=$(psql_ -tAc "
     select set_config('request.jwt.claims',
         json_build_object('sub', (select id from rbac.users
                                    where email='me@example.com'))::text, false);
-    select count(*) from workflow.runs_api where status='completed'")
-[ "$(echo "$seen" | tail -1)" -ge 1 ] || fail "runs_api shows no completed run to the admin the docs just created"
+    select count(*) from workflow.runs_api r
+      join workflow.lifecycle_states s on s.state = r.status
+     where s.is_success")
+[ "$(echo "$seen" | tail -1)" -ge 1 ] || fail "runs_api shows no finished run to the admin the docs just created"
 
 say "install.md: the CLI it tells you to install exists and has the commands it names"
 # In a venv: this installs from an index, and a check that quietly mutates the

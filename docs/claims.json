@@ -21,14 +21,14 @@
    "claim": "update agentic.agents set model = 'openai:gpt-4o-mini' where name = 'harbourmaster';"
   },
   {
-   "id": "docs.Efc40b",
-   "status": "ill-defined",
-   "claim": "curl -N http://localhost:8080/chat \\"
+   "id": "docs.E011bb",
+   "status": "covered",
+   "claim": "\"messages\": [{\"role\": \"user\", \"content\": \"What has Aurora Kestrel been cited for?\"}],"
   },
   {
-   "id": "docs.Ef0eda",
-   "status": "ill-defined",
-   "claim": "curl -N http://localhost:8080/chat -H \"X-P8-Session-Id: 8f2c\u2026\" \u2026"
+   "id": "docs.E56eb5",
+   "status": "covered",
+   "claim": "curl -N http://localhost:8080/sessions/8f2c\u2026/events"
   },
   {
    "id": "docs.E54826",
@@ -47,7 +47,7 @@
   },
   {
    "id": "docs.Ec10f1",
-   "status": "uncovered",
+   "status": "covered",
    "claim": "select seq, role, citations from agentic.messages_api"
   },
   {
@@ -83,9 +83,9 @@
    "claim": "select aiq.query('TEXT \"PSC-441\" FROM chunks LIMIT 3');"
   },
   {
-   "id": "docs.Ee8f2d",
-   "status": "ill-defined",
-   "claim": "select round((r->>'distance')::numeric,3) as distance, left(c.content,56) as content"
+   "id": "docs.Ef1ab3",
+   "status": "covered",
+   "claim": "aiq.query('SEMANTIC \"a boiler fault\" FROM chunks LIMIT 3',"
   },
   {
    "id": "docs.E7b4ad",
@@ -93,9 +93,9 @@
    "claim": "select aiq.query('SEARCH \"PSC-441 boiler\" FROM chunks LIMIT 3', :query_vector);"
   },
   {
-   "id": "docs.E31eb8",
-   "status": "ill-defined",
-   "claim": "begin;"
+   "id": "docs.Eda8fd",
+   "status": "covered",
+   "claim": "select entity_type, summary from aiq.nodes"
   },
   {
    "id": "docs.E33e65",
@@ -133,7 +133,7 @@
   },
   {
    "id": "docs.E7a49a",
-   "status": "uncovered",
+   "status": "covered",
    "claim": "select status, count(*) from workflow.tasks_api where run_id = :run group by 1;"
   }
  ],
@@ -174,9 +174,9 @@
    "claim": "select aiq.query('select count(*) from aiq.nodes');"
   },
   {
-   "id": "docs.E87a4d",
-   "status": "ill-defined",
-   "claim": "select p8_query_grammar(); -- every mode, syntax and example"
+   "id": "docs.E6c280",
+   "status": "covered",
+   "claim": "select workflow.compiler_capabilities(); -- and whether the parser is current"
   }
  ],
  "grammar-workflow.md": [
@@ -196,9 +196,9 @@
    "claim": "select workflow.signal_task(:run_id, 'approve',"
   },
   {
-   "id": "docs.E0d3c7",
-   "status": "ill-defined",
-   "claim": "select p8_workflow_grammar(); -- the document, step keys, actions"
+   "id": "docs.Ee4dec",
+   "status": "covered",
+   "claim": "select workflow.compiler_capabilities(); -- and whether this build is current"
   }
  ],
  "graph.md": [
@@ -213,14 +213,14 @@
    "claim": "select aiq.query('RELEVANCE \"bulk harmony\", \"rotterdam\" LIMIT 3');"
   },
   {
-   "id": "docs.E74f18",
-   "status": "ill-defined",
-   "claim": "select key, entity_type, round(score::numeric, 4) as score, budget_exhausted"
+   "id": "docs.Eacb32",
+   "status": "covered",
+   "claim": "from aiq.related(array['bulk harmony'], 6);"
   },
   {
-   "id": "docs.Eec0b2",
-   "status": "ill-defined",
-   "claim": "select (v->>'hops')::int as hops, round((v->>'cost')::numeric, 2) as cost, \u2026"
+   "id": "docs.E986d6",
+   "status": "covered",
+   "claim": "from jsonb_array_elements(aiq.graph_paths('bulk harmony', 'meri', 2)->'paths') v;"
   },
   {
    "id": "docs.E0d1ae",
@@ -228,19 +228,19 @@
    "claim": "select aiq.graph_paths('bulk harmony', 'kest', 2) - 'meta' as answer;"
   },
   {
-   "id": "docs.E51c64",
-   "status": "ill-defined",
-   "claim": "select key, confidence, support"
+   "id": "docs.E65203",
+   "status": "covered",
+   "claim": "from aiq.graph_trust(array['merb'], 0.01, 4, 250, 'subsidiary_of');"
   },
   {
-   "id": "docs.Ed7cb8",
-   "status": "ill-defined",
-   "claim": "select jsonb_array_length(v->'nodes') as nodes, (v->>'connected')::int as terminals_joined, \u2026"
+   "id": "docs.Ed7682",
+   "status": "covered",
+   "claim": "from (select aiq.graph_connect(array['bulk harmony','rotterdam','meri']) v) q;"
   },
   {
-   "id": "docs.E7b3a0",
-   "status": "ill-defined",
-   "claim": "select c.size, string_agg(k.key, ', ') as members"
+   "id": "docs.E48ddc",
+   "status": "covered",
+   "claim": "from aiq.graph_components(2) c"
   },
   {
    "id": "docs.E012e5",
@@ -297,9 +297,9 @@
    "claim": "docker compose pull && docker compose up -d"
   },
   {
-   "id": "docs.E138db",
-   "status": "ill-defined",
-   "claim": "set role app_owner;"
+   "id": "docs.E37710",
+   "status": "covered",
+   "claim": "alter extension percolate update;"
   },
   {
    "id": "docs.E45bfc",
@@ -322,9 +322,9 @@
    "claim": "curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh"
   },
   {
-   "id": "docs.Efe367",
-   "status": "ill-defined",
-   "claim": "-- then, as a superuser"
+   "id": "docs.Efa4b4",
+   "status": "covered",
+   "claim": "CREATE EXTENSION percolate CASCADE;"
   },
   {
    "id": "docs.Ecb610",
@@ -354,9 +354,9 @@
  ],
  "operating.md": [
   {
-   "id": "docs.Ee11cc",
-   "status": "ill-defined",
-   "claim": "-- the KEDA trigger, which is a SQL query rather than a CPU metric"
+   "id": "docs.Ec0d94",
+   "status": "covered",
+   "claim": "select count(*)::int from workflow.tasks"
   },
   {
    "id": "docs.Ea3073",
@@ -379,7 +379,7 @@
    "claim": "select workflow.compiler_capabilities();"
   },
   {
-   "id": "docs.E37710",
+   "id": "docs.E37710-1",
    "status": "covered",
    "claim": "alter extension percolate update;"
   }
@@ -418,9 +418,9 @@
    "claim": "select aiq.query('FUZZY LOOKUP \"acme robotic\" LIMIT 5');"
   },
   {
-   "id": "docs.Ecb47d",
-   "status": "ill-defined",
-   "claim": "-- the obvious hand-written equivalent"
+   "id": "docs.E405b1",
+   "status": "covered",
+   "claim": "from aiq.node_keys k join aiq.nodes n on n.id = k.node_id"
   },
   {
    "id": "docs.Ea31d5",
@@ -480,9 +480,9 @@
    "claim": "select workflow.schedule_workflow("
   },
   {
-   "id": "docs.E9f2fc",
-   "status": "ill-defined",
-   "claim": "create function harbour.land_notices(p_items jsonb) returns jsonb as $$"
+   "id": "docs.Eaf7ad",
+   "status": "covered",
+   "claim": "v_res := content.register_fetched("
   },
   {
    "id": "docs.Eb1fa7-1",
@@ -507,9 +507,9 @@
  ],
  "scaling.md": [
   {
-   "id": "docs.E788ce",
-   "status": "ill-defined",
-   "claim": "explain (analyze, buffers, costs off)"
+   "id": "docs.Ec6156",
+   "status": "covered",
+   "claim": "select * from workflow.tasks"
   },
   {
    "id": "docs.Ee6e05",
@@ -525,7 +525,7 @@
  "skills.md": [
   {
    "id": "docs.Eeeede",
-   "status": "uncovered",
+   "status": "covered",
    "claim": "select agentic.upsert_skill($j${"
   },
   {
@@ -549,9 +549,9 @@
    "claim": "select agentic.upsert_agent($j${"
   },
   {
-   "id": "docs.E28660",
-   "status": "ill-defined",
-   "claim": "select s.name, round((1 - m.distance)::numeric, 3) as score"
+   "id": "docs.E5da51",
+   "status": "covered",
+   "claim": "from aiq.semantic_in('skills', :query_vector, 'text-embedding-3-small', 5) m"
   },
   {
    "id": "docs.E0d072",

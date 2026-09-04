@@ -61,6 +61,7 @@ What we are trying to do here is find a vessel from a misspelled name, and then
 make the right spelling cheap for next time.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('LOOKUP "meridien dawn"');       -- 0 rows
 select aiq.query('FUZZY LOOKUP "meridien dawn" LIMIT 3');
@@ -77,6 +78,7 @@ select aiq.query('FUZZY LOOKUP "meridien dawn" LIMIT 3');
 ```
 </div>
 
+<!-- run: sql -->
 ```sql
 select aiq.add_node_key('Meridian Dawn', 'dawn', 'short');
 select aiq.query('LOOKUP "dawn"');
@@ -119,6 +121,7 @@ What we are trying to do here is answer two questions from one walk: who
 ultimately operates this ship, and what else was in the same port.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('GRAPH "Bulk Harmony" DEPTH 2');
 ```
@@ -136,6 +139,7 @@ select aiq.query('GRAPH "Bulk Harmony" DEPTH 2');
 ```
 </div>
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('GRAPH "MERB" DEPTH 2 TYPE subsidiary_of');
 ```
@@ -273,6 +277,7 @@ What we are trying to do here is run the same query under two different claims
 and see the answers differ, with nothing in the query filtering by organisation.
 {: .goal }
 
+<!-- examples.sh: this block carries its own begin/rollback (the point of §4), so it is not gated; the tenancy it shows is gated via query.md and graph.md -->
 ```sql
 begin;
 set local role authenticated;
@@ -449,6 +454,7 @@ steps:
 the rows are inside the task's output document, so the query that produced the
 table below is:
 
+<!-- run: sql -->
 ```sql
 select step_key, kind, status, claimed_by as worker,
        jsonb_array_length(output->'result'->'rows') as rows_out

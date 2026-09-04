@@ -131,6 +131,7 @@ or from anything that can make an HTTP request.
 There is one function underneath this, so a migration, a script or PostgREST
 all reach it the same way:
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
@@ -243,6 +244,7 @@ neither is about the agent:
   mechanism and not read here); `OPENAI_BASE_URL` aims the same client at any
   OpenAI-shaped gateway.
 
+<!-- run: sql -->
 ```sql
 update agentic.agents set model = 'openai:gpt-4o-mini' where name = 'harbourmaster';
 ```
@@ -336,6 +338,7 @@ What we are trying to do here is give an agent a tool without deploying any
 code.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_tool_server($j${
   "name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090",
@@ -407,6 +410,7 @@ What we are trying to do here is let a researcher agent hand work to an analyst,
 without either of them knowing anything the other does not.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_tool_server($j${
   "name": "p8-agents", "kind": "mcp", "url": "http://agent:8080/mcp",
@@ -472,6 +476,7 @@ What we are trying to do here is bound a long conversation, fire an action on
 the structured output, and keep the table usable at a thousand rows.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_agent($j${
   "name": "harbourmaster",
@@ -572,6 +577,7 @@ What we are trying to do here is register one specialist and have the database
 refuse it if the shape is missing.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_agent($j${
   "name": "psc_report_extractor",

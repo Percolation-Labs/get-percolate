@@ -85,10 +85,12 @@ What we are trying to do here is register a model so that vector queries have a
 URL to be compiled against.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)
 values ('text-embedding-3-small', 1536, 'openai',
-        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true);
+        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true)
+on conflict (name) do nothing;   -- the harbour sample registers this same model
 
 select aiq.register_embedding_space('text-embedding-3-small');
 ```
@@ -164,6 +166,7 @@ What we are trying to do here is create the bucket a throttled step will name,
 before anything names it.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 insert into workflow.rate_limits (key, capacity, tokens, refill_rate)
 values ('openai-completions', 20, 20, 1)
@@ -196,6 +199,7 @@ What we are trying to do here is register an agent and the tool server it calls,
 neither of which is code and neither of which is deployed.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_tool_server($j${
   "name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090",
@@ -242,6 +246,7 @@ What we are trying to do here is find out what this installation supports,
 before debugging a document that will not compile.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.compiler_capabilities();
 select aiq.query('SCHEMA "workflow"');
@@ -262,6 +267,7 @@ What we are trying to do here is poll an external feed on the hour and turn what
 comes back into resources the rest of the system can answer questions about.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 insert into content.channels (name, kind, config, poll_interval)
 values ('harbour-notices', 'http_pull',
@@ -305,6 +311,7 @@ The landing function is the small piece of SQL this recipe costs you, and the
 important line in it is that `content.register_fetched` returns **null** rather
 than raising when the id has already been seen:
 
+<!-- run: sql -->
 ```sql
 create function harbour.land_notices(p_items jsonb) returns jsonb as $$
 declare it jsonb; v_res uuid; v_new int := 0;
@@ -367,6 +374,7 @@ What we are trying to do here is install the pipeline that turns any arriving
 resource into chunks, vectors and graph nodes, in one call.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.install_structure_null('gpt-4o-mini');
 select content.install_ingest_workflow(
@@ -504,6 +512,7 @@ What we are trying to do here is push a backlog of reports through a specialist
 extractor and land the results, tolerating the ones that fail.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select agentic.upsert_agent($j${
   "name": "psc_report_extractor",

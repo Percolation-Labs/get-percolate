@@ -191,6 +191,7 @@ What we are trying to do here is bless an operation the deployment wants
 reviewed, and give it a description a model can read.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select workflow.register_step_function(
     'rebuild_graph_index', 'aiq.rebuild_entity_type', array['text'],
@@ -532,6 +533,7 @@ What we are trying to do here is read the vocabulary out of the installed
 compiler rather than out of a document.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select p8_workflow_grammar();               -- the document, step keys, actions
 select workflow.compiler_capabilities();    -- and whether this build is current

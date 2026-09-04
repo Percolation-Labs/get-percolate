@@ -29,11 +29,15 @@ What we are trying to do here is turn them on for the role your API calls
 arrive as.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.enable_graph_algorithms('authenticated');
--- and back off again
-select aiq.enable_graph_algorithms('authenticated', false);
 ```
+
+To hand them back — before a benchmark, or to a role that should no longer
+reach them — pass `false`: `select aiq.enable_graph_algorithms('authenticated',
+false)`. It is a grant either way, not a session toggle, so it survives
+reconnects and says how many functions it moved.
 
 <div class="evidence" markdown="1">
 <div class="label">what the grant reports</div>
@@ -117,6 +121,7 @@ What we are trying to do here is ask the ranked question through the same REST
 endpoint as every other query.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('RELEVANCE "bulk harmony", "rotterdam" LIMIT 3');
 select aiq.query('PATH "bulk harmony", "meri" LIMIT 2');
@@ -176,6 +181,7 @@ What we are trying to do here is ask what a ship is connected to, and get the
 six things that matter most rather than the whole neighbourhood.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select key, entity_type, round(score::numeric, 4) as score, budget_exhausted
 from aiq.related(array['bulk harmony'], 6);
@@ -238,6 +244,7 @@ and see the second-best route as well as the first.
 projection back to names is the join you would write anyway, and it is spelled
 out here rather than elided so the table below is something you can produce:
 
+<!-- run: sql as:tenant-a -->
 ```sql
 with paths as (
     select row_number() over (order by (v->>'cost')::numeric) as route,
@@ -313,6 +320,7 @@ What we are trying to do here is ask for a route to a competitor that belongs
 to another tenant.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.graph_paths('bulk harmony', 'kest', 2) - 'meta' as answer;
 ```
@@ -358,6 +366,7 @@ What we are trying to do here is see the confidence of a route, first along one
 relation and then with the whole graph available.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select key, confidence, support
 from aiq.graph_trust(array['merb'], 0.01, 4, 250, 'subsidiary_of');
@@ -483,6 +492,7 @@ What we are trying to do here is find the clusters in the graph, and then the
 edges inside one of them without a query per cluster.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select c.size, string_agg(k.key, ', ') as members
 from aiq.graph_components(2) c
@@ -530,6 +540,7 @@ evidence graph records a weak opinion on every pair it ever considered, because
 components over all of that is one component containing everything. Build the
 snapshot over the relations and the weight floor you mean first:
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.graph_snapshot(true, array['operated_by','subsidiary_of'], 0.6);
 ```
@@ -561,6 +572,7 @@ What we are trying to do here is find out how big a neighbourhood is without
 enumerating it.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.graph_reach_build(3) -> 'depth' as sketch_depth;
 select aiq.graph_frontier('meri', 2, true) as frontier;
@@ -615,6 +627,7 @@ What we are trying to do here is find out whether the two halves of this
 database are in step.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.extension_boundary();
 ```

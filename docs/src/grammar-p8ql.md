@@ -60,6 +60,7 @@ What we are trying to do here is find a vessel from a half-remembered name, and
 fall back to fuzzy matching when the exact spelling misses.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('LOOKUP "meridien dawn"');            -- 0 rows
 select aiq.query('FUZZY LOOKUP "meridien dawn" LIMIT 3');
@@ -93,6 +94,7 @@ What we are trying to do here is find who ultimately operates a ship, and what
 else was in the same port, from one walk.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('GRAPH "Bulk Harmony" DEPTH 2');
 select aiq.query('GRAPH "MERB" DEPTH 2 TYPE subsidiary_of');
@@ -126,6 +128,7 @@ What we are trying to do here is ask what is most related to two entities at
 once, without picking a depth.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('RELEVANCE "bulk harmony", "rotterdam" LIMIT 3');
 ```
@@ -183,6 +186,7 @@ What we are trying to do here is find how a ship reaches its ultimate parent,
 and then what joins three things at once.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('PATH "bulk harmony", "meri" LIMIT 2');
 select aiq.query('PATH "bulk harmony", "rotterdam", "meri"');
@@ -285,6 +289,7 @@ What we are trying to do here is find out what this deployment accepts, before
 writing a query against it.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.query('SCHEMA');                -- the index of facets
 select aiq.query('SCHEMA "workflow"');     -- one facet, in detail
@@ -317,6 +322,7 @@ What we are trying to do here is run an ordinary read-only query through the
 same endpoint as everything else.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.query('select count(*) from aiq.nodes');
 ```
@@ -387,6 +393,7 @@ What we are trying to do here is read the grammar out of the installed parser
 rather than out of a document.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select p8_query_grammar();          -- every mode, syntax and example
 select workflow.compiler_capabilities();   -- and whether the parser is current

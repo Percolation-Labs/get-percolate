@@ -24,10 +24,12 @@ What we are trying to do here is find an operator from a name somebody typed
 badly, and compare that against writing the same intent in SQL.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select aiq.query('FUZZY LOOKUP "meridien" LIMIT 5');
 ```
 
+<!-- run: sql as:tenant-a -->
 ```sql
 -- the obvious hand-written equivalent
 select n.entity_type, k.key, similarity(k.key, 'meridien') as score
@@ -126,6 +128,7 @@ What we are trying to do here is find out what this database holds, before
 writing a query against it.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.query('SCHEMA');
 select aiq.query('SCHEMA "graph"');
@@ -162,6 +165,7 @@ chunk is neither.
 What we are trying to do here is get a table into the graph without copying it.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select aiq.register_entity_table(
     p_entity_type  => 'vessel',
@@ -209,6 +213,7 @@ What we are trying to do here is query a graph without having adopted a graph
 database.
 {: .goal }
 
+<!-- run: sql as:tenant-a -->
 ```sql
 select * from aiq.nodes where entity_type = 'vessel';   -- ordinary SQL
 select aiq.query('GRAPH "Bulk Harmony" DEPTH 2');       -- the same rows, walked

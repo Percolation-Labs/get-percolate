@@ -36,7 +36,7 @@ that consumes it. You never write the first one. The model is written into both,
 so the vector and the space being searched cannot come from two different
 models — a mistake that would return a number rather than an error.
 
-**Documentation: <https://percolating-sirsh.github.io/get-percolate>**
+**Documentation: <https://percolation-labs.github.io/get-percolate>**
 
 ---
 
@@ -48,7 +48,7 @@ it.
 ### 1. Docker Compose — the whole stack, two images
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/compose/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/compose/docker-compose.yml -o docker-compose.yml
 docker compose up -d
 ```
 
@@ -93,7 +93,7 @@ a compose install gives you neither:
 
 ```bash
 pip install 'percolate-core[sample,agent]>=0.1.7'
-git clone https://github.com/percolating-sirsh/get-percolate && cd get-percolate
+git clone https://github.com/Percolation-Labs/get-percolate && cd get-percolate
 export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
 percolate sample load samples/harbour --as-email you@example.com
 ```
@@ -131,20 +131,20 @@ psql postgres://p8:p8@localhost:5432/percolate -c \
 A vessel, its operator, the port it last called at, and at depth 2 the sister
 ship, the parent company and a competitor — one row per node at its shortest
 path, with the relations it came through. From here the
-[documentation](https://percolating-sirsh.github.io/get-percolate) covers the
+[documentation](https://percolation-labs.github.io/get-percolate) covers the
 other seven modes, agents, and ingesting your own documents.
 
 ### 2. Helm — a cluster, with Flux or Argo
 
 ```bash
-helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \
+helm install percolate oci://ghcr.io/percolation-labs/charts/percolate \
   --namespace percolate --create-namespace
 ```
 
 We publish the chart as an **OCI artifact**, so there is no chart repository, no
 `index.yaml` and no DNS in the path, and each of those is a thing that can break
 independently of the chart itself. If you prefer a classic repo then `helm repo
-add percolate https://percolating-sirsh.github.io/get-percolate/charts` works
+add percolate https://percolation-labs.github.io/get-percolate/charts` works
 too, and Flux and Argo can point straight at `charts/percolate` in this git repo
 without any published artifact at all.
 
@@ -159,7 +159,7 @@ more on that in [`charts/percolate/README.md`](charts/percolate/README.md).
 If you already run Postgres and want the extension in it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/install.sh | sh
 psql -d yourdb -v auth_pw=... -v worker_pw=... -f bootstrap.sql
 ```
 
@@ -210,7 +210,7 @@ Everything above is the pitch, so here is the other side of it.
 | **Not a hosted product** | There is no dashboard and no SaaS. The management surface is the same RPC set a worker uses, over PostgREST. |
 
 There is more on all four, and what we measured, in the
-[documentation](https://percolating-sirsh.github.io/get-percolate).
+[documentation](https://percolation-labs.github.io/get-percolate).
 
 ---
 

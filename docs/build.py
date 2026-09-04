@@ -219,7 +219,7 @@ SHELL = """<!doctype html>
     <a class="wordmark" href="index.html">{site}</a>
     <span class="tagline">{tagline}</span>
     <span class="spacer"></span>
-    <a class="ext" href="https://github.com/percolating-sirsh/get-percolate">GitHub</a>
+    <a class="ext" href="https://github.com/Percolation-Labs/get-percolate">GitHub</a>
     <a class="ext" href="llms.txt">llms.txt</a>
   </div>
 </header>
@@ -236,7 +236,7 @@ SHELL = """<!doctype html>
   <span>Percolate</span>
   <span class="dot">&bull;</span>
   <a href="https://percolationlabs.ai">Percolation Labs</a>
-  <a href="https://github.com/percolating-sirsh/get-percolate">GitHub</a>
+  <a href="https://github.com/Percolation-Labs/get-percolate">GitHub</a>
   <a href="https://pypi.org/project/percolate-core/">PyPI</a>
   <span class="spacer"></span>
   <span>MIT</span>
@@ -344,7 +344,7 @@ def build() -> int:
         index_lines += [f"## {name}", "", *links, ""]
     index_lines += [
         "## Source", "",
-        "- [Getting started](https://github.com/percolating-sirsh/get-percolate): compose file, Helm chart, install script and the source of these docs.",
+        "- [Getting started](https://github.com/Percolation-Labs/get-percolate): compose file, Helm chart, install script and the source of these docs.",
         "- [percolate-core on PyPI](https://pypi.org/project/percolate-core/): the worker, Content Server and Agent Runtime.",
         "",
         "## Optional", "",

@@ -6,10 +6,10 @@ type: application
 # is not the same event as the application changing -- appVersion tracks that.
 version: 0.1.3
 appVersion: "0.1.7"
-home: https://percolating-sirsh.github.io/get-percolate
-icon: https://percolating-sirsh.github.io/get-percolate/assets/logo.png
+home: https://percolation-labs.github.io/get-percolate
+icon: https://percolation-labs.github.io/get-percolate/assets/logo.png
 sources:
-  - https://github.com/percolating-sirsh/get-percolate
+  - https://github.com/Percolation-Labs/get-percolate
 keywords: [postgres, workflow, agents, rag, pgvector, ai]
 maintainers:
   - name: Percolation Labs

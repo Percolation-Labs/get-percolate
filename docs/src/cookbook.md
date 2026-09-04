@@ -830,7 +830,7 @@ that makes an upsert safe</a></p>
 ## Running all of it
 
 The fixture is `samples/harbour` in
-[get-percolate](https://github.com/percolating-sirsh/get-percolate), and the ten
+[get-percolate](https://github.com/Percolation-Labs/get-percolate), and the ten
 scripts are the blocks on this page — there is nothing else to fetch.
 
 What we are trying to do here is get back to a known state and run any subset of

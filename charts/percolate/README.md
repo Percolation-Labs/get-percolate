@@ -4,7 +4,7 @@ An AI workflow engine in Postgres — DAG workflows, agents, graph and semantic
 query, all as rows.
 
 ```bash
-helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \
+helm install percolate oci://ghcr.io/percolation-labs/charts/percolate \
   -n percolate --create-namespace \
   --set secrets.postgresPassword="$(openssl rand -base64 24)" \
   --set secrets.authenticatorPassword="$(openssl rand -base64 24)" \
@@ -36,9 +36,9 @@ if you turn autoscaling on.
 
 | | |
 |---|---|
-| **OCI** (preferred) | `oci://ghcr.io/percolating-sirsh/charts/percolate` — no repository index, no DNS, no Pages build. Helm 3.8+, Flux `OCIRepository`, Argo all read it. |
+| **OCI** (preferred) | `oci://ghcr.io/percolation-labs/charts/percolate` — no repository index, no DNS, no Pages build. Helm 3.8+, Flux `OCIRepository`, Argo all read it. |
 | **Git** | point straight at `charts/percolate` in this repo. Nothing is published at all, so nothing can be stale. |
-| **Classic repo** | `helm repo add percolate https://percolating-sirsh.github.io/get-percolate/charts` — familiar, and the one that depends on a domain, a Pages deploy and a correctly merged `index.yaml`. |
+| **Classic repo** | `helm repo add percolate https://percolation-labs.github.io/get-percolate/charts` — familiar, and the one that depends on a domain, a Pages deploy and a correctly merged `index.yaml`. |
 
 The ordering is deliberate. A classic Helm repo is a URL, so it inherits every
 failure mode of the thing serving it; a chart nobody can install because a CNAME
@@ -56,7 +56,7 @@ kind: OCIRepository
 metadata: {name: percolate, namespace: flux-system}
 spec:
   interval: 1h
-  url: oci://ghcr.io/percolating-sirsh/charts/percolate
+  url: oci://ghcr.io/percolation-labs/charts/percolate
   ref: {semver: "0.1.x"}
 ---
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -79,7 +79,7 @@ metadata: {name: percolate, namespace: argocd}
 spec:
   project: default
   source:
-    repoURL: ghcr.io/percolating-sirsh/charts
+    repoURL: ghcr.io/percolation-labs/charts
     chart: percolate
     targetRevision: 0.1.0
     helm:

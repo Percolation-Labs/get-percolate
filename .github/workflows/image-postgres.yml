@@ -92,8 +92,8 @@ jobs:
         env:
           BASE: >-
             ${{ inputs.parser_release == 'latest'
-                && 'https://github.com/percolating-sirsh/get-percolate/releases/latest/download'
-                || format('https://github.com/percolating-sirsh/get-percolate/releases/download/{0}', inputs.parser_release) }}
+                && 'https://github.com/Percolation-Labs/get-percolate/releases/latest/download'
+                || format('https://github.com/Percolation-Labs/get-percolate/releases/download/{0}', inputs.parser_release) }}
         run: |
           mkdir -p dev/dist
           for a in amd64 arm64; do

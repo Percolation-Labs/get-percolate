@@ -327,5 +327,5 @@ any upgrade, because the failure mode of not checking is a document that
 compiles and does less than it says.
 
 That is the end of the guide. The
-[source repository](https://github.com/percolating-sirsh/get-percolate) has the
+[source repository](https://github.com/Percolation-Labs/get-percolate) has the
 compose file, the Helm chart and these pages.

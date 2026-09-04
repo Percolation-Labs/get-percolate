@@ -289,7 +289,7 @@
   {
    "id": "docs.Ecb397",
    "status": "covered",
-   "claim": "curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/compose/docker-compose.yml \\"
+   "claim": "curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/compose/docker-compose.yml \\"
   },
   {
    "id": "docs.E0851a",
@@ -314,12 +314,12 @@
   {
    "id": "docs.Ec362a",
    "status": "covered",
-   "claim": "helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \\"
+   "claim": "helm install percolate oci://ghcr.io/percolation-labs/charts/percolate \\"
   },
   {
    "id": "docs.E088a2",
    "status": "covered",
-   "claim": "curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh"
+   "claim": "curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/install.sh | sh"
   },
   {
    "id": "docs.Efa4b4",
@@ -344,7 +344,7 @@
   {
    "id": "docs.E01fb9",
    "status": "covered",
-   "claim": "git clone https://github.com/percolating-sirsh/get-percolate"
+   "claim": "git clone https://github.com/Percolation-Labs/get-percolate"
   },
   {
    "id": "docs.E7fde6",

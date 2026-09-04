@@ -596,7 +596,7 @@ with no body at all. A description written as a label — *"about name
 resolution"* — would have scored none of that.
 
 <p class="related"><strong>Related</strong>
-<a href="https://github.com/percolating-sirsh/p8-subsystems/blob/main/specs/agentic/plugins.md">the
+<a href="https://github.com/Percolation-Labs/p8-subsystems/blob/main/specs/agentic/plugins.md">the
 spec, with every number and what it does not settle</a></p>
 </details>
 

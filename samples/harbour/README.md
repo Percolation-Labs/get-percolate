@@ -3,7 +3,7 @@
 A port-operations company: two tenants, four operators, five vessels, three
 ports, a handful of inspections, a corpus of reports and a graph tying them
 together. It is the domain every worked example in the
-[documentation](https://percolating-sirsh.github.io/get-percolate) queries, so
+[documentation](https://percolation-labs.github.io/get-percolate) queries, so
 loading it is what turns those pages from reading into running.
 
 ```bash
@@ -61,7 +61,7 @@ LOOKUP "Rotterdam"        rows: 1    # shared, visible to both
 ```
 
 Swap the org id for the other one and the first two answers swap over. That is
-the whole of scenario 4 in the [cookbook](https://percolating-sirsh.github.io/get-percolate/cookbook.html),
+the whole of scenario 4 in the [cookbook](https://percolation-labs.github.io/get-percolate/cookbook.html),
 and it is worth doing once by hand: nothing in the query mentions an
 organisation.
 

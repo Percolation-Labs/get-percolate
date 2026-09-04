@@ -105,7 +105,7 @@ other tenant — and the second statement, which selects `where size = 6`, then
 matches no component at all and returns zero rows rather than an error.
 
 The org id above is the one `samples/harbour` loads, and the sample's own
-[README](https://github.com/percolating-sirsh/get-percolate/blob/main/samples/harbour/README.md)
+[README](https://github.com/Percolation-Labs/get-percolate/blob/main/samples/harbour/README.md)
 lists both. [Two tenants, one
 table](cookbook.html#4-two-tenants-one-table) is the same mechanism shown from
 the other side.

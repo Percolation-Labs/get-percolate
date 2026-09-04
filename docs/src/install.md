@@ -12,7 +12,7 @@ nothing to compile and no ordering to get right.
 
 <!-- run: shell -->
 ```bash
-curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/compose/docker-compose.yml \
+curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/compose/docker-compose.yml \
   -o docker-compose.yml
 docker compose up -d
 ```
@@ -138,7 +138,7 @@ passwords we generate ourselves.
 {: .goal }
 
 ```bash
-helm install percolate oci://ghcr.io/percolating-sirsh/charts/percolate \
+helm install percolate oci://ghcr.io/percolation-labs/charts/percolate \
   -n percolate --create-namespace \
   --set secrets.postgresPassword="$(openssl rand -base64 24)" \
   --set secrets.authenticatorPassword="$(openssl rand -base64 24)" \
@@ -157,7 +157,7 @@ generate</summary>
 
 The chart is an OCI artefact, so there is no chart repository, no `index.yaml`
 and no DNS involved, and each of those is a thing that can break on its own.
-`helm repo add percolate https://percolating-sirsh.github.io/get-percolate/charts`
+`helm repo add percolate https://percolation-labs.github.io/get-percolate/charts`
 works too if you prefer a classic repo, and Flux and Argo can both point straight
 at `charts/percolate` in git with nothing published at all.
 
@@ -179,7 +179,7 @@ exists, without a service anywhere.
 {: .goal }
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/install.sh | sh
 ```
 
 ```sql
@@ -398,7 +398,7 @@ the owner's, because the load writes `rbac.*`; the CLI names the compose one in
 its own error if you forget:
 
 ```bash
-git clone https://github.com/percolating-sirsh/get-percolate
+git clone https://github.com/Percolation-Labs/get-percolate
 cd get-percolate
 export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
 percolate sample load samples/harbour --as-email me@example.com

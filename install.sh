@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install the Percolate extensions into a PostgreSQL 19 you already run.
 #
-#   curl -fsSL https://raw.githubusercontent.com/percolating-sirsh/get-percolate/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/install.sh | sh
 #   PG_CONFIG=/usr/lib/postgresql/19/bin/pg_config sh install.sh
 #   VERSION=v0.1.0 sh install.sh
 #
@@ -19,7 +19,7 @@
 # define their first workflow.
 set -eu
 
-REPO="${REPO:-percolating-sirsh/get-percolate}"
+REPO="${REPO:-Percolation-Labs/get-percolate}"
 VERSION="${VERSION:-latest}"
 
 say()  { printf '%s\n' "$*"; }

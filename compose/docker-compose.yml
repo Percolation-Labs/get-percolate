@@ -31,7 +31,7 @@ name: percolate
 
 services:
   db:
-    image: percolationlabs/percolate-postgres:19-0.1.4
+    image: percolationlabs/percolate-postgres:19-0.1.5
     restart: unless-stopped
     # pg_cron is a background worker, so it must be preloaded at startup --
     # there is no CREATE EXTENSION that can add it later. cron.database_name

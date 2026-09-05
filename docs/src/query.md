@@ -32,10 +32,11 @@ select aiq.query('FUZZY LOOKUP "meridien" LIMIT 5');
 <!-- run: sql as:tenant-a -->
 ```sql
 -- the obvious hand-written equivalent
-select n.entity_type, k.key, similarity(k.key, 'meridien') as score
+select n.entity_type, k.key,
+       round(similarity(k.key, 'meridien')::numeric, 3) as score
 from aiq.node_keys k join aiq.nodes n on n.id = k.node_id
 where k.key % 'meridien'
-order by similarity(k.key, 'meridien') desc limit 5;
+order by score desc, k.key limit 5;
 ```
 
 <div class="evidence" markdown="1">

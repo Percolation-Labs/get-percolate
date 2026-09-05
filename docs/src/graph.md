@@ -199,7 +199,8 @@ six things that matter most rather than the whole neighbourhood.
 <!-- run: sql as:tenant-a -->
 ```sql
 select key, entity_type, round(score::numeric, 4) as score, budget_exhausted
-from aiq.related(array['bulk harmony'], 6);
+from aiq.related(array['bulk harmony'], 6)
+order by score desc;
 ```
 
 <div class="evidence" markdown="1">
@@ -384,10 +385,12 @@ relation and then with the whole graph available.
 <!-- run: sql as:tenant-a -->
 ```sql
 select key, confidence, support
-from aiq.graph_trust(array['merb'], 0.01, 4, 250, 'subsidiary_of');
+from aiq.graph_trust(array['merb'], 0.01, 4, 250, 'subsidiary_of')
+order by confidence desc, key;
 
 select key, confidence, support
-from aiq.graph_trust(array['merb'], 0.01, 4);
+from aiq.graph_trust(array['merb'], 0.01, 4)
+order by confidence desc, key;
 ```
 
 <div class="evidence" markdown="1">
@@ -407,9 +410,9 @@ from aiq.graph_trust(array['merb'], 0.01, 4);
 ```
      key      | confidence | support
 --------------+------------+---------
- meri         |          1 |       0
- merb         |          1 |       0
  bulk harmony |          1 |       0
+ merb         |          1 |       0
+ meri         |          1 |       0
  rotterdam    |          1 |       0
 ```
 </div>
@@ -509,16 +512,18 @@ edges inside one of them without a query per cluster.
 
 <!-- run: sql as:tenant-a -->
 ```sql
-select c.size, string_agg(k.key, ', ') as members
+select c.size, string_agg(k.key, ', ' order by k.key) as members
 from aiq.graph_components(2) c
 join aiq.node_keys k on k.node_id = c.node_id and k.kind = 'canonical'
 group by c.component, c.size order by c.size;
 
-select ks.key as src, i.relation, kd.key as dst, i.weight
+select ks.key as src, i.relation, kd.key as dst,
+       round(i.weight::numeric, 2) as weight
 from aiq.graph_induced(array(
         select node_id from aiq.graph_components(2) where size = 6)) i
 join aiq.node_keys ks on ks.node_id = i.src_id and ks.kind = 'canonical'
-join aiq.node_keys kd on kd.node_id = i.dst_id and kd.kind = 'canonical';
+join aiq.node_keys kd on kd.node_id = i.dst_id and kd.kind = 'canonical'
+order by ks.key, i.relation, kd.key;
 ```
 
 <div class="evidence" markdown="1">

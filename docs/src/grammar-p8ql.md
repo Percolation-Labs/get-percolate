@@ -70,18 +70,17 @@ select aiq.query('FUZZY LOOKUP "acme", "globex" LIMIT 5');
 <details class="why" markdown="1">
 <summary>Why it works — `FUZZY` is a prefix because it changes what the query means</summary>
 
-The dialect used to accept `LOOKUP "acme" FUZZY`, with the modifier trailing,
-and that spelling is now retired with a message telling you what to write
-instead. A modifier that changes the meaning of a query belongs in front of the
+`LOOKUP "acme" FUZZY`, with the modifier trailing, is refused with a message
+telling you what to write instead. A modifier that changes the meaning of a query belongs in front of the
 thing it modifies, where you read it before you read the argument rather than
 after you have already formed an expectation.
 
 Commas between keys are optional, and both quote characters work
 interchangeably. Single quotes matter more than they look: SQL and YAML both
 take the double quote, so `'GRAPH ''R7'' DEPTH 2'` inside a workflow document
-would be unwritable without them. Before single quotes were a quoting character,
-that query parsed *successfully* with the argument as the literal `'R7'`, which
-matched no key and raised no error.
+would be unwritable without them. Without them that query parses *successfully*,
+with the argument as the literal `'R7'` — matching no key and raising no
+error, which is the reason it is worth a paragraph.
 
 <p class="related"><strong>Related</strong>
 <a href="query.html">querying, with worked output</a> ·
@@ -343,8 +342,8 @@ it is the job of `aiq.sql_passthrough` — a `SECURITY INVOKER` function, so the
 statement runs as you and not as the definer that would otherwise be reading on
 your behalf.
 
-The consequence catches people in workflows, in the other direction from the one
-this page used to describe. `aiq.query` does not run SQL mode — it returns the
+The consequence catches people in workflows, and it runs the opposite way to
+what the split above suggests. `aiq.query` does not run SQL mode — it returns the
 statement and a note — but `workflow.p8ql`, the step function, honours the note
 by putting the statement through the passthrough. So the step **executes**, and
 inside a step the invoker is the engine owner:

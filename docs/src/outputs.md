@@ -164,9 +164,10 @@ RLS-scoped, deduplicated by checksum, servable, and visible to
 puts a bucket name into a row you wanted to keep inspectable and replayable — the
 same argument that makes `credential_ref` a name rather than a secret.
 
-The specs used to say return `{"$ref": "s3://…"}`, and it never worked. The size
-check uses the jsonb `?` operator, which only looks at top-level keys, while
-every step nests its payload under `result`. Tried both ways against a 64KB cap:
+Returning `{"$ref": "s3://…"}` in its place does not work, and nothing tells
+you so. The size check uses the jsonb `?` operator, which only looks at
+top-level keys, while every step nests its payload under `result`. Both ways
+against a 64KB cap:
 
 <div class="evidence" markdown="1">
 <div class="label">probe</div>

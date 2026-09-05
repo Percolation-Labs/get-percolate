@@ -183,10 +183,10 @@ calls</a></p>
 <details class="why" markdown="1">
 <summary>Why it works — the first one has a lesson in it worth generalising</summary>
 
-`v_stuck_tasks` originally could not see a crash loop at all, because every
-claim refreshes `heartbeat_at` — so the failure kept resetting the signal that
-was supposed to reveal it. That is worse than having no view, because somebody
-is watching it and drawing the wrong conclusion.
+A view of `heartbeat_at` alone cannot see a crash loop, because every claim
+refreshes it — so the failure keeps resetting the signal that is supposed to
+reveal it. That is worse than having no view, because somebody is watching it
+and drawing the wrong conclusion. `v_stuck_tasks` therefore pairs the two.
 
 The general rule is to pair staleness with progress. "Not moving" and "moving and
 getting nowhere" are different failures, and a monitor that only detects the

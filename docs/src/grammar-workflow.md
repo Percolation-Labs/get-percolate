@@ -171,8 +171,8 @@ This covers `{{item.*}}` inside a `matrix:` template as well, which matters
 because those values are rows rather than something the author typed. A JSON
 number binds as `::numeric` and a boolean as `::boolean`, so `where n =
 {{run.n}}` still works against an integer column; a text value compared against
-a non-text column needs your own cast, because `->>` is text where a quoted
-literal used to be coerced by context.
+a non-text column needs your own cast, because `->>` yields text and text is not
+coerced to the column's type for you.
 
 The one thing you cannot template is an identifier — `from {{run.table}}`
 becomes `from ($1->>'run.table')` and fails with `syntax error at or near "$1"`.

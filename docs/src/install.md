@@ -36,12 +36,12 @@ Updating therefore means changing the tag, not pulling a moving one:
 docker compose up -d
 ```
 
-That is the deliberate half of a trade. `:19` used to float, and a floating tag
-makes "works on my machine" literally true and unfalsifiable — a stale local
-`:19` served @@extension@@'s predecessor here for an afternoon and produced a
-convincing bug report about a defect that had already been fixed. `ci/versions.py`
-now enforces the pinned tag against `versions.toml`, so the number moves in one
-place and every file that repeats it moves with it.
+That is the deliberate half of a trade. A floating `:19` makes "works on my
+machine" literally true and unfalsifiable: a stale local copy serves an older
+extension while every file in the repository says otherwise, and the bug report
+it produces is about a defect that is already fixed. `ci/versions.py` enforces
+the pinned tag against `versions.toml`, so the number moves in one place and
+every file that repeats it moves with it.
 
 The new image brings the new extension files; one more statement installs them
 into the database that already exists:
@@ -284,15 +284,14 @@ the permissions the system actually checks, and makes the first `user_roles`
 row — and it **refuses to run once any role has been granted to anyone**, which
 is what keeps it a bootstrap rather than a back door.
 
-This page used to spell the same thing out as a list of `insert` statements to
-copy, and the list was wrong. `role_permissions.action` is free text compared
-with `=`, so a wrong verb is not an error anywhere: it inserts, the role looks
-populated, and every policy that consults it returns false. The list here
-granted `workflow_runs`/`read` where every RLS policy in the collection asks for
-`select`, so following this page exactly produced an administrator who then saw
-**zero rows** in `workflow.runs_api` with no way to tell that from "my workflow
-never ran". The vocabulary is now derived in one place inside the extension
-instead of transcribed into prose that can drift away from it.
+Use it rather than writing the `insert` statements yourself, because a wrong
+verb in one is invisible. `role_permissions.action` is free text compared with
+`=`, so a bad value is not an error anywhere: it inserts, the role looks
+populated, and every policy that consults it returns false. Granting
+`workflow_runs`/`read` where the RLS policies ask for `select` gives you an
+administrator who sees **zero rows** in `workflow.runs_api`, with no way to tell
+that from "my workflow never ran". The vocabulary is derived in one place inside
+the extension for this reason — prose that repeats it can drift away from it.
 
 Then sign a JWT with the same secret the stack was given — `P8_JWT_SECRET`,
 which the compose file defaults to

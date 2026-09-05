@@ -138,7 +138,7 @@ select workflow.register_step_function(
 <summary>Why it works — registration refuses the grant problem instead of
 deferring it</summary>
 
-A step can carry its own SQL, so this is no longer the only door — it is the
+A step can carry its own SQL, so this is not the only door — it is the
 one worth using for the operations you want reviewed, because a registered
 function carries its own timeout and a description a model reads before calling
 it. That is why the recipes below that *land* data have a small function behind

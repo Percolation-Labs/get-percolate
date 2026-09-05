@@ -133,17 +133,15 @@ site much faster to skim.
 Each of those collapsed blocks ends with links to the pages that own the
 concepts it touched, so following the reasoning is also how you navigate.
 
-Everything here describes what is shipped and running, and it was run against a
-live database before it was written down. Where something did not survive that,
-we changed the page rather than the claim.
+Everything here describes what is shipped and running, and it is run against a
+live database before it is written down. Where something does not survive that,
+the page changes rather than the claim.
 
-We took the per-page status label off the site. A page that said "designed" was
-still a page on the site, and "designed" is indistinguishable from "works" to
-anybody skimming. So a thing that is not built does not get a page here — it
-gets a spec in
+There is no status label on a page, because every page is about something that
+is built. A thing that is not built does not get a page here — it gets a spec in
 [p8-subsystems](https://github.com/Percolation-Labs/p8-subsystems). Gaps inside
-a feature that *is* shipped are named where they bite, in the section they belong
-to, rather than collected behind a label at the top.
+a feature that *is* shipped are named where they bite, in the section they
+belong to, rather than collected behind a label at the top.
 
 [Install](install.html) is next, and after that [agents](agents.html) is the
 shortest useful loop in the system: an agent is a specification, the

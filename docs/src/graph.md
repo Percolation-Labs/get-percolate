@@ -771,14 +771,14 @@ the snapshot into shared memory. The measurement above promoted the third from
 "the natural next build" to a **requirement above single-digit concurrency**.
 Six slots is a guard rail, not a scaling story.
 
-Every one of those figures is the **call**, not the algorithm — which took a
-correction of its own. The budget used to start after the snapshot was fetched,
-so a cold first call reported 96 ms of a 2,689 ms wait. Both were true of the
-walk, and the one an operator would have built an SLO on was off by 28×. The
-answer now carries `elapsed_ms` for the call, `walk_ms` for the algorithm,
-`build_ms` for the snapshot, and keeps `exhausted` (the *answer* is partial)
-separate from `over_budget` (the *call* took longer than it was given) —
-opposite problems with opposite fixes.
+Every one of those figures is the **call**, not the algorithm, and the
+distinction is worth the four fields it costs. A budget measured from after the
+snapshot is fetched reports 96 ms of a 2,689 ms wait on a cold first call: both
+numbers are true of the walk, and the one an operator would build an SLO on is
+off by 28×. So the answer carries `elapsed_ms` for the call, `walk_ms` for the
+algorithm, `build_ms` for the snapshot, and keeps `exhausted` (the *answer* is
+partial) separate from `over_budget` (the *call* took longer than it was given)
+— opposite problems with opposite fixes.
 
 Figures are from one run of `dev/scale/graph/run.sh` and
 `03-concurrency.sh`. Re-running moves the latency probes by 10–30% and the

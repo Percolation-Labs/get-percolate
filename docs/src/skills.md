@@ -490,9 +490,9 @@ the manifest is removed — that is what makes a plugin removable, and it is why
 the name above is `harbour-extras` rather than `harbour`. Applying a manifest
 under the sample's own name would delete the skill the sample ships and rewrite
 its agent, silently, on a database the install guide has just told you to load.
-Measured before this was changed: `harbour-house-style` gone, `harbourmaster`'s
-skills replaced, the plugin row left reading version 0.2.0. Use a name of your
-own unless you mean to replace the whole plugin.
+Measured: `harbour-house-style` gone, `harbourmaster`'s skills replaced, the
+plugin row left reading version 0.2.0. Use a name of your own unless you mean to
+replace the whole plugin.
 
 **The agents in a manifest are ROWS, not schema documents**, and the difference
 is silent. `apply_plugin` passes each one to `upsert_agent`, which reads

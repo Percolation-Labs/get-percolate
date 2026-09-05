@@ -238,6 +238,13 @@ ERROR:  function harbour.land_notices(jsonb) is not reachable by app_owner,
 ```
 </div>
 
+The check is on the **table**, not on this function, and the difference is the
+one that makes the inventory worth trusting. A plain `insert into
+workflow.step_functions` is refused by the same rule with the same message, so
+there is no door into the registry that skips it — including one you reach by
+reading the table before this page. Registering is owner-only either way; what
+the trigger adds is that an owner cannot do it by accident.
+
 <p class="related"><strong>Related</strong>
 <a href="#sql-steps-run-sql">the spelling that needs no registration</a> ·
 <a href="outputs.html">what a `sql` step should return</a></p>

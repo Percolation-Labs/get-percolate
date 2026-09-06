@@ -17,7 +17,7 @@
 # What a reader can actually pull today. These move when a release publishes,
 # never before: docs that name a version ahead of its artifact send people to
 # a `docker pull` that 404s.
-extension = "0.1.5"   # percolate + percolate_parser, and the :19-<v> image tag
+extension = "0.1.6"   # percolate + percolate_parser, and the :19-<v> image tag
 core      = "0.1.8"   # percolate-core on PyPI and Docker Hub
 chart     = "0.1.4"   # the Helm chart's own version, not what it deploys
 

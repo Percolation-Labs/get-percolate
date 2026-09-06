@@ -114,6 +114,22 @@ services:
       # The database stores only the reference, so a dump of workflow.tasks
       # never contains a secret and a task stays replayable.
       LLM_API_KEY: ${LLM_API_KEY:-}
+      # WHERE AN `agent:` STEP SENDS ITS CALL. The compiler emits
+      # `POST {{env.P8_AGENT_URL}}/v1/chat/completions` rather than making the
+      # author write a deployment fact into a document that outlives it -- so
+      # the deployment owes the value, and this file did not supply it. Every
+      # agent step therefore died with `template {{env.P8_AGENT_URL}} resolved
+      # to nothing`, including the one on this project's own front page. The
+      # engine's plan checker already reported it (`ask | env | skipped | needs
+      # P8_AGENT_URL from the worker's environment`); nothing consulted it.
+      P8_AGENT_URL: ${P8_AGENT_URL:-http://agent:8080}
+      # AND WHO IT CALLS AS. A signed Percolate JWT, not a provider key: the
+      # worker is an ordinary authenticated client of the Agent Runtime, so it
+      # needs an identity like any other. There is deliberately no default --
+      # one would be a token everybody knows -- so an `agent:` step fails with
+      # `credential_ref 'P8_API_KEY' is not set` until you mint one:
+      #   percolate auth token --email you@example.com --orgs <your orgs>
+      P8_API_KEY: ${P8_API_KEY:-}
 
   # A SECOND worker, because a worker polls exactly one queue and ingestion
   # does not run on `http`.
@@ -211,7 +227,14 @@ services:
       # openrouter, cerebras, xai, zai, vLLM and Ollama are all OpenAI-shaped,
       # so they need an `openai:` model and this URL, not an SDK.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      # NOT `${OPENAI_BASE_URL:-}`, which is what this line used to say. That
+      # sets the variable to the EMPTY STRING, and an empty base url is not an
+      # absent one: the SDK takes "" as the url and every model call fails with
+      # `ModelAPIError: Connection error.` -- with a valid key and working
+      # egress, inside a 200 response, as a RUN_ERROR in the SSE stream. The
+      # same key worked from the host, which is the worst possible shape for a
+      # bug in an escape hatch nobody using OpenAI sets.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       # Each name is the one that provider's own SDK reads, checked against
       # the image rather than remembered: cohere really is CO_API_KEY and
       # huggingface really is HF_TOKEN.

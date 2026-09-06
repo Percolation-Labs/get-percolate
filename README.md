@@ -19,6 +19,7 @@ steps:
   - id: triage
     needs: [retrieve]
     agent: classifier
+    input: '{{steps.retrieve.result}}'
     output_schema:
       type: object
       required: [verdict]

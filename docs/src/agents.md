@@ -186,11 +186,11 @@ wrong is a silent total loss</summary>
 
 `upsert_agent` takes the row shape — `system_prompt` and
 `structured_output_schema` spelled out — while the file you commit is the schema
-document above, where those two are `description` and `properties`. Making that
-translation is yours to do for now: there is no packaged CLI that reads the
-schema document and calls the function for you, so a script that does both, or
-a thin wrapper around `pydantic`'s own `model_json_schema()`, is what "deploying
-an agent" means until one exists.
+document above, where those two are `description` and `properties`. `percolate
+agent push` is the one that makes that translation, which is why it is the only
+one of the three above that takes the schema document; the function and the REST
+call both take the row and will accept the document happily, ignoring what they
+do not recognise, and leave you an agent with an empty prompt.
 
 The upsert updates only the columns whose **keys are present**, never every
 column. Written the obvious way — `set x = excluded.x` for each one — the most
@@ -310,10 +310,25 @@ sent, and "your session id was wrong" is not something a client should have to
 parse out of a stream. Resume needs nothing else, because history is reloaded
 from rows.
 
-`stream: false` is refused rather than quietly buffered. This endpoint exists
-precisely because streaming is the one thing PostgREST structurally cannot do;
-a caller who wants the finished turn reads `messages_api`, which is a better
-answer than a fake non-streaming mode.
+`stream` picks between the two shapes and **defaults to `false`**, because that
+is what the shape being borrowed defaults to. `false` returns one OpenAI
+completion object; `true` returns the AG-UI event stream above, which is the
+thing PostgREST structurally cannot do and the reason this endpoint exists.
+
+The endpoint is served at `/v1/chat/completions` as well as `/chat`, and the two
+facts belong together: a stock OpenAI client builds its path from `base_url` and
+sends `stream: false`, so a runtime that served only `/chat` and *refused*
+`stream: false` — which is what this said, and did — could not be driven by one,
+whatever the sentence about being OpenAI-shaped claimed. `agent:` workflow steps
+hit the same wall, since the compiler emits that path and reads
+`choices.0.message.content`.
+
+Buffering is not a fake mode: the turn is run to completion and its persisted
+assistant message is returned, which is the read from `messages_api` that
+callers were being told to make for themselves. A run that fails is an HTTP
+error here, which the streaming path cannot do — once a 200 and the first event
+have gone out, `RUN_ERROR` is something the client has to parse out of the
+stream.
 
 The second endpoint is not a convenience — it is the proof that the stream is a
 *relay* rather than a side effect of the request. Both endpoints read the same

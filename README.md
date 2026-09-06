@@ -93,7 +93,7 @@ in it. `percolate` is the CLI from `percolate-core` (Python 3.11+) and
 a compose install gives you neither:
 
 ```bash
-pip install 'percolate-core[sample,agent]>=0.1.7'
+pip install 'percolate-core[sample,agent]>=0.1.8'
 git clone https://github.com/Percolation-Labs/get-percolate && cd get-percolate
 export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
 percolate sample load samples/harbour --as-email you@example.com

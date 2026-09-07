@@ -130,7 +130,7 @@ jobs:
       # `target/` lives under the workspace because the container mounts it
       # there, which is what makes it cacheable at all -- the compile happens
       # inside a container, but its output lands on the runner's disk.
-      - name: Cache the pgrx builder image and the crate build
+      - name: Cache the crate build
         if: runner.os == 'Linux'
         uses: actions/cache@v4
         with:
@@ -140,6 +140,43 @@ jobs:
             ~/.cargo/registry
           key: pgrx-${{ matrix.platform }}-${{ hashFiles('dev/Dockerfile.pgrx-builder', 'extension/percolate_parser/Cargo.lock') }}
           restore-keys: pgrx-${{ matrix.platform }}-
+
+      # THE HALF THE STEP ABOVE WAS NAMED FOR AND NEVER DID. It said "the pgrx
+      # builder image and the crate build" and cached only the crate build; the
+      # image was rebuilt from scratch on every leg, every run, which is what
+      # the header above means by "rebuilding the builder image each time".
+      #
+      # It is the release's critical path. Run 34029623228, the whole step:
+      #
+      #     linux-amd64   266s
+      #     linux-arm64   216s
+      #     macos-arm64    74s   (already cached, below)
+      #
+      # and inside that step the crate compile is the 74s the header measured.
+      # The rest is the image, three quarters of which is `cargo install
+      # --locked cargo-pgrx` compiling from source -- 257.3s of it, measured in
+      # p8-subsystems run 34028283280. pgrx publishes no binaries, so that
+      # compile happens once or it happens every time.
+      #
+      # A SAVED IMAGE TARBALL rather than buildx layers, for the reason recorded
+      # below: the container driver those numbers were taken on was 90s worse
+      # warm, because `--load` exports the whole image back into the daemon. A
+      # tarball has no build graph to walk, and the `docker load` that replaces
+      # the build is the same export the build was already paying for.
+      #
+      # PER PLATFORM, because these legs are native (ubuntu-latest and
+      # ubuntu-24.04-arm) and an amd64 image is not an arm64 toolchain. Keyed on
+      # the Dockerfile alone and with NO restore-keys: the crate cache above
+      # wants a near miss, this one must never have one, because an image
+      # restored under a changed Dockerfile is the wrong toolchain and would
+      # surface as a broken build rather than as a cache miss.
+      - name: Cache the pgrx builder image
+        id: toolchain
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/pgrx-builder.tar
+          key: pgrx-image-${{ matrix.platform }}-${{ hashFiles('dev/Dockerfile.pgrx-builder') }}
 
       - name: Build the parser in the image that ships the target server
         if: runner.os == 'Linux'
@@ -162,8 +199,15 @@ jobs:
           # again. The macOS legs are a different story and are cached below:
           # 396s -> 76s, because what they repeat is compiling PostgreSQL and
           # cargo-pgrx from source rather than pulling apt packages.
-          docker build --platform ${{ matrix.docker }} \
-            -f Dockerfile.pgrx-builder -t pgrx-builder .
+          if [ "${{ steps.toolchain.outputs.cache-hit }}" = "true" ]; then
+            docker load -i /tmp/pgrx-builder.tar
+          else
+            docker build --platform ${{ matrix.docker }} \
+              -f Dockerfile.pgrx-builder -t pgrx-builder .
+            # Uncompressed on purpose: actions/cache zstds it on the way up, and
+            # compressing twice spends a minute to save nothing.
+            docker save pgrx-builder -o /tmp/pgrx-builder.tar
+          fi
           docker run --rm --platform ${{ matrix.docker }} \
             -v "$GITHUB_WORKSPACE/extension/percolate_parser":/work \
             -e PGRX_HOME=/work/.pgrx -w /work pgrx-builder bash -c '

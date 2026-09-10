@@ -7,7 +7,7 @@ plane that talks to your database.
 {: .lede }
 
 If you would rather be told than read it, there is
-[eight minutes of the same argument](video.html).
+[ten minutes of the same argument](video.html).
 
 The nice consequence of that is that most steps need no process at all. A step is
 `sql`, `p8ql`, `rest`, `agent` or `work`. The first two run inside Postgres as

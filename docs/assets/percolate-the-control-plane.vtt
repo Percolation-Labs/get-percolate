@@ -9,7 +9,7 @@ WEBVTT
 <v Christina>registry, the tool definitions, the model routing, the
 
 3
-00:00:07.600 --> 00:00:11.140
+00:00:07.600 --> 00:00:11.120
 <v Christina>session state, the loop itself. Why go that far?
 
 4
@@ -29,7 +29,7 @@ WEBVTT
 <v Chris>in Python, and pushing it down is how you see that.
 
 8
-00:00:23.140 --> 00:00:24.840
+00:00:23.120 --> 00:00:24.840
 <v Christina>So what survives the compression?
 
 9
@@ -65,19 +65,19 @@ WEBVTT
 <v Chris>three in the morning, and who is allowed to see the
 
 17
-00:00:48.900 --> 00:00:52.280
+00:00:48.900 --> 00:00:52.300
 <v Chris>result. That's a database problem wearing an AI hat.
 
 18
-00:00:52.280 --> 00:00:55.860
+00:00:52.300 --> 00:00:55.860
 <v Christina>Give me the concrete version. What's a row that I'd
 
 19
-00:00:55.860 --> 00:00:56.680
+00:00:55.860 --> 00:00:56.700
 <v Christina>expect to be code?
 
 20
-00:00:57.800 --> 00:01:01.100
+00:00:57.780 --> 00:01:01.100
 <v Chris>A prompt is data. A tool definition is an OpenAPI
 
 21
@@ -97,11 +97,11 @@ WEBVTT
 <v Chris>session.
 
 25
-00:01:13.160 --> 00:01:15.760
+00:01:13.200 --> 00:01:15.760
 <v Christina>So adding an agent is what, exactly?
 
 26
-00:01:16.500 --> 00:01:20.140
+00:01:16.460 --> 00:01:20.140
 <v Chris>An insert. The capability is authored rather than
 
 27
@@ -117,7 +117,7 @@ WEBVTT
 <v Chris>of a fact about whichever process happens to be
 
 30
-00:01:28.400 --> 00:01:28.640
+00:01:28.400 --> 00:01:28.700
 <v Chris>running.
 
 31
@@ -145,7 +145,7 @@ WEBVTT
 <v Chris>security.
 
 37
-00:01:45.940 --> 00:01:46.840
+00:01:45.920 --> 00:01:46.840
 <v Christina>Why underneath?
 
 38
@@ -197,7 +197,7 @@ WEBVTT
 <v Chris>It went underneath the agent runtime rather than
 
 50
-00:02:22.720 --> 00:02:23.400
+00:02:22.720 --> 00:02:23.380
 <v Chris>beside it.
 
 51
@@ -273,7 +273,7 @@ WEBVTT
 <v Christina>Let's stay on sources, because that's usually where
 
 69
-00:03:14.240 --> 00:03:15.900
+00:03:14.240 --> 00:03:15.740
 <v Christina>these systems get thin.
 
 70
@@ -333,7 +333,7 @@ WEBVTT
 <v Chris>unglamorous steps that have to run every night so the
 
 84
-00:03:57.460 --> 00:03:58.960
+00:03:57.460 --> 00:03:59.080
 <v Chris>clever bit has something to work with.
 
 85
@@ -373,11 +373,11 @@ WEBVTT
 <v Christina>And when none of those is what I want?
 
 94
-00:04:32.540 --> 00:04:36.400
+00:04:32.540 --> 00:04:36.380
 <v Chris>Then you write SQL, and there's no keyword for it. A
 
 95
-00:04:36.400 --> 00:04:38.980
+00:04:36.380 --> 00:04:38.980
 <v Chris>statement that starts with select is recognised by how
 
 96
@@ -417,11 +417,11 @@ WEBVTT
 <v Chris>time, and here those are the same kind of thing — one
 
 105
-00:05:04.800 --> 00:05:07.280
+00:05:04.800 --> 00:05:07.260
 <v Chris>statement with a different word on the front.
 
 106
-00:05:07.820 --> 00:05:09.900
+00:05:07.860 --> 00:05:09.900
 <v Christina>How does it know what any of that means in my
 
 107
@@ -489,11 +489,11 @@ WEBVTT
 <v Chris>An agent framework and a workflow engine are the same
 
 123
-00:06:00.260 --> 00:06:03.740
+00:06:00.260 --> 00:06:03.720
 <v Chris>shape. A step is one of six kinds, and one of them
 
 124
-00:06:03.740 --> 00:06:06.700
+00:06:03.720 --> 00:06:06.700
 <v Chris>happens to call a model. Two of them execute inside
 
 125
@@ -529,7 +529,7 @@ WEBVTT
 <v Christina>and she'll get to it in six hours.
 
 133
-00:06:30.080 --> 00:06:32.480
+00:06:30.060 --> 00:06:32.480
 <v Chris>A scheduler has three options there and none of them
 
 134
@@ -597,53 +597,229 @@ WEBVTT
 <v Christina>it?
 
 150
-00:07:12.560 --> 00:07:15.700
+00:07:12.580 --> 00:07:15.700
 <v Chris>Nothing does. Postgres is the queue. Workers claim
 
 151
-00:07:15.700 --> 00:07:18.360
+00:07:15.700 --> 00:07:18.380
 <v Chris>work off it rather than having it handed to them, and
 
 152
-00:07:18.360 --> 00:07:20.440
+00:07:18.380 --> 00:07:20.420
 <v Chris>no single component is holding the plan.
 
 153
-00:07:21.060 --> 00:07:23.220
+00:07:21.140 --> 00:07:23.220
 <v Christina>What if I lose a worker halfway through a run?
 
 154
-00:07:24.060 --> 00:07:26.120
+00:07:24.060 --> 00:07:26.100
 <v Chris>Throughput drops and everything keeps going. There's
 
 155
-00:07:26.120 --> 00:07:28.720
+00:07:26.100 --> 00:07:28.720
 <v Chris>nothing to fail over, because there was never a
 
 156
-00:07:28.720 --> 00:07:29.560
+00:07:28.720 --> 00:07:29.540
 <v Chris>coordinator to fail.
 
 157
-00:07:30.020 --> 00:07:32.160
-<v Christina>So the pitch isn't really a better agent.
+00:07:29.940 --> 00:07:33.380
+<v Christina>So what am I actually installing? All of this sounds
 
 158
-00:07:32.700 --> 00:07:35.820
-<v Chris>It's one control plane. Your sources, your vocabulary,
+00:07:33.380 --> 00:07:34.780
+<v Christina>like a lot of moving parts.
 
 159
-00:07:36.000 --> 00:07:38.800
-<v Chris>your agents, your workflows and your permissions, all
+00:07:35.080 --> 00:07:38.540
+<v Chris>It's a Postgres extension. The whole system — the
 
 160
-00:07:38.800 --> 00:07:41.160
-<v Chris>in one place, as data you can query.
+00:07:38.740 --> 00:07:40.920
+<v Chris>schemas, the tables, the functions, the row-level
 
 161
-00:07:41.700 --> 00:07:43.940
-<v Christina>Which is where the work was the whole time.
+00:07:40.920 --> 00:07:44.640
+<v Chris>security — is one SQL file, and it's
 
 162
-00:07:44.660 --> 00:07:46.560
+00:07:44.640 --> 00:07:47.000
+<v Chris>architecture-independent. The only compiled thing in
+
+163
+00:07:47.000 --> 00:07:50.300
+<v Chris>the box is the parser that turns P8QL and workflow
+
+164
+00:07:50.300 --> 00:07:53.860
+<v Chris>YAML into rows, and that's a small Rust library we
+
+165
+00:07:53.860 --> 00:07:54.740
+<v Chris>build per platform.
+
+166
+00:07:55.560 --> 00:07:58.340
+<v Christina>So the permissions and the workflow engine are inside
+
+167
+00:07:58.340 --> 00:08:00.080
+<v Christina>that, rather than beside it.
+
+168
+00:08:00.620 --> 00:08:03.940
+<v Chris>Inside it, which is the point of the whole exercise. A
+
+169
+00:08:03.940 --> 00:08:06.420
+<v Chris>worker that's badly written can't route around a
+
+170
+00:08:06.420 --> 00:08:07.580
+<v Chris>policy that lives in the database.
+
+171
+00:08:08.300 --> 00:08:09.580
+<v Christina>Then what runs outside?
+
+172
+00:08:10.150 --> 00:08:14.160
+<v Chris>Two things speak HTTP. PostgREST puts the database's
+
+173
+00:08:14.160 --> 00:08:17.200
+<v Chris>own objects on a REST surface, and it isn't ours —
+
+174
+00:08:17.200 --> 00:08:20.660
+<v Chris>it's the standard one, pointed at our schema. Then a
+
+175
+00:08:20.660 --> 00:08:23.800
+<v Chris>runtime for the parts a database shouldn't do: the
+
+176
+00:08:23.800 --> 00:08:26.380
+<v Chris>content server that takes a file and turns it into
+
+177
+00:08:26.680 --> 00:08:27.960
+<v Chris>chunks, and the agent
+
+178
+00:08:28.300 --> 00:08:30.260
+<v Christina>Which is where the model actually gets called.
+
+179
+00:08:30.760 --> 00:08:33.760
+<v Chris>And that part isn't ours either. The agent API is a
+
+180
+00:08:33.760 --> 00:08:37.620
+<v Chris>thin layer over Pydantic AI, which is a genuinely good
+
+181
+00:08:37.620 --> 00:08:40.419
+<v Chris>agentic framework, and we let it keep the job it's
+
+182
+00:08:40.419 --> 00:08:44.620
+<v Chris>good at — calling the model, invoking tools, enforcing
+
+183
+00:08:44.620 --> 00:08:47.620
+<v Chris>structured output. Our layer turns a row into its
+
+184
+00:08:48.580 --> 00:08:50.900
+<v Chris>arguments. Instructions come from a column, tools from
+
+185
+00:08:50.900 --> 00:08:54.000
+<v Chris>the tool servers the row references, the output type
+
+186
+00:08:54.000 --> 00:08:57.000
+<v Chris>from the schema in the row, the model from the model
+
+187
+00:08:58.000 --> 00:09:00.160
+<v Chris>column. Changing which model an agent uses is an
+
+188
+00:09:00.160 --> 00:09:00.520
+<v Chris>update statement.
+
+189
+00:09:01.100 --> 00:09:01.800
+<v Christina>And the workers?
+
+190
+00:09:01.800 --> 00:09:05.420
+<v Chris>Workers claim from the queue in Postgres, so they're
+
+191
+00:09:05.420 --> 00:09:08.220
+<v Chris>ordinary processes with a connection string. We ship
+
+192
+00:09:08.220 --> 00:09:12.280
+<v Chris>two, one for outbound HTTP and one for ingestion, and
+
+193
+00:09:12.280 --> 00:09:14.740
+<v Chris>you can bring your own — nothing about them is
+
+194
+00:09:15.380 --> 00:09:18.200
+<v Christina>Is there anything to look at, or is it all psql?
+
+195
+00:09:18.560 --> 00:09:20.940
+<v Chris>There's a workbench, and it's worth a look because of
+
+196
+00:09:20.940 --> 00:09:24.040
+<v Chris>what it demonstrates rather than how it looks. It
+
+197
+00:09:24.040 --> 00:09:27.480
+<v Chris>talks to PostgREST directly, so every screen in it is
+
+198
+00:09:27.480 --> 00:09:31.220
+<v Chris>the surface a worker uses. You run it yourself; the
+
+199
+00:09:31.220 --> 00:09:33.260
+<v Chris>Compose file starts the backend and leaves the browser
+
+200
+00:09:33.260 --> 00:09:34.260
+<v Chris>part to you.
+
+201
+00:09:34.440 --> 00:09:36.620
+<v Christina>So the pitch isn't really a better agent.
+
+202
+00:09:37.100 --> 00:09:40.260
+<v Chris>It's one control plane. Your sources, your vocabulary,
+
+203
+00:09:40.560 --> 00:09:43.280
+<v Chris>your agents, your workflows and your permissions, all
+
+204
+00:09:43.280 --> 00:09:45.600
+<v Chris>in one place, as data you can query.
+
+205
+00:09:46.160 --> 00:09:48.400
+<v Christina>Which is where the work was the whole time.
+
+206
+00:09:48.800 --> 00:09:51.060
 <v Chris>It's the part we'd build first if we started again.

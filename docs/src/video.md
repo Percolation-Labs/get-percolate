@@ -1,6 +1,6 @@
 # The AI-generated video, for which we apologise
 
-Eight minutes on why any of this is in Postgres.
+Ten minutes on why any of this is in Postgres.
 {: .lede }
 
 <figure class="film">
@@ -13,13 +13,13 @@ Eight minutes on why any of this is in Postgres.
   Your browser will not play this one.
   <a href="assets/percolate-the-control-plane.mp4">Download the mp4</a> instead.
 </video>
-<figcaption>Percolate — the control plane. 7:47, captioned.
-<a href="assets/percolate-the-control-plane.mp4">mp4, 8 MB</a></figcaption>
+<figcaption>Percolate — the control plane. 9:51, captioned.
+<a href="assets/percolate-the-control-plane.mp4">mp4, 10 MB</a></figcaption>
 </figure>
 
 ## What it covers
 
-Ten sections, in the order the pages here are written in. The argument is the
+Eleven sections, in the order the pages here are written in. The argument is the
 one on [what Percolate is](index.html), at the speed of somebody explaining it
 rather than the speed of a reference.
 
@@ -34,7 +34,8 @@ rather than the speed of a reference.
 | 05:33 | Workflow semantics | An agent turn is just a step kind |
 | 06:20 | The slow participant | When the next step is a person |
 | 07:08 | Nobody holds the plan | Postgres is the queue |
-| 07:29 | Where the work is | A database problem wearing an AI hat |
+| 07:29 | What is in the box | One SQL file, one small Rust parser, and the two processes that speak HTTP |
+| 09:34 | Where the work is | A database problem wearing an AI hat |
 
 <details class="why" markdown="1">
 <summary>Why it works — the video is the pitch, and the pages are the

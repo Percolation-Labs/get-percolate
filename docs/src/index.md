@@ -139,7 +139,7 @@ the page changes rather than the claim.
 
 There is no status label on a page, because every page is about something that
 is built. A thing that is not built does not get a page here — it gets a spec in
-[p8-subsystems](https://github.com/Percolation-Labs/p8-subsystems). Gaps inside
+`p8-subsystems`, which is a private repository. Gaps inside
 a feature that *is* shipped are named where they bite, in the section they
 belong to, rather than collected behind a label at the top.
 

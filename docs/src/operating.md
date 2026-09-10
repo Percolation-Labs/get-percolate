@@ -123,6 +123,181 @@ during the second.
 <a href="failure.html#what-to-watch">the same views from the failure side</a></p>
 </details>
 
+## Traces — where a slow answer actually went
+
+The views above answer *what is stuck*. They cannot answer *why this one answer
+took eleven seconds*, because that time is spread across a model call, four tool
+calls and two delegated sub-agents, and the rows record each of those separately.
+A trace is the shape that puts them back together.
+
+The agent runtime speaks OpenTelemetry. It is **off unless you point it
+somewhere** — set the endpoint and it starts, unset and it costs nothing:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_SERVICE_NAME=percolate-agent-runtime
+```
+
+Install the exporter with the extra: `pip install 'percolate-core[agent,otel]'`.
+
+What arrives is mostly not ours. pydantic-ai emits the
+[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+for every model request and tool call — `gen_ai.request.model`,
+`gen_ai.operation.name`, token counts, `gen_ai.conversation.id`. Percolate adds
+one span around the turn carrying the ids that join a trace to a row:
+
+| Attribute | Joins to |
+|---|---|
+| `percolate.run.id` | `agentic.runs.id` |
+| `percolate.run.session_id` | `agentic.sessions.id` |
+| `percolate.run.parent_run_id` | the delegating run |
+| `percolate.run.depth` | how deep in the delegation tree |
+| `percolate.usage.*` | what the turn spent, the same figure the row carries |
+
+The nesting is the point. A delegated turn is a child span of the turn that
+delegated it, so **the delegation tree and the trace tree are one tree** — which
+is what a trace viewer draws well and SQL draws badly:
+
+```
+percolate.turn researcher                 775ms   run d04a…  depth 0
+└── invoke_agent researcher               772ms
+    ├── chat gpt-5                        203ms   ← asks for the tool
+    ├── execute_tool consult_summarizer   360ms
+    │   └── percolate.turn summarizer     359ms   run 7a5f…  depth 1
+    │       └── invoke_agent → chat       352ms
+    └── chat gpt-5                        202ms   ← the final answer
+```
+
+A delegated turn hangs off the parent's `execute_tool` span, because a
+delegation *is* a tool call — which is why no new event type was needed for it.
+The shape above is a real capture, not a sketch: it is where the 775ms went.
+
+**Prompts and completions are not exported by default.** `include_content` puts
+message bodies in span attributes, which walks them straight out of the
+database's RLS and into whatever you pointed OTLP at. `P8_OTEL_CONTENT=1` opens
+that deliberately, for a debugging session, on a backend you trust.
+
+### Turning it on
+
+Two commands. The first brings up a backend to look at; the second starts
+percolate wired to it.
+
+```bash
+compose/observability/signoz.sh up
+
+docker compose -f compose/docker-compose.yml \
+               -f compose/observability.yml up -d
+```
+
+SigNoz is then on <http://localhost:3301> — **not 8080**, which the agent
+already uses. Ask the agent something and the turn appears under the service
+`percolate-agent-runtime`; `percolate.run.id` on that span is the `agentic.runs`
+row. Logs ride the same connection, so the lines a turn wrote land beside the
+trace it wrote them during.
+
+The overlay adds one service, `p8-collector`, and sets two variables on the
+agent. That collector is percolate's own: it relays what the runtime emits and
+reads the views below as metrics, exporting OTLP to whatever `P8_OTLP_BACKEND`
+names. Nothing in its config mentions SigNoz — point it at Grafana, Datadog,
+Honeycomb or a collector you already run and none of the queries change.
+
+SigNoz itself is deliberately **not** vendored here. It is seven services, five
+ClickHouse config files and a startup download; copying that in would mean this
+repository owning their upgrade path. `signoz.sh` fetches their own compose at a
+pinned ref and runs it unmodified.
+
+<details class="why" markdown="1">
+<summary>Why that script exists — two steps that look like a bug in your stack</summary>
+
+**An organisation must exist before anything can be ingested.** Until one does,
+SigNoz's collector cannot register and *refuses every OTLP connection*. The
+backend logs `cannot create agent without orgId`; the sender sees `Connection
+reset by peer`, and a plain `curl` at the ingest port fails identically — so it
+reads as a network fault on your side rather than a setup step on theirs. The
+script POSTs the registration, and fails loudly rather than shrugging, because
+the first version of it reported "already set up" for a password the policy had
+rejected and left the whole thing silently broken.
+
+That policy: 12+ characters, with an uppercase, a lowercase, a digit and a
+symbol. A rejection arrives as a bare `400`.
+
+**"The containers are up" is not "it accepts telemetry".** On a fresh volume the
+collector runs `migrate sync check` and does not open its receivers until
+ClickHouse has every schema migration — around ninety seconds. The script waits
+for a real `200` on the ingest port before printing success, because otherwise
+you go off and configure an exporter against a backend that will reject
+everything for the next minute and a half.
+
+</details>
+
+## Postgres itself — percolate's rows as metrics
+
+Traces come from the runtime, live. Everything above under "What to watch" is a
+**row**, and only Postgres knows it — queue depth, oldest wait, connection
+headroom, runs by outcome. So the collector reads them.
+
+This ships. `compose/observability/percolate-collector.yaml` points the
+collector's `sqlquery` receiver at **the same views** in the table above, which
+is the reason to do it this way rather than writing metrics against the base
+tables: there is no second definition of backlog to drift from the first.
+
+| Metric | From |
+|---|---|
+| `percolate.queue.claimable`, `.running`, `.backing_off`, `.waiting_on_a_person`, `.workers_seen` | `workflow.v_backlog`, per queue |
+| `percolate.queue.oldest_wait_seconds` | `v_backlog` — **the one to alert on** |
+| `percolate.queue.unclaimable` | `workflow.v_unclaimable` |
+| `percolate.tasks.stuck` | `workflow.v_stuck_tasks` |
+| `percolate.db.connections_in_use`, `.connection_headroom` | `workflow.v_capacity` |
+| `percolate.agentic.runs` | `agentic.runs`, by status |
+| `percolate.agentic.max_delegation_depth` | how deep trees actually go |
+
+Depth alone is ambiguous — a deep queue being drained quickly is healthy. How
+long the oldest item has waited is not, which is why `oldest_wait_seconds` is
+the alerting signal rather than `claimable`.
+
+Adding one is a query and a name:
+
+```yaml
+- sql: "select tenant, count(*) as n from content.resources group by tenant"
+  metrics:
+    - metric_name: percolate.content.resources
+      value_column: n
+      attribute_columns: [tenant]
+      value_type: int
+```
+
+<details class="why" markdown="1">
+<summary>Two things that look like a broken scrape and are not</summary>
+
+**A query returning no rows produces no series.** `v_backlog` aggregates by
+queue, so on a stack with no work it is *empty* — not zero, absent — and
+`percolate.queue.claimable` simply does not appear until something is enqueued.
+The whole-table counts (`unclaimable`, `stuck`, the connection pair) always
+return their single row, so those are the ones to check when deciding whether
+the collector is alive.
+
+**An interval is not a number.** `v_backlog.oldest_wait` is an `interval`,
+because a person reads it. A metric has to be scalar, so the shipped query wraps
+it: `coalesce(extract(epoch from oldest_wait), 0)`. Selecting the column
+directly fails.
+
+</details>
+
+### Do not reach for the `postgresql` receiver
+
+It is the obvious choice and it does not work here. It parses `version()` with
+`strconv.Atoi`, and percolate ships on a Postgres 19 **beta**, so every scrape
+fails:
+
+```
+strconv.Atoi: parsing "19beta3 (Debian 19~beta3-1": invalid syntax
+```
+
+Nothing is wrong with your configuration — the receiver cannot read the version
+string. `sqlquery` is unaffected because it runs only the SQL you gave it, and it
+reports percolate's own state rather than the server's internal statistics, which
+is what you wanted from a percolate dashboard anyway. Revisit at a stable 19.
+
 ## Work nobody can claim
 
 Some failures produce no error anywhere, and this is the one to know about

@@ -135,6 +135,26 @@ path, with the relations it came through. From here the
 [documentation](https://percolation-labs.github.io/get-percolate) covers the
 other seven modes, agents, and ingesting your own documents.
 
+#### Seeing what it did — traces, optional
+
+```bash
+compose/observability/signoz.sh up          # a backend to look at, on :3301
+docker compose -f compose/docker-compose.yml -f compose/observability.yml up -d
+```
+
+One agent turn becomes one trace: the model call, every tool call and every
+delegated sub-agent nested underneath it, with `percolate.run.id` on the span
+joining it back to the `agentic.runs` row. The same overlay reads
+`workflow.v_backlog` and friends as metrics, so queue depth and connection
+headroom come from the views an operator already reads rather than from a second
+definition of the same thing.
+
+Percolate ships the collector, not the backend — `P8_OTLP_BACKEND` points it at
+SigNoz, Grafana, Datadog or anything else that speaks OTLP. Prompts and
+completions stay out of it unless you ask, because an exporter is the one
+component here that can carry them past row-level security.
+[More](https://percolation-labs.github.io/get-percolate/operating.html).
+
 ### 2. Helm — a cluster, with Flux or Argo
 
 ```bash

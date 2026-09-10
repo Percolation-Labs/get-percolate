@@ -1,0 +1,196 @@
+# Percolate's own telemetry, and the only file here that is ours.
+#
+# Two jobs, and they are separate on purpose:
+#
+#   1. RELAY  what the agent runtime sends over OTLP -- traces of model calls,
+#             tool calls and delegated turns, plus the log lines a turn wrote.
+#   2. READ   what Postgres already knows. Percolate's state is ROWS: queue
+#             depth, run outcomes, connection headroom. The natural way to
+#             export a row is to select it.
+#
+# Job 2 is the interesting one and it is why this file exists rather than a
+# paragraph telling you to point OTLP somewhere. `docs/src/operating.md` has a
+# table headed "What to watch" listing the views an operator reads by hand.
+# These queries read THE SAME VIEWS. There is no second definition of backlog
+# to drift from the first, which is the whole reason not to write metrics by
+# hand against the base tables.
+#
+# PORTABLE ON PURPOSE. This exports OTLP to whatever `P8_OTLP_BACKEND` names.
+# The compose overlay next to it points that at SigNoz because SigNoz is easy
+# to run locally, but nothing here knows or cares -- Grafana, Datadog,
+# Honeycomb and a plain collector all take the same protocol. Percolate ships
+# the producer; the backend is yours.
+#
+# WHY NOT THE `postgresql` RECEIVER, which is the obvious answer: it parses
+# `version()` with strconv.Atoi and percolate runs on a Postgres 19 BETA, so
+# every scrape fails with
+#
+#     strconv.Atoi: parsing "19beta3 (Debian 19~beta3-1": invalid syntax
+#
+# Measured, not guessed. It reports server statistics anyway -- buffer hit
+# ratios, table sizes -- which is not what you want from a percolate
+# dashboard. Revisit when the image moves to a stable 19; the queries below do
+# not care either way.
+
+# A QUERY THAT RETURNS NO ROWS PRODUCES NO SERIES, and the queue metrics below
+# are the ones this surprises people with. `workflow.v_backlog` aggregates by
+# queue, so on a stack with no work it is EMPTY -- not zero, absent -- and
+# `percolate.queue.claimable` simply does not appear in the backend until
+# something is enqueued. That is correct behaviour for a per-label gauge and it
+# is not a broken scrape. The queries that count over the whole table
+# (`unclaimable`, `stuck`, the connection ones) always return their single row
+# and so are always present, which is the difference to look for when deciding
+# whether the collector is working.
+
+receivers:
+  # What the agent runtime sends. Same endpoint the runtime's
+  # OTEL_EXPORTER_OTLP_ENDPOINT names.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  sqlquery/percolate:
+    driver: postgres
+    # Reads as `authenticator`? No -- as a role that can SELECT these views.
+    # The datasource is supplied by the overlay so the password is not in a
+    # file that gets committed.
+    datasource: "${env:P8_OTEL_DSN}"
+    # 30s, not 10: these are gauges over a work queue, and a scrape is a query
+    # against views that aggregate. Ten-second resolution on a backlog buys
+    # nothing an alert would act on and multiplies the load by three.
+    collection_interval: 30s
+    queries:
+      # --- the queue, which is what actually backs up -------------------
+      - sql: |
+          select queue,
+                 claimable,
+                 backing_off,
+                 running,
+                 waiting_on_a_person,
+                 workers_seen,
+                 -- INTERVAL IS NOT A NUMBER. The view returns `oldest_wait`
+                 -- as an interval because a person reads it; a metric has to
+                 -- be a scalar, and seconds is the unit every backend
+                 -- already understands.
+                 coalesce(extract(epoch from oldest_wait), 0) as oldest_wait_seconds
+            from workflow.v_backlog
+        metrics:
+          - metric_name: percolate.queue.claimable
+            value_column: claimable
+            attribute_columns: [queue]
+            value_type: int
+          - metric_name: percolate.queue.running
+            value_column: running
+            attribute_columns: [queue]
+            value_type: int
+          - metric_name: percolate.queue.backing_off
+            value_column: backing_off
+            attribute_columns: [queue]
+            value_type: int
+          - metric_name: percolate.queue.waiting_on_a_person
+            value_column: waiting_on_a_person
+            attribute_columns: [queue]
+            value_type: int
+          - metric_name: percolate.queue.workers_seen
+            value_column: workers_seen
+            attribute_columns: [queue]
+            value_type: int
+          # THE ONE TO ALERT ON. Depth alone is ambiguous -- a deep queue
+          # being drained fast is healthy. How long the oldest item has waited
+          # is not ambiguous.
+          - metric_name: percolate.queue.oldest_wait_seconds
+            value_column: oldest_wait_seconds
+            attribute_columns: [queue]
+            value_type: double
+
+      # --- work nobody will ever claim ----------------------------------
+      # Not a subset of backlog: these are tasks no worker matches, so they sit
+      # at zero claimable and look like an idle queue.
+      - sql: "select count(*) as n from workflow.v_unclaimable"
+        metrics:
+          - metric_name: percolate.queue.unclaimable
+            value_column: n
+            value_type: int
+
+      # --- stuck, which is staleness AND lack of progress ---------------
+      - sql: "select count(*) as n from workflow.v_stuck_tasks"
+        metrics:
+          - metric_name: percolate.tasks.stuck
+            value_column: n
+            value_type: int
+
+      # --- connection headroom, which runs out before throughput does ---
+      - sql: "select max_connections, in_use, headroom from workflow.v_capacity"
+        metrics:
+          - metric_name: percolate.db.connections_in_use
+            value_column: in_use
+            value_type: int
+          - metric_name: percolate.db.connection_headroom
+            value_column: headroom
+            value_type: int
+
+      # --- agent runs by outcome ----------------------------------------
+      # `quota_exceeded` is in this vocabulary and is not a failure: a run that
+      # stopped because a budget ran out is a different event from one that
+      # broke, and a dashboard that folds them together hides which.
+      - sql: "select status, count(*) as n from agentic.runs group by status"
+        metrics:
+          - metric_name: percolate.agentic.runs
+            value_column: n
+            attribute_columns: [status]
+            value_type: int
+
+      # --- how deep delegation actually goes ----------------------------
+      # P8_MAX_DELEGATION_DEPTH is a ceiling, not a measurement. This is what
+      # the trees really do, which is the number that says whether the ceiling
+      # is doing anything.
+      - sql: "select coalesce(max(depth), 0) as d from agentic.runs"
+        metrics:
+          - metric_name: percolate.agentic.max_delegation_depth
+            value_column: d
+            value_type: int
+
+processors:
+  batch:
+    timeout: 5s
+  # Every metric above is percolate's, so say so once here rather than
+  # repeating a label on each. `service.name` is what a backend groups by.
+  resource/percolate:
+    attributes:
+      - key: service.name
+        value: percolate
+        action: upsert
+
+exporters:
+  otlp/backend:
+    endpoint: "${env:P8_OTLP_BACKEND}"
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    logs:
+      encoding: json
+  pipelines:
+    # Traces and logs pass straight through: the runtime already emits them
+    # correctly and a collector that rewrites them is a collector that can be
+    # wrong about them.
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/backend]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/backend]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/backend]
+    metrics/percolate:
+      receivers: [sqlquery/percolate]
+      processors: [resource/percolate, batch]
+      exporters: [otlp/backend]

@@ -301,6 +301,14 @@ field is accepted by the shape and deliberately ignored, because an agent's tool
 surface is whatever `tool_servers` its row points at, and honouring
 caller-supplied tools would put per-request tool binding straight back in.
 
+The updated runtime accepts `tool_choice: "none"` for an authoring turn. It
+removes tool bindings and automatic chained actions for that request, leaving
+the stored agent unchanged. This is how the [workflow designer](ui.html) asks
+for a proposal using supplied schema without executing the proposed work.
+Check the runtime's OpenAPI `ChatRequest` for support before relying on this
+option; older runtimes ignore fields they do not recognise. Using `auto` or
+omitting the field keeps the agent's configured behaviour.
+
 The thread id travels as a header rather than only a body field, and that is the
 load-bearing part: the inbound contract is the OpenAI chat shape, which has
 nowhere to put one, so a client using a stock SDK can only reach for a header.

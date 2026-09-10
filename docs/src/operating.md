@@ -1,8 +1,13 @@
 # Operating it
 
-What to scale, what to watch, and which audits will tell you the truth without
-being asked nicely.
+Use the workbench to inspect runs and queues, then use the views and audits
+below to investigate failures and size your worker pools.
 {: .lede }
+
+For a browser walkthrough, start with [Using the UI](ui.html). It covers
+connecting and signing in, developing an API feed and query into a saved
+workflow, inspecting results, scheduling repeat work and recovering an expired
+session.
 
 ## Scaling on queue depth
 

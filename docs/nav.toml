@@ -117,6 +117,11 @@ name = "Putting it together"
 name = "Operating"
 
   [[section.page]]
+  file = "ui.md"
+  title = "Using the UI"
+  summary = "Connect the workbench, ingest an API feed, develop a query and turn it into a workflow you can inspect and schedule."
+
+  [[section.page]]
   file = "scaling.md"
   title = "Scaling"
   summary = "What the hot paths cost, measured: claim throughput under contention, what the autoscaler pays, and where the engine was two orders of magnitude slower than it should have been."

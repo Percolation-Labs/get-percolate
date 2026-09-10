@@ -12,7 +12,8 @@
 --
 -- Two tenants and a shared tier. A port is legitimately global -- duplicating
 -- Rotterdam per shipping line would defeat the point of one identity registry
--- -- so shared rows carry a null org and the policies treat that as visible to
+-- -- so shared rows carry a null org here, which the projection reads as the
+-- -- shared tier (rbac.org_or_shared) and the policies treat as visible to
 -- everyone rather than as missing data.
 
 -- Owned by app_owner, not by whoever is connected. `percolate` installs

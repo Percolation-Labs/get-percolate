@@ -118,8 +118,8 @@ curl -s http://localhost:8081/files \
 </div>
 
 **`x-p8-org` decides who can read it back, and its absence is a decision.** A
-resource uploaded without one lands on the shared tier — `org_id =
-rbac.shared_org_id()`, a well-known row rather than a NULL — so `GET /files/{resource_id}` returns those bytes to an
+resource uploaded without one lands on the shared tier — a well-known org row
+rather than a NULL — so `GET /files/{resource_id}` returns those bytes to an
 *unauthenticated* caller, exactly as a shared `LOOKUP` resolves for one. That is
 the same rule everywhere and it is the right default for a port a whole
 deployment reads, but it is the wrong one for company documents. Uploads that

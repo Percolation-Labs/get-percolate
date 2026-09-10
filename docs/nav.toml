@@ -29,7 +29,7 @@ name = "Start"
   [[section.page]]
   file = "video.md"
   title = "The video"
-  summary = "Seven minutes on why any of this is in Postgres, narrated by two hosts who do not exist."
+  summary = "Seven minutes on why any of this is in Postgres."
 
   [[section.page]]
   file = "install.md"

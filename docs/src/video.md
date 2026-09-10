@@ -1,8 +1,6 @@
 # The AI-generated video, for which we apologise
 
-Seven minutes on why any of this is in Postgres, from two hosts who do not
-exist. We did not record it, we compiled it — the script, the slides and both
-voices are generated, which is either the point or the joke.
+Seven minutes on why any of this is in Postgres.
 {: .lede }
 
 <figure class="film">

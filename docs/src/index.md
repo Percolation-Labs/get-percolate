@@ -6,6 +6,10 @@ all tables and functions in your database, rather than state held by a control
 plane that talks to your database.
 {: .lede }
 
+If you would rather be told than read it, there is
+[seven minutes of the same argument](video.html), narrated by two hosts who do
+not exist.
+
 The nice consequence of that is that most steps need no process at all. A step is
 `sql`, `p8ql`, `rest`, `agent` or `work`. The first two run inside Postgres as
 soon as the steps they depend on finish, in the same transaction that finishes

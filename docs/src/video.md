@@ -1,6 +1,6 @@
 # The AI-generated video, for which we apologise
 
-Seven minutes on why any of this is in Postgres.
+Eight minutes on why any of this is in Postgres.
 {: .lede }
 
 <figure class="film">
@@ -13,8 +13,8 @@ Seven minutes on why any of this is in Postgres.
   Your browser will not play this one.
   <a href="assets/percolate-the-control-plane.mp4">Download the mp4</a> instead.
 </video>
-<figcaption>Percolate — the control plane. 7:00, captioned.
-<a href="assets/percolate-the-control-plane.mp4">mp4, 7 MB</a></figcaption>
+<figcaption>Percolate — the control plane. 7:47, captioned.
+<a href="assets/percolate-the-control-plane.mp4">mp4, 8 MB</a></figcaption>
 </figure>
 
 ## What it covers
@@ -30,11 +30,11 @@ rather than the speed of a reference.
 | 01:28 | Built first | Permissions and workflow, underneath the agent runtime rather than in front of it |
 | 02:23 | Install a domain | A domain, installed as a document |
 | 03:11 | Sourcing | Ingestion is a subsystem |
-| 03:59 | Ask across modes | One question, answered over graph, vector and text |
-| 04:44 | Workflow semantics | An agent turn is just a step kind |
-| 05:30 | The slow participant | When the next step is a person |
-| 06:18 | Nobody holds the plan | Postgres is the queue |
-| 06:40 | Where the work is | A database problem wearing an AI hat |
+| 03:59 | Ask across modes | One language over entity lookup, graph, semantic and lexical search — with plain SQL as the floor |
+| 05:33 | Workflow semantics | An agent turn is just a step kind |
+| 06:20 | The slow participant | When the next step is a person |
+| 07:08 | Nobody holds the plan | Postgres is the queue |
+| 07:29 | Where the work is | A database problem wearing an AI hat |
 
 <details class="why" markdown="1">
 <summary>Why it works — the video is the pitch, and the pages are the

@@ -111,7 +111,11 @@ jobs:
           # `Percolation-Labs`. Under the old owner the raw value happened to
           # already be lowercase, so this push worked by luck rather than rule.
           OWNER=$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          helm push docs/_site/charts/percolate-*.tgz "oci://ghcr.io/$OWNER/charts"
+          # The version just packaged, by name: the directory also holds the
+          # earlier versions re-fetched for the classic index, and a glob
+          # handed `helm push` all of them -- it read the second as the remote.
+          V=$(sed -n 's/^version: //p' charts/percolate/Chart.yaml)
+          helm push "docs/_site/charts/percolate-$V.tgz" "oci://ghcr.io/$OWNER/charts"
 
       - uses: actions/upload-pages-artifact@v3
         with: {path: docs/_site}

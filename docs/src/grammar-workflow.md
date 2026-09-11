@@ -76,11 +76,11 @@ steps:
 <div class="label">workflow.tasks after start_workflow returns</div>
 
 ```
- step_key | kind | status |   worker    | rows_out
-----------+------+--------+-------------+----------
- fleet    | sql  | done   | in-database |        4
- operator | sql  | done   | in-database |        1
- reports  | sql  | done   | in-database |        2
+ step_key | kind |  status   |   worker    | rows_out
+----------+------+-----------+-------------+----------
+ fleet    | sql  | succeeded | in-database |        4
+ operator | sql  | succeeded | in-database |        1
+ reports  | sql  | succeeded | in-database |        2
 ```
 </div>
 
@@ -96,7 +96,7 @@ finished by the time `start_workflow` returns to you.
 The rows land on the task, so the graph walk the middle step did is readable
 straight out of `workflow.tasks.output` rather than having to be recomputed.
 
-One thing to know lives here, and it is the seventh P8QL mode. A `p8ql:` step
+One thing to know lives here, and it is the ninth P8QL mode. A `p8ql:` step
 holding *plain SQL* executes, and inside a step the invoker is the **engine
 owner** — which owns every table and is not subject to their row-level
 security. So such a step reads across tenants. It is a deliberate beta trade and
@@ -364,10 +364,13 @@ a column, and have two agents share one conversation.
 <summary>Why it works — an agent step is a REST step whose URL and auth the
 compiler fills in</summary>
 
-It compiles to `POST {{env.P8_AGENT_URL}}/internal/run` with `mode: async` and
-`credential_ref: P8_API_KEY`. The runtime answers `202` immediately and calls
-`complete_task` when the agent finishes, so a twenty-minute agent holds no
-connection. Nested delegation happens inside the runtime rather than being
+It compiles to `POST {{env.P8_AGENT_URL}}/v1/chat/completions` on the `http`
+queue with `credential_ref: P8_API_KEY`, and reads the answer from
+`choices.0.message.content` — the call is synchronous, so the worker holds the
+connection for the length of the turn. The worker must therefore carry both
+variables: `P8_AGENT_URL`, which the compose file and chart set, and
+`P8_API_KEY`, a token signed for a user, which neither ships. Nested delegation
+happens inside the runtime rather than being
 unrolled into the workflow graph, which is why a researcher calling an analyst
 is one task here and a delegation tree there.
 
@@ -422,7 +425,7 @@ nothing outside the database deciding how many.
 <summary>Why it works — the children are inserted by the statement that completes
 the parent</summary>
 
-There is no window in which `extract` is `done` and the children do not exist
+There is no window in which `extract` is `succeeded` and the children do not exist
 yet. A controller-based fan-out has that window, and a controller that dies
 inside it strands the fan-out with nothing to resume from.
 
@@ -478,9 +481,17 @@ off, with a cooling-off period first and no process doing the waiting.
 ```
 
 ```sql
-select workflow.signal_task(:run_id, 'approve',
-    '{"decision":"released","by":"harbourmaster"}'::jsonb);
+select workflow.signal_task(
+    (select run_id from workflow.tasks
+      where step_key = 'approve' and status = 'waiting_external'
+      order by created_at desc limit 1),
+    'approve', '{"decision":"released","by":"harbourmaster"}'::jsonb);
 ```
+
+The subquery finds the newest run waiting on `approve`. From `psql` it needs the
+identity claim that [your first workflow](first-workflow.html#watching-a-run)
+sets, because `signal_task` checks who is signing and refuses a session that
+carries nobody.
 
 <details class="why" markdown="1">
 <summary>Why it works — waiting is a row state, so nothing holds a process open
@@ -591,5 +602,6 @@ capability report rather than as a syntax error in a document that is not wrong.
 mechanism for the query dialect</a></p>
 </details>
 
-Next: [authoring in YAML](authoring.html) walks the same vocabulary as prose,
-and [workflow recipes](recipes.html) puts it to work.
+Next: [ten things, worked through](cookbook.html), which puts this vocabulary
+to work one capability at a time; [workflow recipes](recipes.html) after it
+assembles it into whole pipelines.

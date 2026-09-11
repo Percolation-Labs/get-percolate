@@ -60,6 +60,18 @@ spec:
               value: web_anon
             - name: PGRST_JWT_SECRET
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: jwt-secret}}
+            # The admin server is what gives PostgREST a readiness answer:
+            # /ready is 503 until the schema cache is loaded from the database,
+            # /live is 200 whenever the process is up.
+            - name: PGRST_ADMIN_SERVER_PORT
+              value: "3001"
+          readinessProbe:
+            httpGet: {path: /ready, port: admin}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /live, port: admin}
+            periodSeconds: 10
+            failureThreshold: 6
           {{- else }}
           image: {{ include "percolate.image" $root | quote }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
@@ -70,29 +82,50 @@ spec:
             - name: P8_DSN
               value: {{ include "percolate.serviceDsn" $root | quote }}
             {{- if eq $s.name "agent" }}
-            # The Agent Runtime reads P8_DATABASE_URL; the worker and Content
-            # Server read P8_DSN. Both are set rather than only the one that
-            # works, because the divergence is in percolate-core and a chart
-            # that silently depends on which name a given release happens to
-            # honour is a chart that breaks on upgrade. Found by deploying it:
-            # the agent ignored P8_DSN and fell back to localhost:5500.
+            # The Agent Runtime reads P8_DATABASE_URL first and P8_DSN after
+            # it (from percolate-core 0.1.4; before that it read only the
+            # former and fell back to localhost:5500). Both are set so a
+            # release older than that still connects.
             - name: P8_DATABASE_URL
               value: {{ include "percolate.serviceDsn" $root | quote }}
             - name: LLM_API_KEY
-              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key}}
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key, optional: true}}
             # The provider's own variable. LLM_API_KEY above is the worker's
             # credential_ref mechanism and this runtime never reads it, so
             # without this the agent answers 200 and errors inside the stream.
             - name: OPENAI_API_KEY
-              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: openai-api-key}}
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: openai-api-key, optional: true}}
             {{- with $root.Values.agent.openaiBaseUrl }}
             - name: OPENAI_BASE_URL
               value: {{ . | quote }}
             {{- end }}
+            # Every other provider's own variable -- ANTHROPIC_API_KEY,
+            # GEMINI_API_KEY and the rest -- because the model is a column and
+            # the image carries every provider; see values.yaml agent.env.
+            {{- with $root.Values.agent.env }}{{- toYaml . | nindent 12 }}{{- end }}
             {{- end }}
             {{- include "percolate.commonEnv" $root | nindent 12 }}
           {{- end }}
+          {{- if eq $s.name "postgrest" }}
+          ports: [{containerPort: {{ $s.port }}, name: http}, {containerPort: 3001, name: admin}]
+          {{- else }}
           ports: [{containerPort: {{ $s.port }}, name: http}]
+          # Content has a /health route; the Agent Runtime has none, so an
+          # open port is the signal. Before these a pod was Ready the moment
+          # its container started, and a rollout sent traffic to a process
+          # still importing.
+          readinessProbe:
+            {{- if eq $s.name "content" }}
+            httpGet: {path: /health, port: http}
+            {{- else }}
+            tcpSocket: {port: http}
+            {{- end }}
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: {port: http}
+            periodSeconds: 10
+            failureThreshold: 6
+          {{- end }}
           resources: {{- toYaml $s.cfg.resources | nindent 12 }}
           volumeMounts: [{name: tmp, mountPath: /tmp}]
       # readOnlyRootFilesystem is on, so anything that writes needs a real

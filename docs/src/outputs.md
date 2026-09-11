@@ -23,7 +23,15 @@ What we are trying to do here is pass a small value from one step to the next.
 
 ```yaml
   - id: judge
-    rest: {url: '{{env.LLM_URL}}/v1/chat/completions', jsonpath: choices.0.message.content}
+    rest:
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
+      credential_ref: LLM_API_KEY
+      jsonpath: choices.0.message.content
+      body:
+        model: gpt-4o-mini
+        messages:
+          - {role: user, content: 'Answer only "detain" or "release": {{run.finding}}'}
   - id: route
     needs: [judge]
     sql: {function: route_by_verdict, args: ['{{steps.judge.result}}']}
@@ -190,4 +198,4 @@ bytes and then inlined them anyway.
 credentials</a></p>
 </details>
 
-Next: [failure and retry](failure.html).
+Next: [reading a plan](plan.html).

@@ -51,4 +51,4 @@ NOTE: using the bundled single-replica MinIO. Fine to start with; point
 objectStorage.external at real object storage before you rely on it.
 {{- end }}
 
-Docs: https://docs.percolationlabs.ai
+Docs: https://percolation-labs.github.io/get-percolate/

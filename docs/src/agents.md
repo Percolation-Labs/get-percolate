@@ -165,7 +165,9 @@ curl -s http://localhost:3000/rpc/upsert_agent \
 Or push the file you wrote at the top of this page, unchanged:
 
 ```bash
-P8_USER_ID=<your user id> percolate agent push harbourmaster.yaml
+export P8_DSN=postgres://p8:p8@localhost:5432/percolate
+export P8_USER_ID=$(psql "$P8_DSN" -Atc "select id from rbac.users where email = 'me@example.com'")
+percolate agent push harbourmaster.yaml
 ```
 
 That is the only one of the three that takes the **schema document** — the form
@@ -178,7 +180,10 @@ they ignore what they do not recognise: push the documented form at
 gated inside the database on the caller's permission, so the CLI has to connect
 *as somebody*; without it you get `not authorized to author agents`, which is
 the check working rather than a misconfiguration.
-`percolate auth bootstrap` prints the id it creates.
+`percolate auth bootstrap` prints the id it creates. `P8_DSN` is the variable
+the `agent` commands read — not the `P8_ADMIN_DSN` the sample loader uses —
+and without it they try a development database on port 5500 and fail with
+`Connect call failed ('127.0.0.1', 5500)`.
 
 <details class="why" markdown="1">
 <summary>Why it works — an omitted key means "leave it alone", and getting that
@@ -233,16 +238,15 @@ neither is about the agent:
   for. [Install § the first user, and a token](install.html#the-first-user-and-a-token)
   is the whole of it; without it this endpoint answers `401 a verified bearer
   token is required` before the stream opens.
-- **The model has to be one the runtime can load.** The published
-  `percolate-core` image ships `pydantic-ai-slim` with the **OpenAI provider
-  only**, so the `anthropic:` model in the spec above — which is what the row
-  should say once you are running against Anthropic — comes back as
-  `ImportError: Please install the anthropic package` inside the stream, as a
-  `RUN_ERROR` event on an otherwise-200 response. On the compose stack, point
-  the row at an `openai:` model and give the runtime the provider's own key
-  (`OPENAI_API_KEY`, not `LLM_API_KEY`, which is the worker's credential
-  mechanism and not read here); `OPENAI_BASE_URL` aims the same client at any
-  OpenAI-shaped gateway.
+- **The runtime needs the key for the model the row names.** The published
+  image carries every provider pydantic-ai drives, and each reads its own
+  variable from the runtime's environment — `OPENAI_API_KEY` for `openai:`,
+  `ANTHROPIC_API_KEY` for `anthropic:` — set in the compose `.env` before the
+  stack starts. `LLM_API_KEY` is the worker's credential mechanism and is not
+  read here. A row naming a provider whose key is missing answers 200 and
+  fails inside the stream, as a `RUN_ERROR` event. The sample already needs an
+  OpenAI key, so the statement below points the row at an OpenAI model;
+  `OPENAI_BASE_URL` aims the same client at any OpenAI-shaped gateway.
 
 <!-- run: sql -->
 ```sql
@@ -254,7 +258,7 @@ curl -N http://localhost:8080/chat \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{
         "model": "harbourmaster",
-        "messages": [{"role": "user", "content": "What has Aurora Kestrel been cited for?"}],
+        "messages": [{"role": "user", "content": "What has Meridian Dawn been cited for?"}],
         "stream": true
       }'
 ```
@@ -281,6 +285,17 @@ event: RUN_FINISHED
 data: {"type":"RUN_FINISHED","status":"succeeded"}
 ```
 </div>
+
+Two differences from that capture on a stock compose stack. It was taken with
+the query server bound, and the sample binds no tool server, so your stream has
+no `TOOL_CALL` events and the answer comes from the prompt alone. And in the
+published image an agent with an output schema — the sample's `harbourmaster`
+is one — streams no text at all: the events arrive and the answer does not.
+`"stream": false` returns it, as the completion's `choices[0].message.content`;
+the streamed form is fixed in `percolate-core`'s source and ships with its next
+release. The question names a Meridian vessel because the token from
+[install](install.html#the-first-user-and-a-token) carries Meridian's org, and
+a Kestrel vessel is invisible to it.
 
 Continuing the conversation is echoing back the session id you were handed, and
 watching one you did not start is a second endpoint:
@@ -562,7 +577,8 @@ when it answered.
 
 ```sql
 select seq, role, citations from agentic.messages_api
-where session_id = :session order by seq;
+where session_id = (select id from agentic.sessions_api order by created_at desc limit 1)
+order by seq;   -- your latest conversation; put its X-P8-Session-Id here for another
 ```
 
 <details class="why" markdown="1">
@@ -657,12 +673,16 @@ conversation between them.
 <summary>Why it works — an agent step is a REST step whose URL and auth the
 compiler fills in</summary>
 
-It compiles to `POST {{env.P8_AGENT_URL}}/internal/run` with `mode: async`: the
-runtime accepts the task id, returns `202` immediately, and calls
-`complete_task` when the agent finishes — the same seam every long-running step
-uses, so a twenty-minute agent holds no connection open anywhere. That is a
-third endpoint, and it is the one part of this page the runtime does not serve
-yet.
+It compiles to `POST {{env.P8_AGENT_URL}}/v1/chat/completions` on the `http`
+queue with `credential_ref: P8_API_KEY` — the same completions endpoint a stock
+OpenAI client calls, read back from `choices.0.message.content`. So the worker
+that runs it needs both: `P8_AGENT_URL`, which the compose file and the chart
+set, and `P8_API_KEY`, a Percolate token signed for a user, which neither ships
+because a default would be a token everybody knows. Until it is set every agent
+step fails on `credential_ref 'P8_API_KEY' is not set`; the
+[README](https://github.com/Percolation-Labs/get-percolate#agent-steps-need-a-token-of-their-own)
+has the two commands. The call is synchronous, so the worker holds the
+connection for the length of the turn.
 
 `session_group` asks the engine for a session id that is stable for the life of
 the run and bound to `{{run.$session}}`. Steps naming the same group share a
@@ -698,6 +718,6 @@ an LLM call and a tool call and neither of those is a catalog lookup. So treat
 the streaming and delegation behaviour described here as specified, reviewed and
 exercised elsewhere rather than measured here.
 
-Next: [your first workflow](first-workflow.html), which is the same database
-seen from the other side — a four-step pipeline walked from `define_yaml` to a
-completed run.
+Next: [skills and plugins](skills.html), the prose an agent carries and shares
+with its siblings — stored once as rows, picked per turn, and installed and
+removed as one bundle.

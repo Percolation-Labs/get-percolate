@@ -17,6 +17,22 @@ curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main
 docker compose up -d
 ```
 
+If you have a model key, put it in a `.env` beside the file **before** that
+`up`, because each container reads its environment once, when it starts:
+
+```bash
+echo 'OPENAI_API_KEY=sk-...' > .env      # agent turns, and the sample's embeddings
+docker compose up -d                     # again, if the stack was already running
+```
+
+One key covers both halves on this path: the Agent Runtime reads
+`OPENAI_API_KEY`, and the workers' embedding credential `LLM_API_KEY` falls back
+to it. A key exported in some other shell after the stack is up reaches neither.
+Nothing else needs one — the database, workflows, graph and text search all run
+without it. The same `.env` moves ports that are already taken, most often
+5432 by a local Postgres: `P8_PG_PORT=5433`, and `P8_REST_PORT`,
+`P8_AGENT_PORT` and `P8_CONTENT_PORT` for the others.
+
 Six services come up, and that is a list of **roles rather than a recommended
 process count**: PostgREST for the REST surface, a `worker` for steps that leave
 the machine, an `ingest-worker` for reading uploaded files, the Content Server
@@ -58,7 +74,8 @@ this collection is built to refuse. Updating as `app_owner` is what keeps
 ownership and row-level security exactly as a fresh install has them.
 
 Every release ships `percolate--<old>--@@extension@@.sql` for each version
-already published, and it is the whole schema replayed: every statement in it
+published since 0.1.1 — a 0.1.0 database has no upgrade path and is replaced,
+not updated — and it is the whole schema replayed: every statement in it
 is written to survive being applied twice, and `build-sql.py` refuses one that
 is not. An upgraded database was checked against a fresh install of the same
 version object by object — 629 of them, identical.
@@ -102,7 +119,9 @@ select * from percolate_build();
 `consistent` is `f` there because the two halves were built from different
 commits — the shape of a real incident, not a decorative example. A `-dirty`
 suffix on a commit means that build came from a working tree that matched no
-commit at all.
+commit at all. It answers from the image and the Helm chart; an install from
+the release files returns no rows, because the build is recorded when the
+image is built and the files carry no such record.
 
 <details class="why" markdown="1">
 <summary>Why it works — the database installs itself, and `missing` is the field
@@ -138,16 +157,30 @@ passwords we generate ourselves.
 {: .goal }
 
 ```bash
+cat > percolate-values.yaml <<EOF
+secrets:
+  postgresPassword: $(openssl rand -hex 24)
+  authenticatorPassword: $(openssl rand -hex 24)
+  workerPassword: $(openssl rand -hex 24)
+  jwtSecret: $(openssl rand -hex 32)
+  s3Key: $(openssl rand -hex 16)
+  s3Secret: $(openssl rand -hex 24)
+  openaiApiKey: "${OPENAI_API_KEY:-}"   # the Agent Runtime's model key
+  llmApiKey: "${OPENAI_API_KEY:-}"      # what embedding steps resolve
+EOF
 helm install percolate oci://ghcr.io/percolation-labs/charts/percolate \
-  -n percolate --create-namespace \
-  --set secrets.postgresPassword="$(openssl rand -base64 24)" \
-  --set secrets.authenticatorPassword="$(openssl rand -base64 24)" \
-  --set secrets.workerPassword="$(openssl rand -base64 24)" \
-  --set secrets.jwtSecret="$(openssl rand -base64 48)"
+  -n percolate --create-namespace -f percolate-values.yaml
 ```
 
 You get the database, PostgREST, the three services, two worker pools — `http`
 and `ingest` — and MinIO.
+
+**Keep `percolate-values.yaml`.** Upgrades take it with `-f`; generating the
+passwords again writes new ones into the Secret while the database keeps the
+ones it started with, and every service then fails to log in. `jwtSecret` is
+also the secret you sign tokens with. The passwords are hex because the
+services connect with a `postgres://` URL, and the `/` that base64 produces
+about four times in ten ends the password inside it.
 There are no CRDs and no operator — the only custom resources are KEDA's, and
 only if you turn autoscaling on.
 
@@ -178,15 +211,24 @@ What we are trying to do here is add the extensions to a database that already
 exists, without a service anywhere.
 {: .goal }
 
+pgvector first, from your platform's packages (`apt install
+postgresql-19-pgvector` from the PGDG repository). Then the extension files,
+and then `bootstrap.sql`, which `install.sh` downloads into the current
+directory — run it as a superuser, in the database that will hold Percolate:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Percolation-Labs/get-percolate/main/install.sh | sh
+
+export P8_AUTH_PW=$(openssl rand -hex 24) P8_WORKER_PW=$(openssl rand -hex 24)
+psql -d yourdb -v ON_ERROR_STOP=1 \
+     -v auth_pw="$P8_AUTH_PW" -v worker_pw="$P8_WORKER_PW" -f bootstrap.sql
 ```
 
-```sql
--- then, as a superuser
-CREATE EXTENSION IF NOT EXISTS vector;   -- packaged nearly everywhere
-CREATE EXTENSION percolate CASCADE;
-```
+Keep the two passwords: PostgREST connects as `authenticator` and the workers
+as `worker`. A bare `CREATE EXTENSION percolate` does not work on this path —
+as a superuser the extension refuses to load, and as anyone else the roles it
+needs do not exist yet — which is what `bootstrap.sql` sequences. It is safe to
+run again.
 
 <details class="why" markdown="1">
 <summary>Why it works — two extensions that ship differently, because they are
@@ -207,15 +249,15 @@ anything else the script installs the SQL extension, tells you that `define_yaml
 and `p8ql:` steps will not resolve until the parser is built, and exits non-zero,
 so a half install does not look like a successful one.
 
-`CASCADE` is needed because `percolate` depends on `percolate_parser`, `pgcrypto`
-and `pg_trgm`, and none of those is a trusted extension — so those come from
-the superuser half of `bootstrap.sql`, before it hands over. Everything
-`percolate` itself creates is then owned by a **non-superuser**, which is not a
+`bootstrap.sql` has two halves. As the superuser it creates the cluster roles
+and the two extensions that are not trusted, `vector` and `percolate_parser`;
+then it switches to `app_owner` and runs `CREATE EXTENSION percolate CASCADE`,
+which creates the trusted `pgcrypto` and `pg_trgm` and everything `percolate`
+itself holds. So all of it is owned by a **non-superuser**, which is not a
 detail: a superuser bypasses RLS unconditionally, so a superuser-owned install
 would leave every policy in the collection inert while looking correct. The
 extension asserts this about itself rather than trusting the installer to get
-it right, which is what makes the bare `CREATE EXTENSION` fail loudly instead
-of quietly.
+it right.
 
 <p class="related"><strong>Related</strong>
 <a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">what that
@@ -231,16 +273,20 @@ What we are trying to do here is give the engine a clock, which it needs for
 three separate things.
 {: .goal }
 
+Install the package (`apt install postgresql-19-cron`), then in
+`postgresql.conf`:
+
 ```
-shared_preload_libraries = 'pg_cron'
-cron.database_name = 'percolate'
+shared_preload_libraries = 'pg_cron'   # added to any list already there
+cron.database_name = 'yourdb'          # the database bootstrap.sql ran in
+cron.use_background_workers = on       # jobs run in-process, with no login
 ```
 
-```sql
-select cron.schedule('workflow-tick',   '* * * * *', $$select workflow.tick()$$);
-select cron.schedule('workflow-reaper', '* * * * *', $$select workflow.reap_stale_tasks()$$);
-select cron.schedule('workflow-timers', '* * * * *', $$select workflow.promote_due_timers()$$);
-```
+Restart the server and run `bootstrap.sql` again. It creates `pg_cron` and
+schedules the three jobs — `workflow.tick()`, `workflow.reap_stale_tasks()` and
+`workflow.promote_due_timers()`, every minute — as the `scheduler` role rather
+than as a superuser. The compose image and the Helm chart do all of this
+themselves.
 
 <details class="why" markdown="1">
 <summary>Why it works — and what silently does not happen without it</summary>
@@ -256,6 +302,10 @@ because a schedule is a row in `workflow.schedules` rather than a cron entry.
 
 `cron.database_name` is the usual reason a correctly-created job never runs — it
 can only be one database, and the default is `postgres`.
+`cron.use_background_workers` is the other: without it each job logs in over
+libpq as `scheduler`, which has no password, so wherever `pg_hba.conf` asks for
+one every run fails with `connection failed` while `cron.job` still shows the
+job active.
 
 <p class="related"><strong>Related</strong>
 <a href="recipes.html#1-bring-a-source-in">a scheduled workflow</a> ·
@@ -295,9 +345,20 @@ the extension for this reason — prose that repeats it can drift away from it.
 
 Then sign a JWT with the same secret the stack was given — `P8_JWT_SECRET`,
 which the compose file defaults to
-`change-me-a-long-random-string-at-least-32-chars`. Two claims are load-bearing:
-`sub` is the user id every RLS policy reads through `rbac.current_user_id()`, and
-`role` is the Postgres role PostgREST switches to.
+`change-me-a-long-random-string-at-least-32-chars`. The CLI installed in
+[the next section](#the-sample-which-nothing-loads-for-you) does it, with the
+tenant claim the sample's data needs:
+
+```bash
+export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
+TOKEN=$(percolate auth token --email me@example.com \
+          --orgs d0000000-0000-0000-0000-00000000000a)
+```
+
+With nothing installed, the same token is a few lines of standard library.
+Two claims are required: `sub` is the user id every RLS policy reads through
+`rbac.current_user_id()`, and `role` is the Postgres role PostgREST switches to;
+`orgs` is the tenant list, without which tenanted rows are invisible.
 
 ```python
 import base64, hmac, hashlib, json, time
@@ -306,6 +367,7 @@ secret = b"change-me-a-long-random-string-at-least-32-chars"
 head = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
 body = b64(json.dumps({"sub": "<the uid bootstrap_admin returned>",
                        "role": "authenticated",
+                       "orgs": ["d0000000-0000-0000-0000-00000000000a"],
                        "exp": int(time.time()) + 3600}).encode())
 sig  = b64(hmac.new(secret, head + b"." + body, hashlib.sha256).digest())
 print((head + b"." + body + b"." + sig).decode())
@@ -355,9 +417,9 @@ therefore a user, and the permission is checked.
 
 Passwords are for `rbac.login`, which exchanges them for a refresh token; it
 does not mint the access token, because whatever holds `P8_JWT_SECRET` does.
-There is no packaged endpoint that hands you one yet, so signing it yourself —
-or from your own auth provider, with the same secret and the same two claims —
-is what "getting a token" means today.
+There is no HTTP endpoint that hands you one, so a token comes from something
+holding the secret — `percolate auth token`, the snippet above, or your own
+auth provider signing with the same secret and the same claims.
 
 <p class="related"><strong>Related</strong>
 <a href="agents.html#call-it-over-rest">the calls that need it</a> ·
@@ -386,8 +448,13 @@ is what turns `plugin.yaml`'s agents — which are JSON Schema documents, not
 prompt strings — into rows. Without them the load refuses before it writes
 anything, which is the right behaviour and still a stop.
 
+It goes in a virtualenv, because a bare `pip install` stops at
+`externally-managed-environment` on Homebrew's Python and on current Debian and
+Ubuntu:
+
 <!-- run: pip -->
 ```bash
+python3 -m venv ~/.percolate && . ~/.percolate/bin/activate   # 3.11 or newer
 pip install 'percolate-core[sample,agent]>=@@core_min@@'
 ```
 
@@ -400,8 +467,16 @@ its own error if you forget:
 git clone https://github.com/Percolation-Labs/get-percolate
 cd get-percolate
 export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
+export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
+export LLM_API_KEY=sk-...          # the key in your .env
 percolate sample load samples/harbour --as-email me@example.com
 ```
+
+`P8_JWT_SECRET` is the compose file's default signing secret — use your own if
+you set one in `.env` — and the loader signs the token it uploads the corpus
+with. It checks `LLM_API_KEY` before uploading, but the embedding call is made
+by the stack's ingest worker, which is why the key had to be in `.env` when the
+stack started.
 
 A port-operations company: two tenants, four operators, five vessels, three
 ports, inspections, a corpus of reports and a graph tying them together.
@@ -431,7 +506,11 @@ percolate auth token --email me@example.com \
 through `POST /files` and is embedded by the running pipeline. `--dry-run` says
 what a load would need without writing anything; `--skip-documents` loads
 everything else, and `LOOKUP`, `FUZZY`, `GRAPH` and `TEXT` all work without it
-— only `SEMANTIC` and `SEARCH` need vectors.
+— only `SEMANTIC` and `SEARCH` need vectors. If you loaded before the stack had
+the key, the documents are registered and their embeddings failed; a second
+load uploads them again and those copies fail to parse, so remove the first
+ones before loading again — the statement is in
+[the sample's README](https://github.com/Percolation-Labs/get-percolate/blob/main/samples/harbour/README.md#loading-it-twice).
 
 <details class="why" markdown="1">
 <summary>Why it works — a directory of the documents you would have written

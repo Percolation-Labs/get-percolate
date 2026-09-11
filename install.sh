@@ -35,9 +35,12 @@ PG_CONFIG="${PG_CONFIG:-$(command -v pg_config || true)}"
   or point at it: PG_CONFIG=/path/to/pg_config sh install.sh"
 
 PG_MAJOR=$("$PG_CONFIG" --version | sed -n 's/^PostgreSQL \([0-9][0-9]*\).*/\1/p')
-[ "$PG_MAJOR" = "19" ] || die "this build targets PostgreSQL 19, found ${PG_MAJOR:-unknown}.
+[ "$PG_MAJOR" = "19" ] || die "this build targets PostgreSQL 19, and $PG_CONFIG reports ${PG_MAJOR:-an unknown version}.
   SQL/PGQ property graphs are a PG19 feature and the parser is compiled against
-  its ABI -- neither degrades gracefully on 18."
+  its ABI, so there is no fallback to an earlier major.
+  A PG19 installed elsewhere:  PG_CONFIG=/path/to/19/bin/pg_config sh install.sh
+  No PG19 at all:              the compose install carries everything,
+                               https://github.com/$REPO#1-docker-compose--the-whole-stack-two-images"
 
 SHAREDIR=$("$PG_CONFIG" --sharedir)/extension
 PKGLIBDIR=$("$PG_CONFIG" --pkglibdir)
@@ -68,8 +71,8 @@ fetch() {
   curl -fsSL "$1" -o "$2" 2>/dev/null \
     || die "could not download $1
   Check https://github.com/$REPO/releases for a published release. If you are
-  running ahead of one, the Docker image carries the same extensions:
-  percolationlabs/percolate-postgres:19"
+  running ahead of one, the Docker image carries the same extensions: the
+  compose install at https://github.com/$REPO#1-docker-compose--the-whole-stack-two-images"
 }
 
 # ---------------------------------------------------------------- percolate
@@ -94,7 +97,8 @@ fetch "$BASE/percolate--$PV.sql" "$TMP/percolate--$PV.sql"
 # readable message instead of half-copying and leaving a control file pointing
 # at a script that is not there.
 install -m 644 "$TMP/percolate.control" "$TMP/percolate--$PV.sql" "$SHAREDIR/" \
-  || die "cannot write to $SHAREDIR -- rerun with sudo, or as the postgres owner"
+  || die "cannot write to $SHAREDIR -- rerun with sudo (on Debian and Ubuntu the
+  directory belongs to root, not to the postgres user)"
 
 # ------------------------------------------------------- percolate_parser
 if [ -z "$PLATFORM" ]; then
@@ -105,7 +109,7 @@ if [ -z "$PLATFORM" ]; then
   say "   percolate_parser is built for this platform."
   say ""
   say "   The Docker image carries a prebuilt parser for linux/amd64 and"
-  say "   linux/arm64: percolationlabs/percolate-postgres:19"
+  say "   linux/arm64: percolationlabs/percolate-postgres:19-$PV"
   say "   For another platform, open an issue at github.com/$REPO/issues with"
   say "   the output of \\`uname -sm\\` and it can be added to the build matrix."
   exit 3
@@ -123,7 +127,13 @@ QV=$(control_version "$TMP/percolate_parser.control")
 fetch "$BASE/percolate_parser-$PLATFORM.so" "$TMP/percolate_parser.so"
 fetch "$BASE/percolate_parser--$QV.sql"     "$TMP/percolate_parser--$QV.sql"
 
-install -m 755 "$TMP/percolate_parser.so" "$PKGLIBDIR/" \
+# Named with the suffix THIS server loads. `$libdir/percolate_parser` is
+# resolved by appending the platform's DLSUFFIX, which is .dylib on macOS from
+# PostgreSQL 16 -- so the macOS build installed as .so was a file nothing looked
+# for, and CREATE EXTENSION failed with `could not access file
+# "percolate_parser": No such file or directory` after a clean install.
+case "$os" in Darwin) DLSUFFIX=.dylib ;; *) DLSUFFIX=.so ;; esac
+install -m 755 "$TMP/percolate_parser.so" "$PKGLIBDIR/percolate_parser$DLSUFFIX" \
   || die "cannot write to $PKGLIBDIR -- rerun with sudo"
 install -m 644 "$TMP/percolate_parser.control" "$TMP/percolate_parser--$QV.sql" "$SHAREDIR/"
 
@@ -136,6 +146,13 @@ install -m 644 "$TMP/percolate_parser.control" "$TMP/percolate_parser--$QV.sql" 
 # The release first, then main -- bootstrap.sql does not name a version, so
 # either is correct, and preferring the release keeps a pinned install
 # self-consistent.
+if [ ! -w . ]; then
+  say ""
+  say "!! Cannot write bootstrap.sql into $(pwd). The extension files are"
+  say "   installed; cd somewhere writable and run this again, or get it from"
+  say "   https://github.com/$REPO/blob/main/bootstrap.sql"
+  exit 4
+fi
 if ! try_fetch "$BASE/bootstrap.sql" ./bootstrap.sql &&
    ! try_fetch "https://raw.githubusercontent.com/$REPO/main/bootstrap.sql" ./bootstrap.sql
 then
@@ -152,10 +169,14 @@ say ""
 say "Run ./bootstrap.sql (downloaded here) as a SUPERUSER, against the database"
 say "that will hold it:"
 say ""
+say "  export P8_AUTH_PW=\$(openssl rand -hex 24) P8_WORKER_PW=\$(openssl rand -hex 24)"
 say "  psql -d yourdb -v ON_ERROR_STOP=1 \\"
-say "       -v auth_pw=\"\$(openssl rand -base64 24)\" \\"
-say "       -v worker_pw=\"\$(openssl rand -base64 24)\" \\"
+say "       -v auth_pw=\"\$P8_AUTH_PW\" -v worker_pw=\"\$P8_WORKER_PW\" \\"
 say "       -f bootstrap.sql"
+say ""
+say "Keep those two: PostgREST connects as authenticator and the workers as"
+say "worker. Hex, because base64 puts / in a password and / ends the password"
+say "in a postgres:// URL."
 say ""
 say "It creates the cluster roles, installs vector and percolate_parser, and then"
 say "installs percolate AS app_owner. That last part is why a bare"

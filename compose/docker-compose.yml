@@ -113,7 +113,14 @@ services:
       # Credentials named by http_call tasks are resolved from HERE, by name.
       # The database stores only the reference, so a dump of workflow.tasks
       # never contains a secret and a task stays replayable.
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      #
+      # FALLING BACK TO OPENAI_API_KEY, because on the path these docs walk the
+      # two are the same key: the sample embeds with an OpenAI model and the
+      # agents answer with one. Two names for one key meant setting one of
+      # them, getting a working agent, and a corpus whose every embed task
+      # failed on `credential_ref 'LLM_API_KEY' is not set`. Set LLM_API_KEY
+      # itself when embeddings go to a different provider.
+      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
       # WHERE AN `agent:` STEP SENDS ITS CALL. The compiler emits
       # `POST {{env.P8_AGENT_URL}}/v1/chat/completions` rather than making the
       # author write a deployment fact into a document that outlives it -- so
@@ -165,7 +172,8 @@ services:
       # aiq.embedding_models.credential_ref, which is LLM_API_KEY by
       # convention. Parsing and chunking work without it; embedding retries and
       # then fails, so an upload is searchable by text and not by vector.
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      # Falls back to OPENAI_API_KEY for the worker's reason above.
+      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
 
   content:
     image: percolationlabs/percolate-core:0.1.8
@@ -250,7 +258,7 @@ services:
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
     ports: ["${P8_AGENT_PORT:-8080}:8080"]
 
   minio:

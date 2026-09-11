@@ -1,6 +1,6 @@
 # The P8QL grammar
 
-P8QL is the query dialect this collection speaks: eight modes over one endpoint,
+P8QL is the query dialect this collection speaks: nine modes over one endpoint,
 compiled by a Rust parser that ships with the extension. This page is the whole
 grammar at version @@extension@@, and the last section shows you how to ask your own
 database for its version rather than trusting this one.
@@ -13,10 +13,11 @@ quietly does something other than what it says. That rule costs a little
 convenience and buys the property that a query you can read is a query you can
 trust.
 
-## The eight modes
+## The nine modes
 
-Every mode goes through `aiq.query(text, vector)`, which is `POST /rpc/query`
-over the REST surface. The second argument is the embedding, and only the two
+Eight modes open with a keyword and the ninth is plain SQL, which is how
+`p8_query_grammar()` lists them too. Every mode goes through
+`aiq.query(text, vector)`, which is `POST /rpc/query` over the REST surface. The second argument is the embedding, and only the two
 vector modes use it.
 
 | Mode | Syntax | What it is for |
@@ -158,12 +159,12 @@ score almost identically because each is strongly related to the other.
 argument in one sentence: it ranks by how much score reaches a node, not by how
 many hops away it is.
 
-Two keys appear on this envelope and on no other. `unresolved` is here for the
+Two keys appear on this envelope that most modes do not carry. `unresolved` is here for the
 reason it is on `LOOKUP` — the underlying call drops a seed it cannot resolve,
 and through a JSON envelope that makes "no such entity" indistinguishable from
-"that entity has nothing near it". `exhausted` is here because this is the only
-budgeted mode; putting it on the seven that cannot be truncated is how a reader
-learns to stop reading it.
+"that entity has nothing near it". `exhausted` is here because this and `PATH`
+are the two budgeted modes; putting it on the seven that cannot be truncated is
+how a reader learns to stop reading it.
 
 The mode ships switched off, so on a fresh database it answers with a sentence
 containing `aiq.enable_graph_algorithms('<your role>')` rather than a permission
@@ -239,9 +240,11 @@ ranking each mode produces.
 {: .goal }
 
 ```sql
+\set query_vector `curl -s https://api.openai.com/v1/embeddings -H "Authorization: Bearer $LLM_API_KEY" -H 'Content-Type: application/json' -d '{"model": "text-embedding-3-small", "input": "a boiler fault"}' | jq -c '.data[0].embedding'`
+
 select aiq.query('TEXT "PSC-441" FROM chunks LIMIT 3');
-select aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3', :query_vector);
-select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :query_vector);
+select aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3', :'query_vector');
+select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :'query_vector');
 ```
 
 `TEXT` runs on its own. **The other two take the vector as an argument, because
@@ -249,8 +252,9 @@ the database makes no model calls** — so `:query_vector` is something you supp
 that is the whole reason a vector query compiles to two tasks rather than one.
 In a workflow you never write it: the compiler emits an `embed` step that calls
 the model the registry names and hands the result to the query step. By hand,
-embed the phrase yourself and paste the array in, or run it as a two-step
-workflow and read the result.
+the `\set` line is that call: `psql` runs it in your shell, with `curl` and
+`jq` and the `LLM_API_KEY` the corpus was embedded with, and `:'query_vector'`
+— with the quotes — hands the array over as one literal.
 
 Do not paste a short literal in to see it work. A vector of the wrong width is
 caught — `query vector has 4 dimensions but model text-embedding-3-small

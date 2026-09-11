@@ -62,22 +62,27 @@ jobs:
             --set secrets.jwtSecret=abcdefghijklmnopqrstuvwxyz012345
           mkdir -p docs/_site/charts
           helm package charts/percolate -d docs/_site/charts
-          # --merge, so previously published versions stay resolvable. Without
-          # it every publish rewrites index.yaml with only the current chart,
-          # and a pinned `targetRevision: 0.1.0` in somebody's Argo Application
-          # stops resolving the moment 0.1.1 ships.
+          # EARLIER VERSIONS ARE RE-FETCHED, NOT MERGED. This used `--merge
+          # old-index.yaml` so a pinned version stayed in the index -- but every
+          # Pages deploy replaces the whole site, so the index kept listing
+          # 0.1.0-0.1.3 while their .tgz files had gone: `helm pull --version
+          # 0.1.3` from the classic repo answered 404. The OCI registry keeps
+          # every version pushed to it, so each earlier version is pulled back
+          # from there into this directory, and the index is built from the
+          # files actually present -- an entry cannot outlive its tarball.
+          # Versions the registry never had (0.1.0-0.1.2, from before it was
+          # the primary) drop out rather than pointing at a 404.
+          OWNER=$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           if curl -fsSL https://percolation-labs.github.io/get-percolate/charts/index.yaml -o old-index.yaml; then
-            # The repo moved from percolating-sirsh to Percolation-Labs, and the
-            # entries published before the move carry that owner in an ABSOLUTE
-            # url. --merge copies old entries through verbatim, so without this
-            # rewrite every historic version keeps a hostname that 404s -- a
-            # Pages site does not redirect after a transfer the way a repo does.
-            sed -i 's|percolating-sirsh\.github\.io|percolation-labs.github.io|g' old-index.yaml
-            helm repo index docs/_site/charts \
-              --url https://percolation-labs.github.io/get-percolate/charts --merge old-index.yaml
-          else
-            helm repo index docs/_site/charts --url https://percolation-labs.github.io/get-percolate/charts
+            for v in $(sed -n 's/^    version: //p' old-index.yaml | sort -u); do
+              [ -f "docs/_site/charts/percolate-$v.tgz" ] && continue
+              helm pull "oci://ghcr.io/$OWNER/charts/percolate" --version "$v" \
+                -d docs/_site/charts 2>/dev/null \
+                || echo "chart $v is not in the registry; leaving it out of the index"
+            done
           fi
+          helm repo index docs/_site/charts --url https://percolation-labs.github.io/get-percolate/charts
+          ls docs/_site/charts
 
       - name: Check the chart renders
         # `helm lint` accepts templates that produce invalid Kubernetes objects.

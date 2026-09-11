@@ -87,3 +87,15 @@ jobs:
       - name: What the database said, if it failed
         if: failure()
         run: docker compose -p p8examples logs --tail=80 || true
+
+  # The third install path: a plain PostgreSQL 19, install.sh, bootstrap.sql.
+  # Nothing ran it, and it shipped a refused CREATE EXTENSION in install.md, role
+  # passwords that were silently cleared, and a bootstrap that failed on its
+  # third run -- all of them exit codes or logins, so all of them asserted.
+  own-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install into a plain Postgres 19
+        run: ci/ownpg.sh

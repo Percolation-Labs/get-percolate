@@ -1,13 +1,11 @@
 # Operating it
 
-Use the workbench to inspect runs and queues, then use the views and audits
-below to investigate failures and size your worker pools.
+The views and audits below are how you inspect runs and queues, investigate
+failures and size your worker pools, from SQL or over PostgREST on any install.
 {: .lede }
 
-For a browser walkthrough, start with [Using the UI](ui.html). It covers
-connecting and signing in, developing an API feed and query into a saved
-workflow, inspecting results, scheduling repeat work and recovering an expired
-session.
+A browser workbench covers the same ground — [Using the UI](ui.html) — but it
+is not in a published release yet, so nothing on this page depends on it.
 
 ## Scaling on queue depth
 
@@ -25,24 +23,32 @@ workers:
   - name: http
     queue: http
     autoscaling: {enabled: true, minReplicas: 0, maxReplicas: 20, queueDepthPerPod: 25}
-  - name: agents
-    queue: agents
-    replicas: 2
+  - name: ingest
+    queue: ingest
+    replicas: 1
 ```
+
+The list replaces the chart's default one, so it names `ingest` again: a list
+without it leaves uploads stored and never read.
 
 ```sql
 -- the KEDA trigger, which is a SQL query rather than a CPU metric
-select count(*)::int from workflow.tasks
-where queue = 'http' and status = 'ready' and run_after <= now()
+select workflow.queue_depth('http')::int
+-- counts tasks that are running, or ready with run_after <= now()
 ```
 
 <details class="why" markdown="1">
-<summary>Why it works — `status = 'ready'` rather than a row count, and the
-difference costs money</summary>
+<summary>Why it works — work that can be done or is being done, and not a row
+count</summary>
 
 A pending task blocked on a dependency is not work that anyone can do. Counting
 it scales up pods that find nothing and then scale back down, which costs money
 and looks like demand on every dashboard you have.
+
+A `running` task is counted, though, and leaving it out is wrong in the
+opposite direction: ten pods each three minutes into a long task report a depth
+of zero, and the autoscaler scales them away from work in flight. The target is
+per replica, so N pods holding one task each read as N and stay.
 
 `run_after <= now()` matters for the same reason and is easier to miss: a task
 backing off between retries is present in the table and unclaimable, so counting
@@ -51,7 +57,10 @@ backoff keeps the row continuously visible rather than holding it out of the
 table — a task that vanished during backoff would make the autoscaler
 under-provision exactly while work was pending.
 
-`minReplicas: 0` is safe here. No ready task, no pod.
+`minReplicas: 0` is safe here: nothing ready and nothing running, no pod. It
+depends on the reaper's clock ([pg_cron](install.html#pg_cron-if-you-want-schedules)),
+because a task left `running` by a pod that died counts until
+`reap_stale_tasks()` returns it to `ready`.
 
 <p class="related"><strong>Related</strong>
 <a href="failure.html#crash-recovery">what happens to work a scaled-down pod was
@@ -130,8 +139,12 @@ took eleven seconds*, because that time is spread across a model call, four tool
 calls and two delegated sub-agents, and the rows record each of those separately.
 A trace is the shape that puts them back together.
 
-The agent runtime speaks OpenTelemetry. It is **off unless you point it
-somewhere** — set the endpoint and it starts, unset and it costs nothing:
+The agent runtime speaks OpenTelemetry **from the next `percolate-core`
+release**: the published image has no telemetry module and no `otel` extra, so
+on it the spans below never appear, while the collector's metrics
+half — the views above, read as metrics — works today. From that release it
+is **off unless you point it somewhere** — set the endpoint and it starts,
+unset and it costs nothing:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
@@ -496,10 +509,17 @@ two release trains still agree.
 
 <!-- run: sql -->
 ```sql
+set role app_owner;               -- so new objects are owned as a fresh install's are
 alter extension percolate update;
+reset role;
 
 select * from workflow.compiler_capabilities();   -- parser vs schema
 ```
+
+`set role app_owner` is the step that keeps row-level security working: an
+update creates its new objects as whoever runs it, and a superuser owner
+bypasses every policy on them ([install](install.html#docker-compose) has the
+longer version).
 
 The schema ships as one extension; the worker and services are a separate
 release train and are compatible across a minor version. Check `missing` after

@@ -106,10 +106,10 @@ curl -s http://localhost:8081/files \
 ```
 {"resource_id":"44057672-…","checksum":"b440dc19…","bytes":144}
 
- step_key | queue  | status | attempts
-----------+--------+--------+----------
- parse    | ingest | done   |        1
- embed    | ingest | ready  |        4
+ step_key | queue  |  status   | attempts
+----------+--------+-----------+----------
+ parse    | ingest | succeeded |        1
+ embed    | ingest | ready     |        4
 
  resources | chunks
 -----------+--------
@@ -117,18 +117,24 @@ curl -s http://localhost:8081/files \
 ```
 </div>
 
-**`x-p8-org` decides who can read it back, and its absence is a decision.** A
-resource uploaded without one lands on the shared tier — a well-known org row
-rather than a NULL — so `GET /files/{resource_id}` returns those bytes to an
-*unauthenticated* caller, exactly as a shared `LOOKUP` resolves for one. That is
-the same rule everywhere and it is the right default for a port a whole
-deployment reads, but it is the wrong one for company documents. Uploads that
-belong to a tenant must say so:
+**`x-p8-org` decides who can read the bytes back, and at @@extension@@ leaving
+it out exposes them.** A resource uploaded without one is stored with no org and
+`visibility = 'private'`, so the row itself is yours alone: another user's query
+of `content.resources` does not return it. `GET /files/{resource_id}` does not
+ask that question, though. It resolves the file through `content.resolve_file`,
+which at @@extension@@ checks only whether the caller may reach the resource's
+org — and a resource with no org is reachable by everybody — so the bytes go to
+an *unauthenticated* caller who has the id. That is a gap in the byte path
+rather than a design, and until it closes, uploads that belong to a tenant must
+say so:
 
 ```
-  no x-p8-org       anonymous GET -> 200, the bytes
-  x-p8-org: <a>     anonymous GET -> 404 "no such file, or not yours"
+  no x-p8-org       stored with org null, visibility private
+                    anonymous GET -> 200, the bytes
+  x-p8-org: <a>     stored with org <a>, visibility org
+                    anonymous GET -> 404 "no such file, or not yours"
                     as tenant <b> -> 404, the same answer
+                    as tenant <a> -> 200, the bytes
 ```
 
 The wrong tenant and the missing file are deliberately indistinguishable: a

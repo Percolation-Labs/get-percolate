@@ -6,12 +6,17 @@ data sources, queries, agents and plugin capabilities. Packages carry those
 definitions so you can reuse a complete job in another workspace.
 {: .lede }
 
-This guide describes the development workbench exercised in September 2026.
-The API source editor, AI authoring helpers and session recovery described
-below require the updated UI and matching database and runtime changes; they
-are not all available in the images published at the time of that exercise. The
+**The workbench is not in a published release yet.** `percolate-core`
+@@core@@ on PyPI has no `ui` command and no `[ui]` extra, and its source
+repository is not public, so the steps below cannot be followed from a
+published install today. This page describes the workbench as it was exercised
+in September 2026, ahead of the release that ships it; the API source editor,
+AI authoring helpers and session recovery also need database and runtime
+changes that arrive with it. The
 [Compose installation](install.html#docker-compose) starts the backend
-services but does not start a UI server.
+services but does not start a UI server. Everything the workbench shows is
+also reachable over PostgREST and SQL, which [Operating it](operating.html)
+uses.
 
 ## Open a workspace
 

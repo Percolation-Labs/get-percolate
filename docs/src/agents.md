@@ -704,20 +704,6 @@ delegation tree there.
 <a href="first-workflow.html">a four-step pipeline end to end</a></p>
 </details>
 
-## Where this page stands
-
-The schema is installed, and the bindings on this page were executed against it:
-one agent over one MCP tool server and one OpenAPI tool server, both discovered
-rather than declared, and the schema-document round trip is the real output of
-`model_json_schema()`. The runtime that serves `/chat` is built and its own
-suite has taken a three-level delegation tree, a resumed session and a
-second-client relay end to end against a live database and a live model.
-
-What this repository does not assert is the turn itself, because an agent run is
-an LLM call and a tool call and neither of those is a catalog lookup. So treat
-the streaming and delegation behaviour described here as specified, reviewed and
-exercised elsewhere rather than measured here.
-
 Next: [skills and plugins](skills.html), the prose an agent carries and shares
 with its siblings — stored once as rows, picked per turn, and installed and
 removed as one bundle.

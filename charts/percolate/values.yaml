@@ -208,8 +208,21 @@ minio:
   enabled: true
   # Pinned to the release the compose file runs, for the database image's
   # reason: `latest` moves under an existing install.
-  image: {repository: minio/minio, tag: RELEASE.2025-09-07T16-13-09Z}
+  # MinIO's own registry: `minio/minio` on Docker Hub stopped resolving on
+  # 2026-09-11. Same image, same id.
+  image: {repository: quay.io/minio/minio, tag: RELEASE.2025-09-07T16-13-09Z}
   persistence: {enabled: true, size: 50Gi, storageClass: ""}
+
+# ---------------------------------------------------------------------------
+# Where each credential a worker holds may be SENT, by origin. From
+# percolate-core 0.1.9 a credential with no entry goes nowhere: an upload's
+# metadata could otherwise name a transcription endpoint on any host and
+# receive the worker's key as a bearer token. Add a provider's origin when
+# secrets.llmApiKey is meant for it. Rendered into P8_CREDENTIAL_ORIGINS on
+# every worker; read by nothing before 0.1.9.
+# ---------------------------------------------------------------------------
+credentialOrigins:
+  LLM_API_KEY: ["https://api.openai.com"]
 
 objectStorage:
   external:

@@ -363,12 +363,13 @@ inside a step the invoker is the engine owner:
 </div>
 
 `app_owner` owns every table and bypasses their RLS, so a plain-SQL step reads
-across tenants — a deliberate beta trade, refused by
-`percolate.sql_policy = 'registered'` from @@extension_min@@ onward, and covered in full in
+across tenants. `percolate.sql_policy = 'registered'` refuses that from
+@@extension_min@@ onward. Every other mode reads across tenants inside a step
+too, under either policy: a SEARCH over `chunks` ranks every org's uploads. That
+is the beta's trade, and who it reaches is covered in full in
 [the cookbook](cookbook.html#6-a-workflow-with-nothing-running). Called directly
 rather than from a step you are the invoker, which is the case this section is
-about and is unaffected. If you want SQL in a workflow without the owner's
-reach, register a function and use `sql: {function: …}`.
+about and is unaffected.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">registering

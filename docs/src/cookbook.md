@@ -492,10 +492,9 @@ that makes it ready. There is no queue to poll and no process to deploy, and the
 rows land on the task, so the graph walk the middle step did is readable
 straight out of `workflow.tasks.output`.
 
-The thing worth knowing before you write these is **whose privileges a step
-runs with**. A `p8ql:` step holding a *dialect* query executes and returns rows,
-as above, scoped the way every other read is. A `p8ql:` step holding **plain
-SQL** also executes — and it runs as the **engine owner**, not as you:
+Before you write these, know **whose privileges a step runs with**. Every
+`p8ql:` step runs as the **engine owner**, not as you. That is true of a dialect
+query and of plain SQL alike, and plain SQL shows it most directly:
 
 <div class="evidence" markdown="1">
 <div class="label">workflow.tasks.output, for `p8ql: "select current_user"`</div>
@@ -508,34 +507,44 @@ SQL** also executes — and it runs as the **engine owner**, not as you:
 </div>
 
 `app_owner` owns every table and is not subject to their row-level security, so
-a plain-SQL step reads across tenants and reads tables you hold no grant on.
-**Anyone who may define a workflow may therefore read anything in the
-database.** That is a deliberate trade for the beta — expressiveness over
-isolation — and it is stated here rather than discovered, because the previous
-version of this page claimed the opposite: that such a step did not execute and
-returned a note. It executes.
+a step reads across tenants. A `SEARCH … FROM chunks` returns every org's
+uploads, and a plain-SQL step reads tables you hold no grant on. **Anyone who
+may define a workflow may therefore read anything in the database.** That is
+the trade the beta makes, expressiveness over isolation. It is stated here
+because earlier versions of this page claimed two opposites: that a plain-SQL
+step did not execute, and that a dialect step was scoped to you. Both run as
+the owner.
 
-Two things bound it. A step without `write: true` runs in a read-only
+**It reaches further than the people who define.** In @@extension@@ anyone
+signed in may start any workflow, and the steps read with the owner's reach
+whoever started the run. A member of one org who starts a retrieval workflow an
+admin wrote gets answers from every org's documents, and the raw rows sit on
+their own run's tasks. The next extension release refuses such a read when the
+person who started the run may not define workflows. Until you run it, do not
+define a workflow that reads tenant data on a deployment holding more than one
+org's data, unless everyone who can sign in may read all of it.
+
+Two more things bound it. A step without `write: true` runs in a read-only
 transaction, which the database enforces rather than a keyword filter, so this
-is a read rather than a tamper. And a deployment that will not take the trade
-turns it off:
+is a read rather than a tamper. And a deployment can refuse the SQL an author
+writes:
 
 ```sql
 alter database <yourdb> set percolate.sql_policy = 'registered';
 ```
 
-Statements are then refused and only functions someone registered will run.
-**Both spellings from @@extension_min@@ onward**: `sql:` at authoring, and
-`p8ql:` at execution. Before that release the policy refused `sql:` only — a
-`p8ql:` step is not a `statement` in the compiled spec, so it went round the
-check — which means on an older extension setting this leaves the door this
-section is about still open. `select * from percolate_build()` says which you
-are running. Calling
-`workflow.p8ql()` directly is unaffected either way: outside a step you are the
-invoker, so it runs as you, under RLS.
+Statements are then refused, and so is plain SQL in a `p8ql:` step:
+`sql:` at authoring, `p8ql:` at execution, **both from @@extension_min@@
+onward**. Before that release the policy refused `sql:` only, because a `p8ql:`
+step is not a `statement` in the compiled spec. `select * from
+percolate_build()` says which you are running. The dialect modes are not
+refused: `p8ql` is itself a registered function, so a SEARCH or TEXT step still
+runs as the owner under either policy. Calling `workflow.p8ql()` directly is
+unaffected: outside a step you are the invoker, so it runs as you, under RLS.
 
-If you want SQL in a workflow and do not want the owner's reach, register a
-function and use `sql: {function: …}`, which is scenario 7.
+A registered function (`sql: {function: …}`, scenario 7) narrows what a step
+can ask to something a person reviewed. It still runs as the owner, so a
+function meant to serve any caller has to scope itself to the run's owner.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-p8ql.html#plain-sql-is-a-mode">the passthrough, and why SQL is

@@ -180,17 +180,28 @@ That is the parameterisation working, not a gap: values can be bound and names
 cannot, which is where every database driver draws the same line.
 
 **What it costs.** A statement runs as the engine owner, which owns every table
-and bypasses row-level security, so anyone who may define a workflow may read
-anything in the database. That is a deliberate trade: the alternative made every
-question a privileged human had to bless. A deployment that wants the old
-boundary sets one thing —
+and bypasses row-level security, and so does every `p8ql:` step, dialect modes
+included. Anyone who may define a workflow may read anything in the database.
+That is the trade: the alternative made every question a privileged human had to
+bless.
+
+In @@extension@@ it also reaches whoever *starts* the run, and anyone signed in
+may start any workflow: a member who runs a retrieval workflow an admin wrote
+reads every org's documents through it. The next extension release refuses such
+a step when the person who started the run may not define workflows. The
+[cookbook](cookbook.html#6-a-workflow-with-nothing-running) says what to do
+until then.
+
+A deployment can also refuse the SQL an author writes —
 
 ```sql
 alter database <db> set percolate.sql_policy = 'registered';
 ```
 
-— and statements are refused at authoring time and, from @@extension_min@@, at dispatch too, with registered
-functions still running.
+— and statements are refused at authoring time and, from @@extension_min@@, at
+dispatch too, with registered functions still running. That narrows what an
+author may write. It does not stop a `p8ql:` SEARCH reading as the owner,
+because `p8ql` is itself a registered function.
 
 <p class="related"><strong>Related</strong>
 <a href="recipes.html#registering-a-function-and-when-it-is-worth-it">registering a

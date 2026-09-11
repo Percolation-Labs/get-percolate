@@ -72,7 +72,11 @@ services:
     # apply here: a PVC is never empty, because of lost+found.
     volumes: ["pgdata:/var/lib/postgresql"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-p8} -d percolate"]
+      # Over TCP, not the socket. During the first-start install the image's
+      # temporary server listens on the socket only, so a socket check passed
+      # mid-install and started every service below before the extension
+      # existed. The chart's readiness probe says the same (d6f79fc).
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-p8} -d percolate"]
       interval: 3s
       timeout: 3s
       retries: 30

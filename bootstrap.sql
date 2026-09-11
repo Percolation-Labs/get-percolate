@@ -116,6 +116,10 @@ commit;
 grant api_viewer    to app_owner;      -- so app_owner can hand it the views
 grant web_anon      to authenticator;
 grant authenticated to authenticator;
+-- From 0.2.0 a workflow step runs as the person who started its run, through
+-- api_viewer, which therefore needs what a signed-in person holds. The 0.2.0
+-- extension refuses to install or upgrade without it, and names this line.
+grant authenticated to api_viewer;
 
 -- ---------------------------------------------------------------------------
 -- 2. The extensions a non-superuser cannot install, and the room app_owner
@@ -128,6 +132,24 @@ do $$ begin
     execute format('grant create on database %I to app_owner', current_database());
 end $$;
 grant create, usage on schema public to app_owner;
+
+-- NOBODY A PERSON CAN BECOME MAY REWRITE WHO THEY ARE, from 0.2.0. Every row
+-- rule reads the caller from `request.jwt.claims`, and set_config writes it:
+-- through the SQL passthrough a signed-in user could put anyone's id there and
+-- read as them. So set_config belongs to the roles that set identity on
+-- someone's behalf. Per database, because a function's ACL lives in the
+-- database. Conditional on the version this database will install, because
+-- 0.1.x's passthrough still calls set_config as the caller and would stop
+-- working; 0.2.0 refuses to install until this has run.
+do $$
+declare v text := (select default_version from pg_available_extensions where name = 'percolate');
+begin
+    if v is not null and string_to_array(v, '.')::int[] >= array[0, 2, 0] then
+        revoke execute on function pg_catalog.set_config(text, text, boolean) from public;
+        grant execute on function pg_catalog.set_config(text, text, boolean)
+            to authenticator, app_owner, worker, scheduler;
+    end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- 3. The system itself, installed BY app_owner so that app_owner owns it.

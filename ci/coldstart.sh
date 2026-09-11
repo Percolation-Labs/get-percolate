@@ -84,8 +84,11 @@ if ! cmp -s "$ROOT/compose/docker-compose.yml" docker-compose.yml; then
 fi
 
 say "wait for the database"
+# TCP first: the image's first-start server listens on the socket only, and the
+# extension row can exist there before it stops and the real server starts.
 for _ in $(seq 1 60); do
-    docker compose exec -T db psql -U p8 -d percolate -tAc \
+    docker compose exec -T db pg_isready -h 127.0.0.1 -U p8 -d percolate >/dev/null 2>&1 \
+    && docker compose exec -T db psql -U p8 -d percolate -tAc \
         "select 1 from pg_extension where extname='percolate'" 2>/dev/null \
         | grep -q 1 && break
     sleep 3

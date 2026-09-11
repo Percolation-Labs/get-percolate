@@ -67,6 +67,9 @@ spec:
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - name: LLM_API_KEY
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key, optional: true}}
+            # And where it may go (values.yaml, credentialOrigins).
+            - name: P8_CREDENTIAL_ORIGINS
+              value: {{ toJson $root.Values.credentialOrigins | quote }}
             # WHERE AN `agent:` STEP SENDS ITS CALL, AND WHO IT CALLS AS. The
             # compiler emits `POST {{"{{"}}env.P8_AGENT_URL{{"}}"}}/v1/chat/completions`
             # with credential_ref P8_API_KEY on the http queue, so a worker

@@ -81,16 +81,17 @@ def rules(v: dict) -> list[tuple[str, re.Pattern, str, str]]:
         ("charts/percolate/Chart.yaml",
          re.compile(r"^version: ([0-9]+\.[0-9]+\.[0-9]+)", re.M),
          v["chart"], "the chart's own version"),
-        # The extras are part of the string a reader copies -- the sample
-        # needs [sample] to read YAML and [agent] to translate plugin.yaml's
-        # JSON-Schema agents -- so the pattern has to survive them being
-        # there. It did not, and the previous version matched only the bare
-        # name: the day the extras were added this rule reported "the file
-        # changed shape" rather than a version mismatch, which is the right
-        # failure and still a stop.
-        ("README.md",
-         re.compile(r"percolate-core(?:\[[a-z,]+\])?>=([0-9]+\.[0-9]+\.[0-9]+)"),
-         v["core_min"], "the documented pip floor"),
+        # THE PIP FLOOR IS NOT IN THIS LIST ANY MORE. README.md carried
+        # `percolate-core[sample,agent]>=<version>` as a literal, because a
+        # README cannot hold a placeholder the docs build substitutes, and this
+        # rule checked it. 1f6ae2a shortened the README and that line went with
+        # the section it lived in. The FACT did not go anywhere: it is
+        # docs/src/install.md's `>=@@core_min@@`, substituted from versions.toml
+        # at build time, which cannot drift and so needs no rule here. What was
+        # left was a rule matching nothing, and this script is right to call
+        # that a stop rather than a pass -- `no match for ... the file changed
+        # shape` was red on main and on every branch off it. If a literal
+        # version ever returns to the README, this rule returns with it.
     ]
 
 

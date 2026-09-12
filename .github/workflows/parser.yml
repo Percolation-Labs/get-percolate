@@ -17,6 +17,39 @@ name: extension
 run-name: extension ${{ inputs.version || inputs.ref }}
 
 on:
+  # THE PUBLISH PATH IS EXERCISED BEFORE A RELEASE RATHER THAN BY ONE (REM-106).
+  #
+  # Every workflow in this repository except coldstart.yml was invisible to PR
+  # checks, and the ones that were invisible are the ones that ship: this file
+  # compiles the parser and cuts the release, image-postgres.yml builds and
+  # pushes the image. Measured on the Dependabot merges of 2026-09-12:
+  # `docker/build-push-action@v6->v7`, `login-action@v3->v4`,
+  # `softprops/action-gh-release@v2->v3` and an `upload-artifact@v4->v7` paired
+  # with `download-artifact@v4->v8` ACROSS A JOB BOUNDARY all merged on a green
+  # that could not have run a single one of them. The first thing to exercise
+  # them would have been a release.
+  #
+  # coldstart.yml was the only one whose own bumps its checks covered, and the
+  # reason is exact: its `pull_request` trigger carries a `paths:` list that
+  # names itself. So the least-covered code in the collection was the code that
+  # ships it -- and Dependabot edits that code like any other file.
+  #
+  # SAFE BY CONSTRUCTION, not by care. Everything that publishes here is behind
+  # `if: inputs.version != ''` (the `release` job at :392 and its gh-release
+  # step) or `inputs.push_image` (:485), and a `pull_request` event supplies no
+  # inputs at all -- so every one of those guards is false and this builds
+  # without releasing. That is the same door the dispatch form already
+  # documents: "leave [version] empty and it only builds, which is the check
+  # you want on a branch." This points that door at the files themselves.
+  #
+  # PATHS, so it fires when the publish path changes and not otherwise. The
+  # parser build is the expensive job in this repository and it should not run
+  # on a docs PR. It should run on a PR that edits the thing that builds it.
+  pull_request:
+    paths:
+      - '.github/workflows/parser.yml'
+      - '.github/workflows/image-postgres.yml'
+      - '.github/workflows/images.yml'
   workflow_dispatch:
     inputs:
       ref:

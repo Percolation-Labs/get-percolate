@@ -15,9 +15,12 @@
 #
 #   FAST  (verify_binaries: false)  the extension SQL changed and nothing else.
 #         Three COPY layers over a warm cache; the binary gate is skipped
-#         because the binaries are the ones it already passed. This is most
-#         releases. It refuses to run if dev/Dockerfile.pg19 actually changed,
-#         so the fast path cannot silently become the wrong one.
+#         because the binaries are the SAME BYTES as the ones it already
+#         passed -- which is checked, by comparing the resolved parser release
+#         and the .so digests, plus the Dockerfile hash, against what the
+#         published image records. This is most releases. It refuses to run
+#         when any of the three moved, so the fast path cannot silently
+#         become the wrong one.
 #
 #   FULL  (verify_binaries: true)   something COMPILED changed: the Dockerfile,
 #         the pgvector or pg_cron version, the base image, or the parser
@@ -60,8 +63,9 @@ on:
       # header). `false` is the fast path: the compiled artifacts are
       # unchanged, so the build is three COPY layers over a cache and the
       # binary gate has nothing new to inspect. It is REFUSED below if the
-      # Dockerfile has in fact changed, so choosing it wrongly fails loudly
-      # rather than skipping a check that was needed.
+      # Dockerfile hash, the resolved parser release or the parser .so digests
+      # differ from what the published image records, so choosing it wrongly
+      # fails loudly rather than skipping a check that was needed.
       verify_binaries:
         description: >-
           full path -- recompile and re-run the CPU-portability gate. Needed
@@ -89,12 +93,43 @@ jobs:
         # the .so someone installs with install.sh must be the same artifact,
         # or "works in Docker, fails on my Postgres" becomes a class of bug
         # with no way to tell the two builds apart.
+        #
+        # THIS STEP IS WHERE THE COMPILED HALF GETS AN IDENTITY, and it had
+        # none before. Nothing in this workflow compiles the parser, so no
+        # property of this tree describes it -- it is whatever bytes a release
+        # is serving at the moment curl runs. The precondition below used to
+        # compare the Dockerfile hash and read the answer as "the binaries did
+        # not change", which is a different sentence: a new parser release, or
+        # the same tag re-pointed, moves every byte of the parser with
+        # dev/Dockerfile.pg19 untouched. So the tag is RESOLVED here and the
+        # .so files are HASHED here, and those three values -- resolved tag,
+        # per-arch digest, combined digest -- are what the image records and
+        # what the fast path compares.
+        id: parser
         env:
-          BASE: >-
-            ${{ inputs.parser_release == 'latest'
-                && 'https://github.com/Percolation-Labs/get-percolate/releases/latest/download'
-                || format('https://github.com/Percolation-Labs/get-percolate/releases/download/{0}', inputs.parser_release) }}
+          PARSER_RELEASE: ${{ inputs.parser_release }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          repo=Percolation-Labs/get-percolate
+          # `latest` IS RESOLVED BEFORE ANYTHING COMPARES IT. It is a moving
+          # name: recording it on the image and then comparing it against the
+          # next run's `latest` compares a string to itself and proves exactly
+          # as little as hashing the Dockerfile did. Resolved once, here, and
+          # the download URL, the label and the precondition all use the
+          # answer -- which also collapses the two URL shapes into one.
+          tag=$PARSER_RELEASE
+          if [ "$tag" = latest ]; then
+            tag=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+                    "https://api.github.com/repos/$repo/releases/latest" \
+                  | jq -r '.tag_name // empty')
+            [ -n "$tag" ] || {
+              echo "::error::could not resolve 'latest' to a get-percolate release tag" >&2
+              exit 1; }
+          fi
+          echo "parser release: $PARSER_RELEASE -> $tag"
+          BASE="https://github.com/$repo/releases/download/$tag"
+
           mkdir -p dev/dist
           for a in amd64 arm64; do
             curl -fsSL -o "dev/dist/percolate_parser-$a.so" "$BASE/percolate_parser-linux-$a.so"
@@ -105,6 +140,24 @@ jobs:
           # made the old install path a silent 404 after the first bump.
           curl -fsSL -o "dev/dist/percolate_parser--${{ inputs.version }}.sql" \
             "$BASE/percolate_parser--${{ inputs.version }}.sql"
+
+          # The digests are of the BYTES THAT GO INTO THE IMAGE, taken here
+          # rather than read back out of it, because these same files are what
+          # the Dockerfile COPYs. The combined digest is what the precondition
+          # compares; the per-arch ones are on the image so that a human can
+          # check a published image against them without a rebuild:
+          #   docker run --rm --platform linux/arm64 <image> \
+          #     sha256sum /usr/lib/postgresql/19/lib/percolate_parser.so
+          amd=$(sha256sum dev/dist/percolate_parser-amd64.so | cut -c1-64)
+          arm=$(sha256sum dev/dist/percolate_parser-arm64.so | cut -c1-64)
+          so=$(printf 'amd64:%s\narm64:%s\n' "$amd" "$arm" | sha256sum | cut -c1-64)
+          echo "  amd64 .so: $amd"
+          echo "  arm64 .so: $arm"
+          echo "  combined:  $so"
+          { echo "tag=$tag"
+            echo "so_sha256=$so"
+            echo "amd64_sha256=$amd"
+            echo "arm64_sha256=$arm"; } >> "$GITHUB_OUTPUT"
 
       - name: Generate the extension SQL
         run: |
@@ -161,37 +214,100 @@ jobs:
       # property of this tree and of what is already published.
       #
       # The fast path is only legitimate while the compiled half is identical
-      # to a build that already passed the gate. That is checkable rather than
-      # a matter of discipline: the previous image carries the hash of the
-      # Dockerfile it was built from, and if this tree's differs then something
-      # compiled DID change and the full path is the one that was needed.
+      # to a build that already passed the gate, and "identical" has to be
+      # decided by comparing the compiled half -- not by comparing something
+      # nearby that is easier to reach.
+      #
+      # IT USED TO COMPARE THE DOCKERFILE HASH ALONE, and the converse it
+      # relied on is false. Its reasoning was "the previous image carries the
+      # hash of the Dockerfile it was built from, and if this tree's differs
+      # then something compiled DID change" -- true, and the useful direction
+      # is the other one. The parser .so is not compiled here at all; it is
+      # downloaded from a get-percolate release (see the fetch step). So a
+      # different parser release, or the same tag re-pointed, changes every
+      # byte of the parser while dev/Dockerfile.pg19 stays identical, the
+      # precondition passes in exactly the case it exists to refuse, and the
+      # run reports that it proved the binaries unchanged while publishing
+      # binaries nothing inspected. Live instance: REM-51/65 changed
+      # extension/percolate_parser/src/graph.rs and no Dockerfile.
+      #
+      # THREE TERMS NOW, and the digest is the decisive one:
+      #   dockerfile-sha        -- the layers this tree would build
+      #   parser-release        -- which release the .so files came from
+      #   parser-so-sha256      -- the bytes themselves
+      # A term the published image does not record is a REFUSAL, not a pass:
+      # an image published before this check existed cannot prove anything
+      # about its parser, and one full run is what establishes it.
+      #
+      # IT RUNS WHETHER OR NOT THIS RUN PUSHES, which the Dockerfile-only
+      # version did not (`inputs.push &&`). A gate that only exists on the run
+      # that publishes cannot be rehearsed, and "make a new gate fail once on
+      # purpose" then means risking a publish to find out. With push: false
+      # this job builds nothing that leaves the runner, so the precondition is
+      # dispatchable on its own, costs a manifest inspect, and answers the
+      # only question a dry run has: would this fast path have been allowed.
       - name: Refuse the fast path when the compiled half changed
-        if: inputs.push && !inputs.verify_binaries
+        if: ${{ !inputs.verify_binaries }}
+        env:
+          WANT_TAG: ${{ steps.parser.outputs.tag }}
+          WANT_SO:  ${{ steps.parser.outputs.so_sha256 }}
         run: |
+          set -euo pipefail
           # `.Image` is a MAP KEYED BY PLATFORM on a multi-arch manifest, not
           # a single config, so the obvious `.Image.Config.Labels` silently
           # returns empty and the check reports "no label" for an image that
           # has one -- a false negative that sends you down the slow path
           # forever. Both platforms carry identical labels here, so reading the
           # first entry is the whole answer.
-          prev=$(docker buildx imagetools inspect \
-                   percolationlabs/percolate-postgres:19 --format '{{ json .Image }}' \
-                 2>/dev/null \
-                 | jq -r 'to_entries[0].value.config.Labels["org.percolate.dockerfile-sha"] // empty' \
-                 2>/dev/null || true)
-          now='${{ hashFiles('dev/Dockerfile.pg19') }}'
-          echo "published Dockerfile sha: ${prev:-unknown}"
-          echo "this tree's:              $now"
-          if [ -z "$prev" ]; then
-            echo "::error::the published image carries no Dockerfile hash, so the" >&2
-            echo "::error::fast path cannot prove the compiled half is unchanged." >&2
-            echo "::error::Re-run with verify_binaries: true once, to establish it." >&2
-            exit 1
+          labels=$(docker buildx imagetools inspect \
+                     percolationlabs/percolate-postgres:19 --format '{{ json .Image }}' \
+                   2>/dev/null \
+                   | jq -c 'to_entries[0].value.config.Labels // {}' \
+                   2>/dev/null || echo '{}')
+          label() { printf '%s' "$labels" | jq -r --arg k "$1" '.[$k] // empty'; }
+          prev_dockerfile=$(label org.percolate.dockerfile-sha)
+          prev_tag=$(label org.percolate.parser-release)
+          prev_so=$(label org.percolate.parser-so-sha256)
+          now_dockerfile='${{ hashFiles('dev/Dockerfile.pg19') }}'
+
+          # A published `latest` is NOT A VALUE, it is the absence of one.
+          # Images built before the fetch step resolved the tag carry the
+          # literal string, and accepting it would compare 'latest' to
+          # 'latest' -- this whole defect, one level out.
+          if [ "$prev_tag" = latest ]; then
+            echo "the published image records its parser release as 'latest', which names"
+            echo "no particular build; treating it as unrecorded."
+            prev_tag=
           fi
-          [ "$prev" = "$now" ] || {
-            echo "::error::dev/Dockerfile.pg19 changed since the published image." >&2
+
+          printf '%-22s %-34s %s\n' term published 'this run'
+          printf '%-22s %-34s %s\n' dockerfile-sha "${prev_dockerfile:-(none)}" "$now_dockerfile"
+          printf '%-22s %-34s %s\n' parser-release "${prev_tag:-(none)}" "$WANT_TAG"
+          printf '%-22s %-34s %s\n' parser-so-sha256 "${prev_so:-(none)}" "$WANT_SO"
+
+          fail=0
+          compare() {
+            what=$1 prev=$2 now=$3
+            if [ -z "$prev" ]; then
+              echo "::error::the published image records no $what, so the fast path cannot" >&2
+              echo "::error::prove the compiled half is unchanged. Re-run with" >&2
+              echo "::error::verify_binaries: true once, to establish it." >&2
+              fail=1
+            elif [ "$prev" != "$now" ]; then
+              echo "::error::$what changed since the published image:" >&2
+              echo "::error::  published: $prev" >&2
+              echo "::error::  this run:  $now" >&2
+              fail=1
+            fi
+          }
+          compare 'Dockerfile hash (dev/Dockerfile.pg19)' "$prev_dockerfile" "$now_dockerfile"
+          compare 'parser release'   "$prev_tag" "$WANT_TAG"
+          compare 'parser .so digest' "$prev_so" "$WANT_SO"
+          [ "$fail" = 0 ] || {
             echo "::error::That is the FULL path -- re-run with verify_binaries: true." >&2
             exit 1; }
+          echo "fast path allowed: Dockerfile, parser release and parser .so digests all"
+          echo "match the image that passed the portability gate."
 
       - uses: docker/build-push-action@v6
         with:
@@ -209,11 +325,18 @@ jobs:
           # is what lets it pay off.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Recorded ON the image so the fast path below can check its own
-          # precondition instead of trusting whoever ticked the box.
+          # Recorded ON the image so the fast path above can check its own
+          # precondition instead of trusting whoever ticked the box. The
+          # parser labels are RESOLVED VALUES: the tag `latest` pointed at
+          # when this ran, and the digests of the .so files that release
+          # served. An image labelled `latest` says nothing about which
+          # binaries it carries, and the precondition treats it as unrecorded.
           labels: |
             org.percolate.dockerfile-sha=${{ hashFiles('dev/Dockerfile.pg19') }}
-            org.percolate.parser-release=${{ inputs.parser_release }}
+            org.percolate.parser-release=${{ steps.parser.outputs.tag }}
+            org.percolate.parser-so-sha256=${{ steps.parser.outputs.so_sha256 }}
+            org.percolate.parser-so-amd64-sha256=${{ steps.parser.outputs.amd64_sha256 }}
+            org.percolate.parser-so-arm64-sha256=${{ steps.parser.outputs.arm64_sha256 }}
           # Two tags, and the second one is the point. `19` is the Postgres
           # major and is mutable -- it is what the compose file and the chart
           # pull, and it moves every release. `19-<version>` never moves, so a

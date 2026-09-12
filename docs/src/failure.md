@@ -19,7 +19,8 @@ fail_task(task_id, error, terminal=False)  # requeue with exponential backoff
 | Failure | Class | Why |
 |---|---|---|
 | HTTP 4xx (except 408, 429) | terminal | the same request gets the same answer |
-| HTTP 5xx, 429, connection error | retryable | transient by definition |
+| HTTP 429 whose `error.code` is `insufficient_quota`, or 402 | terminal | the account has no credit, and waiting does not add any |
+| HTTP 5xx, any other 429, connection error | retryable | transient by definition |
 | Output over the payload limit | terminal | the same response is the same size every time |
 | Output violating `output_schema` | retryable | the same prompt really can conform next time |
 | Unregistered step function, missing handler | terminal | `pip install` does not run itself between attempts |
@@ -32,7 +33,11 @@ appearances</summary>
 
 A 400 or a 404 will fail the same way every time, so retrying it five times with
 backoff turns a fast failure into a slow one and burns your rate limit doing it.
-A 5xx or a 429 is the server's problem and is worth another go.
+A 5xx or a 429 is the server's problem and is worth another go, unless the 429
+says the account is out of credit: that is the same status with the opposite
+remedy, and the worker reads the provider's error code to tell them apart. The
+rule is the same for an `http_call` step, embedding, transcription and API
+ingestion.
 
 The shape violation is the interesting row, because it looks like a bug and is
 classified retryable anyway. Every other terminal classification exists because

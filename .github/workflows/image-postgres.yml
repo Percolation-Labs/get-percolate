@@ -275,15 +275,22 @@ jobs:
           # literal string, and accepting it would compare 'latest' to
           # 'latest' -- this whole defect, one level out.
           if [ "$prev_tag" = latest ]; then
-            echo "the published image records its parser release as 'latest', which names"
-            echo "no particular build; treating it as unrecorded."
+            echo "the published image records its parser release as 'latest', which names" >&2
+            echo "no particular build; treating it as unrecorded." >&2
             prev_tag=
           fi
 
-          printf '%-22s %-34s %s\n' term published 'this run'
-          printf '%-22s %-34s %s\n' dockerfile-sha "${prev_dockerfile:-(none)}" "$now_dockerfile"
-          printf '%-22s %-34s %s\n' parser-release "${prev_tag:-(none)}" "$WANT_TAG"
-          printf '%-22s %-34s %s\n' parser-so-sha256 "${prev_so:-(none)}" "$WANT_SO"
+          # THE TABLE GOES TO STDERR, with the errors, and that is not a
+          # preference. stdout through the runner's pipe is block-buffered and
+          # stderr is not, so on the first run of this check the three
+          # ::error:: lines appeared BEFORE the row whose values they were
+          # explaining -- a log that reads as if the digest term failed for
+          # the release named one line above it. Same stream, same order.
+          row() { printf '%-22s %-34s %s\n' "$1" "$2" "$3" >&2; }
+          row term published 'this run'
+          row dockerfile-sha "${prev_dockerfile:-(none)}" "$now_dockerfile"
+          row parser-release "${prev_tag:-(none)}" "$WANT_TAG"
+          row parser-so-sha256 "${prev_so:-(none)}" "$WANT_SO"
 
           fail=0
           compare() {
@@ -306,8 +313,8 @@ jobs:
           [ "$fail" = 0 ] || {
             echo "::error::That is the FULL path -- re-run with verify_binaries: true." >&2
             exit 1; }
-          echo "fast path allowed: Dockerfile, parser release and parser .so digests all"
-          echo "match the image that passed the portability gate."
+          echo "fast path allowed: Dockerfile, parser release and parser .so digests all" >&2
+          echo "match the image that passed the portability gate." >&2
 
       - uses: docker/build-push-action@v6
         with:

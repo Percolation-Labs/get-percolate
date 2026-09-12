@@ -82,11 +82,51 @@ spec:
             {{- end }}
             - name: P8_API_KEY
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: worker-api-key, optional: true}}
+            {{- if $root.Values.agent.enabled }}
+            # ...AND WHEN IT DOES NOT USE THAT KEY AT ALL. With this mounted,
+            # an agent step is authenticated as the person whose run it belongs
+            # to: the worker asks the database for the verified owner and mints
+            # a five-minute token for them. P8_API_KEY above stops being the
+            # identity every scheduled run wears and becomes the fallback for a
+            # run with no owner.
+            #
+            # Without the mount that fallback was the only path -- the worker
+            # skips run identity entirely when this is unset -- so every
+            # scheduled agent run in the cluster acted as whatever single
+            # identity worker-api-key names, and RLS applied that person's
+            # scope to work somebody else scheduled (REM-96, OWASP ASI03).
+            #
+            # A FILE, NOT AN ENV VAR, and that is the design rather than a
+            # preference: a workflow can resolve {{"{{"}}env.X{{"}}"}} inside an
+            # http_call body, so this key in the worker's environment would let
+            # anybody who can author a workflow ask a template to mint them a
+            # token for any user.
+            #
+            # The SAME jwt-secret the agent verifies with -- one key in one
+            # place, so the two halves cannot drift into 401s that name nothing.
+            - name: P8_AGENT_SIGNING_KEY_FILE
+              value: /run/percolate/agent-signing-key
+            {{- end }}
             {{- include "percolate.commonEnv" $root | nindent 12 }}
             {{- with $w.env }}{{- toYaml . | nindent 12 }}{{- end }}
           resources: {{- toYaml ($w.resources | default dict) | nindent 12 }}
-          volumeMounts: [{name: tmp, mountPath: /tmp}]
-      volumes: [{name: tmp, emptyDir: {}}]
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            {{- if $root.Values.agent.enabled }}
+            - {name: agent-signing-key, mountPath: /run/percolate, readOnly: true}
+            {{- end }}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        {{- if $root.Values.agent.enabled }}
+        # defaultMode 0400: readable by the process that needs it and nothing
+        # else. `items` rather than the whole secret, so a worker pod does not
+        # get the database passwords on disk as a side effect of needing one key.
+        - name: agent-signing-key
+          secret:
+            secretName: {{ include "percolate.secretName" $root }}
+            defaultMode: 0400
+            items: [{key: jwt-secret, path: agent-signing-key}]
+        {{- end }}
       {{- with $root.Values.nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}

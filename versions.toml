@@ -21,6 +21,26 @@ extension = "0.1.6"   # percolate + percolate_parser, and the :19-<v> image tag
 core      = "0.1.8"   # percolate-core on PyPI and Docker Hub
 chart     = "0.1.5"   # the Helm chart's own version, not what it deploys
 
+[not_ours]
+# THREE-PART NUMBERS IN docs/src THAT LOOK LIKE OURS AND ARE NOT.
+#
+# `ci/versions.py --check` refuses a literal equal to a version we publish,
+# because it should have been a placeholder. It cannot tell by looking whether
+# a number belongs to us, so anything in a different namespace is declared here
+# with the reason, by file. A declaration is a person saying "this is not our
+# number"; the checker guessing from surrounding words is how a check like this
+# starts passing over numbers that ARE ours.
+#
+# An exemption whose literal is no longer in the file is an error, not a
+# leftover -- the check runs in both directions.
+#
+# Keep this table small. A growing one means the docs are full of foreign
+# version numbers, and the answer then is to change the samples rather than to
+# keep writing exemptions.
+[not_ours."skills.md"]
+"0.2.0" = "the harbour-extras SAMPLE PLUGIN's own version, in the apply_plugin manifest and the sentence describing what that manifest left behind. Collides with the extension's 0.2.0 by accident; the plugin's version is the plugin author's to choose."
+"0.2.1" = "the same sample plugin one bump on, inside an evidence block holding captured output from re-applying it. Replacing this with a placeholder would edit a recorded measurement."
+
 [requires]
 # The lowest version the DOCUMENTATION's own examples work against, which is a
 # different fact from what is published and is allowed to be ahead of it.

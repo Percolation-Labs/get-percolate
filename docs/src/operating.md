@@ -501,6 +501,55 @@ named rather than stored</a> ·
 <a href="ingest.html">what else lives in object storage</a></p>
 </details>
 
+### Restoring one
+
+A restore is not `psql -f dump.sql` into an empty database, and the reason is a
+safety property rather than an inconvenience: the extension **refuses to install
+as a superuser**, and a dump's own `CREATE EXTENSION percolate` runs as whoever
+invoked `psql`. Install the extension the documented way first, then load only
+the data.
+{: .goal }
+
+```bash
+# 1. the target, with roles and the extension, exactly as a fresh install
+psql -U postgres -d postgres -c 'create database percolate_restored'
+psql -U postgres -d percolate_restored -f bootstrap.sql
+
+# 2. the data, from a --data-only dump of the source
+pg_dump -U postgres -d percolate --data-only -f data.sql
+psql -U postgres -d percolate_restored -f data.sql
+```
+
+<details class="why" markdown="1">
+<summary>Why the extension has to go in first, and what a restore does not carry</summary>
+
+**Superuser is refused on purpose.** A superuser bypasses row-level security
+unconditionally, so an extension installed by one would leave every
+owner-privileged view returning all rows to every caller. `bootstrap.sql` creates
+the roles and installs as `app_owner`, which is the same path a first install
+takes — so a restored database is a normal one, not a special case.
+
+**The dump sets an empty `search_path`**, which is what makes it hermetic, and
+that in turn means every trigger firing during `COPY` resolves nothing but
+`pg_catalog`. Functions here pin `search_path = pg_catalog, public` for exactly
+that reason; `dev/restore-is-possible.sh` in the source repo does this whole
+round trip on every gate run, because "the backup contains the rows" and "the
+rows go back in" are two questions and only the first used to be asked.
+
+**Three things a `--data-only` restore does not bring back**, so check them
+rather than assume:
+
+- the `cron` schema and its jobs, if the source had `pg_cron` — install it in
+  the target and re-create the schedules
+- per-model embedding tables (`aiq.emb_<model>`), which are created when a model
+  is first used rather than by the extension. Re-run an embedding and they come
+  back; the vectors in them do not
+- object storage and secrets, for the reasons in the section above
+
+<p class="related"><strong>Related</strong>
+<a href="install.html">what <code>bootstrap.sql</code> does</a></p>
+</details>
+
 ## Upgrading
 
 What we are trying to do here is move the schema forward and then check that the

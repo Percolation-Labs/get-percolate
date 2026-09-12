@@ -85,10 +85,23 @@ spec:
           resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
           volumeMounts:
             - {name: data, mountPath: /var/lib/postgresql/data}
+            {{- if .Values.postgres.shmSize }}
+            - {name: dshm, mountPath: /dev/shm}
+            {{- end }}
             # readOnlyRootFilesystem is not set for this container: postgres
             # writes to /tmp and to its own socket directory, and pretending
             # otherwise means an emptyDir per path and a longer list to keep
             # right than the guarantee is worth here.
+      {{- if .Values.postgres.shmSize }}
+      # A pod's /dev/shm is 64Mi by default, and pgvector sizes a parallel HNSW
+      # build's shared-memory segment from maintenance_work_mem -- so an index
+      # build over a real corpus dies with "could not resize shared memory
+      # segment ... No space left on device". Medium: Memory makes this an
+      # actual tmpfs rather than disk, which is what /dev/shm has to be.
+      volumes:
+        - name: dshm
+          emptyDir: {medium: Memory, sizeLimit: {{ .Values.postgres.shmSize }}}
+      {{- end }}
   {{- if .Values.postgres.persistence.enabled }}
   volumeClaimTemplates:
     - metadata: {name: data}

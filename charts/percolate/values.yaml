@@ -92,6 +92,33 @@ postgres:
   extraArgs:
     - -c
     - shared_preload_libraries=pg_cron
+    # BOUNDS, EXPLICIT RATHER THAN PACKAGED. Nothing in this chart, the compose
+    # file or the image set a limit of any kind before this. The per-role
+    # timeouts live in the image's own bootstrap; these four have to be process
+    # flags, and they are values rather than hard-coded so an operator sizing a
+    # real cluster changes them here.
+    #
+    # max_connections: the default 100 faces up to 72 backends from one
+    # agent-runtime replica alone, before the worker, PostgREST's pool and
+    # anybody with psql. Raise it with replicas.
+    - -c
+    - max_connections=200
+    # Per sort/hash NODE, not per query. Against 200 connections the worst case
+    # is large, and it is a worst case nobody reaches.
+    - -c
+    - work_mem=8MB
+    # Both of these want raising on a machine bigger than the 1Gi request
+    # above; they are set at all so that sizing is an edit rather than a
+    # discovery.
+    - -c
+    - shared_buffers=512MB
+    - -c
+    - maintenance_work_mem=256MB
+  # /dev/shm. pgvector sizes a parallel HNSW build's shared-memory segment from
+  # maintenance_work_mem, and a pod's default /dev/shm is 64Mi -- so an index
+  # build over a real corpus dies with "could not resize shared memory segment".
+  # The template mounts an emptyDir at /dev/shm when this is set.
+  shmSize: 1Gi
 
 externalDatabase:
   host: ""
@@ -111,6 +138,12 @@ postgrest:
   image: {repository: postgrest/postgrest, tag: v12.2.8}
   replicas: 2
   schemas: "content, aiq, rbac, workflow, agentic, public"
+  # PGRST_DB_MAX_ROWS. No read returns an unbounded number of rows -- PostgREST
+  # will otherwise stream a whole table to anybody holding select on it, which
+  # is a larger surface than aiq.sql_passthrough's own cap. Unset in every
+  # configuration before REM-113. Raise it if a legitimate client pages
+  # through more than this in one request.
+  maxRows: 10000
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 512Mi}

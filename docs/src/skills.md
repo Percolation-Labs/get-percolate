@@ -22,6 +22,14 @@ one write path that refuses a bad one, retrieval over the whole population, a
 version recorded on the run that used it, and install-and-uninstall as a
 transaction.
 
+Before reading on, know which half of this ships. Skills, attachment, plugins
+and the checks on them are installed, and every statement below runs against
+them. The Agent Runtime in percolate-core @@core@@ does not yet read
+`agents.skills` or `context_policy.skills`: the prompt it sends is the agent's
+own `system_prompt` and nothing else. So the three ways a body reaches a prompt
+are described from the reference implementation they were measured on, and
+[where this page stands](#where-this-page-stands) says which is which.
+
 ## Write a skill
 
 A skill has two parts and the split between them is the entire mechanism: a
@@ -346,16 +354,17 @@ schema in every prompt, and a design that answers "how do we expose this?" with
 Beyond the attached surface, an agent can be permitted to reach fragments it
 could never list — a thousand rows will not fit in a prompt as a thousand
 listing lines. Those become **deferred tools**: one per fragment, hidden from
-the model entirely, surfaced by a search when a request calls for one. This is
+the model entirely, surfaced by a search when a request calls for one. The
+reference implementation builds this with
 [pydantic-ai's `defer_loading()`](https://pydantic.dev/docs/ai/tools-toolsets/tools-advanced/),
 used as-is, and it is the same trade this page has been making all along —
 a listing is cheap, a body is not — in the framework's own vocabulary. An agent
 that permits no discovery carries none of it.
 
-**None of this uses a framework's lazy loading, and it does not need to.**
-pydantic-ai has a `DeferredLoadingToolset` that hides tools from a model until
-a search turns them up, which is the same instinct — but the laziness here is a
-SQL projection. The query behind the index asks for the name, the description
+**Expansion uses no framework's lazy loading, and it does not need to.** The
+fetched path above leans on pydantic-ai; the two paths that put a body in the
+prompt before the model is called do not. The laziness there is a SQL
+projection. The query behind the index asks for the name, the description
 and the trigger, and never for the body, so a body is not read until it is
 named. That holds under any framework or none. It is also the half that is easy
 to get wrong, because the prompt looks lazy either way: a query that selects
@@ -374,11 +383,11 @@ size of the fleet.
 <a href="agents.html#the-rest-of-what-the-row-carries">the rest of
 `context_policy`</a> ·
 <a href="https://pydantic.dev/docs/ai/tools-toolsets/toolsets/">pydantic-ai's
-toolsets, which this deliberately does not use</a></p>
+toolsets, which expansion does not use</a></p>
 </details>
 
 <div class="evidence" markdown="1">
-<div class="label">the fetched path, running against a real model</div>
+<div class="label">the fetched path in the reference implementation, against a real model</div>
 
 ```
 tool surface  1 (load_skill) + 10 deferred (hidden until searched)
@@ -425,12 +434,31 @@ What we are trying to do here is ask which fragments bear on a request, using
 the same modes that answer every other retrieval question in this system.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
-select s.name, round((1 - m.distance)::numeric, 3) as score
-  from aiq.semantic_in('skills', :query_vector, 'text-embedding-3-small', 5) m
-  join agentic.skills_api s on s.id = m.chunk_id
+select s.name, round((r->>'score')::numeric, 3) as score
+  from jsonb_array_elements(
+         aiq.query('TEXT "LOOKUP empty" FROM skills LIMIT 5')->'rows') r
+  join agentic.skills_api s on s.id = (r->>'chunk_id')::uuid
  order by score desc;
 ```
+
+<div class="evidence" markdown="1">
+<div class="label">after the blocks above, on the sample</div>
+
+```
+       name        | score
+-------------------+-------
+ p8ql-fuzzy-lookup | 0.143
+```
+</div>
+
+That is the lexical half, which needs no model. The semantic half is the same
+join over `aiq.semantic_in('skills', :'query_vector', 'text-embedding-3-small', 5)`,
+with the vector set as in [the P8QL grammar](grammar-p8ql.html#the-three-search-modes-and-why-there-are-three) — and at
+@@core@@ it returns no rows, because nothing shipped embeds a skill's listing
+yet. The embedding space is registered for skills; filling it is the reference
+implementation's job today.
 
 <details class="why" markdown="1">
 <summary>Why it works — a table with an <code>id</code> is a corpus, and only
@@ -596,8 +624,7 @@ with no body at all. A description written as a label — *"about name
 resolution"* — would have scored none of that.
 
 <p class="related"><strong>Related</strong>
-<a href="https://github.com/Percolation-Labs/p8-subsystems/blob/main/specs/agentic/plugins.md">the
-spec, with every number and what it does not settle</a></p>
+<a href="#where-this-page-stands">what these numbers do and do not settle</a></p>
 </details>
 
 ## Why a row rather than a file
@@ -655,18 +682,26 @@ audit passing. The lost-update comparison, the assembled-prompt accounting, the
 retrieval scores and the behaviour probe are all captured output from a live
 database and a live model, not illustrations.
 
-One thing this page does *not* claim: that any of it runs on pydantic-ai's
-deferred loading. It does not. The path that would use it is the gateway, where
-a model asks for a fragment by name — and that path is specified and not yet
-built.
+What the Agent Runtime does with those rows is the gap. The runtime in
+percolate-core @@core@@ builds a prompt from the agent's `system_prompt` and a
+context block, and reads neither `agents.skills` nor `context_policy.skills`.
+The three paths in [what the prompt becomes](#what-the-prompt-becomes-and-who-decides)
+are built as reference implementations beside the specification: composed and
+matched expansion as one script, and the fetched path as another, which does
+use pydantic-ai's `defer_loading()` for the fragments an agent may reach but not
+list. The assembled-prompt accounting, the fetched-path trace and the behaviour
+probe were captured from those. Until the runtime carries them, an attached
+skill is a row the database validates and you can query, not text your agent
+receives.
 
-Two things are honest gaps rather than omissions. The behaviour probe is four
-procedures against one model, which is enough to separate 2/20 from 16/20 and
-nowhere near enough to separate 16/20 from 18/20 — and that second comparison
-is what the `top_k` recommendation leans on. And the fetched path, where a
-model asks for a fragment by name through a gateway, is specified and not
-measured: instructions arriving as a tool result are probably followed less
-reliably than instructions in a prompt, and that "probably" is still judgement.
+Two further gaps. The behaviour probe is four procedures against one model,
+which is enough to separate 2/20 from 16/20 and nowhere near enough to separate
+16/20 from 18/20 — and that second comparison is what the `top_k`
+recommendation leans on. And the fetched path ran in-process, as tools the
+reference script handed its own agent; the skill gateway that would serve it to
+a deployed agent as a tool server is specified and not built. Instructions
+arriving as a tool result are probably followed less reliably than instructions
+in a prompt, and that "probably" is still judgement.
 
-Next: [agents](agents.html), which is the row these fragments attach to, and
-where the tool servers they depend on are registered.
+Next: [your first workflow](first-workflow.html), which leaves agents for the
+engine that runs them as steps.

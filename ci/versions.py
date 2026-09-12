@@ -38,6 +38,18 @@ except ModuleNotFoundError:             # pragma: no cover - depends on install
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
+def not_ours() -> dict:
+    """Three-part numbers in docs/src that look like ours and are not.
+
+    `{filename: {literal: reason}}`. The reason is required by the shape rather
+    than by a check: a bare list would let somebody silence this by adding a
+    number, and the reason is what the next reader needs to judge whether the
+    exemption is still true.
+    """
+    with (ROOT / "versions.toml").open("rb") as fh:
+        return tomllib.load(fh).get("not_ours", {})
+
+
 def load() -> dict:
     with (ROOT / "versions.toml").open("rb") as fh:
         v = tomllib.load(fh)
@@ -69,28 +81,43 @@ def rules(v: dict) -> list[tuple[str, re.Pattern, str, str]]:
         ("compose/docker-compose.yml",
          re.compile(r"image: percolationlabs/percolate-postgres:19-([0-9]+\.[0-9]+\.[0-9]+)"),
          v["extension"], "the compose file pulls this database image"),
+        # The chart's database image, for the compose file's reason above. It
+        # floated at "19" after compose was pinned, which is the inconsistency
+        # that comment names, one file over.
+        ("charts/percolate/values.yaml",
+         re.compile(r"tag: \"19-([0-9]+\.[0-9]+\.[0-9]+)\""),
+         v["extension"], "the chart deploys this database image"),
         ("charts/percolate/Chart.yaml",
          re.compile(r"^appVersion: \"([0-9]+\.[0-9]+\.[0-9]+)\"", re.M),
          v["core"], "appVersion is what the chart deploys"),
         ("charts/percolate/Chart.yaml",
          re.compile(r"^version: ([0-9]+\.[0-9]+\.[0-9]+)", re.M),
          v["chart"], "the chart's own version"),
-        # The extras are part of the string a reader copies -- the sample
-        # needs [sample] to read YAML and [agent] to translate plugin.yaml's
-        # JSON-Schema agents -- so the pattern has to survive them being
-        # there. It did not, and the previous version matched only the bare
-        # name: the day the extras were added this rule reported "the file
-        # changed shape" rather than a version mismatch, which is the right
-        # failure and still a stop.
-        ("README.md",
-         re.compile(r"percolate-core(?:\[[a-z,]+\])?>=([0-9]+\.[0-9]+\.[0-9]+)"),
-         v["core_min"], "the documented pip floor"),
+        # THE PIP FLOOR IS NOT IN THIS LIST ANY MORE. README.md carried
+        # `percolate-core[sample,agent]>=<version>` as a literal, because a
+        # README cannot hold a placeholder the docs build substitutes, and this
+        # rule checked it. 1f6ae2a shortened the README and that line went with
+        # the section it lived in. The FACT did not go anywhere: it is
+        # docs/src/install.md's `>=@@core_min@@`, substituted from versions.toml
+        # at build time, which cannot drift and so needs no rule here. What was
+        # left was a rule matching nothing, and this script is right to call
+        # that a stop rather than a pass -- `no match for ... the file changed
+        # shape` was red on main and on every branch off it. If a literal
+        # version ever returns to the README, this rule returns with it.
     ]
 
 
-def check(v: dict) -> list[str]:
+def check(v: dict, pins: bool = True) -> list[str]:
+    """Every file that repeats a number still agrees with versions.toml.
+
+    `pins=False` skips the per-file rules and checks only the docs literals.
+    That is what `--as` wants: it asks about numbers nobody has published yet,
+    and the files those rules cover are the ones `--set` rewrites, so reporting
+    them as errors would make the answer always "no" and teach people to skip
+    it. A check that cannot pass is one that gets bypassed the day it matters.
+    """
     bad = []
-    for path, pat, want, why in rules(v):
+    for path, pat, want, why in (rules(v) if pins else []):
         text = (ROOT / path).read_text()
         found = pat.findall(text)
         if not found:
@@ -104,13 +131,44 @@ def check(v: dict) -> list[str]:
     # A literal anywhere in docs/src that equals a number we own should have been
     # a placeholder. Older versions are left alone on purpose -- "as of the 0.1.4
     # pin" is history, and history does not go stale.
+    #
+    # NOT EVERY THREE-PART NUMBER IS OURS, and this check cannot tell by looking.
+    # docs/src/skills.md documents a sample PLUGIN whose own version happens to
+    # be 0.2.0 -- a different namespace that collides by accident. The numbers
+    # are the sample's, one of them inside an evidence block holding captured
+    # output, so replacing them with a placeholder would be wrong twice: it
+    # would claim the plugin's version is ours, and it would edit a recorded
+    # measurement.
+    #
+    # So a literal can be declared foreign in versions.toml, by file, WITH a
+    # reason. Declaring is exact -- a person writes down which number is not
+    # ours and why -- rather than the checker guessing from context, which is
+    # how a check like this starts passing over things that are ours.
+    #
+    # Found the expensive way: `--set published.extension=0.2.0` made 0.2.0 ours
+    # and this check began refusing skills.md. The release itself stays green
+    # (nothing calls --check before publishing) and the DOCS deploy fails, after
+    # the image and the tag are out, leaving the published site describing the
+    # previous version.
     owned = set(v.values())
+    foreign = not_ours()
     for md in sorted((ROOT / "docs" / "src").glob("*.md")):
-        for lit in set(re.findall(r"\b([0-9]+\.[0-9]+\.[0-9]+)\b", md.read_text())):
-            if lit in owned:
+        text = md.read_text()
+        lits = set(re.findall(r"\b([0-9]+\.[0-9]+\.[0-9]+)\b", text))
+        exempt = foreign.get(md.name, {})
+        for lit in lits:
+            if lit in owned and lit not in exempt:
                 bad.append(f"docs/src/{md.name}: literal {lit} -- use a placeholder "
                            f"so it cannot go stale (@@extension@@, @@core@@, "
-                           f"@@chart@@, @@core_min@@)")
+                           f"@@chart@@, @@core_min@@), or declare it in "
+                           f"versions.toml [not_ours] if it is not our number")
+        # AND THE OTHER DIRECTION, because a one-way check over a list only
+        # keeps the list from naming ghosts. An exemption whose literal has left
+        # the file is an exemption nobody notices is stale, and the next number
+        # to land on it inherits a pass it never earned.
+        for lit in sorted(set(exempt) - lits):
+            bad.append(f"versions.toml [not_ours]: {md.name} exempts {lit}, which "
+                       f"the file no longer contains -- drop the exemption")
     return bad
 
 
@@ -120,6 +178,12 @@ def main() -> int:
     ap.add_argument("--set", metavar="KEY=VALUE",
                     help="published.extension, published.core, published.chart "
                          "or requires.core -- bare key means published")
+    ap.add_argument("--as", dest="as_", metavar="KEY=VALUE", action="append",
+                    help="with --check: answer as if this number were already "
+                         "published, writing nothing. The preflight question -- "
+                         "'would --check still pass once we own 0.2.0?' -- asked "
+                         "before the release rather than by the docs deploy "
+                         "after it. Repeatable.")
     a = ap.parse_args()
 
     if a.set:
@@ -141,13 +205,24 @@ def main() -> int:
         path.write_text(pat.sub(rf"\g<1>{value}\g<2>", text))
         print(f"versions.toml: {table}.{name} -> {value}")
 
-        # Moving appVersion CHANGES THE CHART, and Helm refuses to republish a
-        # chart version that already exists -- so the chart's own number has to
-        # move with it or the publish step collides. That coupling is always
-        # true and was previously carried in an issue asking a person to
-        # remember it, which is the kind of thing a person remembers until the
-        # once they do not.
-        if (table, name) == ("published", "core"):
+        # ANYTHING THE CHART PACKAGES CHANGING MEANS THE CHART CHANGED, so its
+        # own number moves with it. Two keys do that, and this fired for one:
+        #
+        #   core      -> Chart.yaml appVersion
+        #   extension -> charts/percolate/values.yaml, the database image tag
+        #
+        # The extension arm was missing and the consequence is worse than a
+        # collision. `helm push` to GHCR is an OCI push and OCI tags are
+        # MUTABLE, so it does not refuse -- it overwrites chart 0.1.5 in place
+        # with one that deploys a different database. Anyone tracking
+        # `semver: 0.1.x` or Argo `targetRevision: 0.1.*` moves with it, with no
+        # version change to review, pin against or roll back to. A chart version
+        # is supposed to identify its contents; republishing one silently breaks
+        # the only promise the number makes.
+        #
+        # This was the coupling stated in the comment that used to be here and
+        # implemented for whichever key prompted it -- one rule, half enforced.
+        if (table, name) in (("published", "core"), ("published", "extension")):
             text = path.read_text()
             cur = re.search(r'^chart\s*=\s*"([0-9]+)\.([0-9]+)\.([0-9]+)"',
                             text, re.M)
@@ -155,8 +230,9 @@ def main() -> int:
             nxt = f"{maj}.{minor}.{patch + 1}"
             path.write_text(re.sub(r'(^chart\s*=\s*")[0-9.]+(")',
                                    rf"\g<1>{nxt}\g<2>", text, flags=re.M))
+            moved = "appVersion" if name == "core" else "the database image tag"
             print(f"versions.toml: published.chart -> {nxt} "
-                  f"(appVersion moved, so the chart itself changed)")
+                  f"({moved} moved, so the chart itself changed)")
 
         v = load()
         for rel, rpat, want, _ in rules(v):
@@ -169,12 +245,44 @@ def main() -> int:
         return 0
 
     v = load()
-    bad = check(v)
+
+    # --as: the same check, against the numbers a release is ABOUT to own.
+    # Everything the literal check refuses depends on what is in `owned`, so a
+    # literal that is fine today becomes an error the moment a release claims
+    # that number -- and the only thing that ran --check afterwards was the docs
+    # deploy, which fires after the image is published and the tag moved. This
+    # asks the question while the answer is still cheap.
+    KEYS = {"published.extension": "extension", "extension": "extension",
+            "published.core": "core", "core": "core",
+            "published.chart": "chart", "chart": "chart",
+            "requires.core": "core_min", "requires.extension": "extension_min"}
+    for item in a.as_ or []:
+        key, _, value = item.partition("=")
+        if key not in KEYS:
+            print(f"error: --as {key} is not a version this file owns "
+                  f"({', '.join(sorted(KEYS))})", file=sys.stderr)
+            return 2
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", value):
+            print(f"error: {value!r} is not a version", file=sys.stderr)
+            return 2
+        v[KEYS[key]] = value
+    if a.as_:
+        # stderr, with the errors, because stdout through a pipe is block
+        # buffered and stderr is not -- a header that arrives after the lines it
+        # introduces is worse than none.
+        print(f"checking as if published: {', '.join(a.as_)}", file=sys.stderr)
+
+    bad = check(v, pins=not a.as_)
     for b in bad:
         print(f"error: {b}", file=sys.stderr)
     if bad:
-        print("\nrun ci/versions.py --set <key>=<version> to move a number and "
-              "rewrite what repeats it", file=sys.stderr)
+        if a.as_:
+            print("\nThis is what the docs deploy would say AFTER the release "
+                  "published. Fix it now, while nothing has shipped.",
+                  file=sys.stderr)
+        else:
+            print("\nrun ci/versions.py --set <key>=<version> to move a number "
+                  "and rewrite what repeats it", file=sys.stderr)
         return 1
 
     print("versions.toml agrees with every file that repeats it:")

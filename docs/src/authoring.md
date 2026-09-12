@@ -58,10 +58,24 @@ model call, and call a model without writing where its key lives.
   - id: judge
     needs: [retrieve]
     rest:
-      url: '{{env.LLM_URL}}/v1/chat/completions'
+      url: https://api.openai.com/v1/chat/completions
+      method: POST
       credential_ref: LLM_API_KEY
-      body: {model: qwen2.5, prompt: 'Evidence: {{steps.retrieve.result}}'}
+      jsonpath: choices.0.message.content
+      body:
+        model: gpt-4o-mini
+        messages:
+          - role: user
+            content: 'Answer in one sentence. {{run.question}} Evidence: {{steps.retrieve.result}}'
 ```
+
+<div class="evidence" markdown="1">
+<div class="label">the judge task's output, started with {"question": "Is PSC-441 still open?"} on the sample</div>
+
+```
+{"result": "Yes, PSC-441 is still open pending survey.", "status": 200}
+```
+</div>
 
 <details class="why" markdown="1">
 <summary>Why it works — a url in a document outlives the deployment it was
@@ -73,10 +87,14 @@ into both halves so they cannot mean different spaces, and naming a different
 one on each is refused while you are authoring rather than returning a
 meaningless number at runtime.
 
-`credential_ref` is a name the worker resolves from its own environment, so the
-database stores the reference and never the secret. The endpoint may itself be
-`{{env.LLM_URL}}/…`, which is what lets one registration serve dev, staging and
-production without a per-deployment `UPDATE`.
+`credential_ref` is a name the worker resolves from its own environment —
+`LLM_API_KEY` is the one the compose worker already carries — so the database
+stores the reference and never the secret. `method: POST` is not optional: a
+`rest:` step sends `GET` unless told otherwise, body or no body. The URL may
+itself be a template, `{{env.X}}/chat/completions`, resolved by the worker at
+dispatch, which is what lets one document serve dev, staging and production;
+the variable then has to exist on the worker, or the task fails terminally with
+`template {{env.X}} resolved to nothing`.
 
 Both are the same instinct: anything that differs between deployments belongs in
 a row or an environment variable, and a document that outlives one deployment

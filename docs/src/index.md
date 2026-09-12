@@ -6,6 +6,9 @@ all tables and functions in your database, rather than state held by a control
 plane that talks to your database.
 {: .lede }
 
+If you would rather be told than read it, there is
+[ten minutes of the same argument](video.html).
+
 The nice consequence of that is that most steps need no process at all. A step is
 `sql`, `p8ql`, `rest`, `agent` or `work`. The first two run inside Postgres as
 soon as the steps they depend on finish, in the same transaction that finishes
@@ -139,7 +142,7 @@ the page changes rather than the claim.
 
 There is no status label on a page, because every page is about something that
 is built. A thing that is not built does not get a page here — it gets a spec in
-[p8-subsystems](https://github.com/Percolation-Labs/p8-subsystems). Gaps inside
+`p8-subsystems`, which is a private repository. Gaps inside
 a feature that *is* shipped are named where they bite, in the section they
 belong to, rather than collected behind a label at the top.
 

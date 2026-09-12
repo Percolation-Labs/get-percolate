@@ -1,8 +1,8 @@
 # Scaling
 
 Numbers rather than adjectives. Everything here was measured against PostgreSQL
-19beta3 with `dev/scale/run.sh` in the specs repository, and the environment is
-named at the bottom because a benchmark without one is not a benchmark.
+19beta3 with a `pgbench` harness of ours, and the environment is named at the
+bottom because a benchmark without one is not a benchmark.
 {: .lede }
 
 The short version is that this engine has three hot paths, all of them are
@@ -366,8 +366,10 @@ down</a></p>
 decides whether a sort spills to disk, so a deployment that has raised it will
 see smaller differences than the ones above.
 
-The harness is `dev/scale/` in the specs repository, and it is meant to be re-run
-rather than trusted. It asserts the *plan* and not only the time, because the
-failure it exists to catch is the planner quietly abandoning an index.
+The harness itself is not published, so the way to check these against your own
+deployment is the load line in the table above: `pgbench` as the `worker` role
+calling `workflow.claim_task`, with `EXPLAIN` on the claim query beside it. Read
+the *plan* as well as the time, because the failure worth catching is the
+planner abandoning an index while the latency still looks acceptable.
 
 Next: [operating it](operating.html).

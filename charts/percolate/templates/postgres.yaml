@@ -37,7 +37,15 @@ spec:
         - name: postgres
           image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
-          args: {{- toYaml .Values.postgres.extraArgs | nindent 12 }}
+          # cron.database_name FOLLOWS postgres.database rather than being a
+          # literal in extraArgs: with the literal, renaming the database left
+          # pg_cron pointed at one that does not exist, the image's init failed
+          # creating the extension, and the restart skipped init on the
+          # now-initialised volume -- a database with no tick, reaper or timers.
+          args:
+            {{- with .Values.postgres.extraArgs }}{{- toYaml . | nindent 12 }}{{- end }}
+            - -c
+            - {{ printf "cron.database_name=%s" .Values.postgres.database | quote }}
           env:
             - name: POSTGRES_USER
               value: {{ .Values.postgres.user | quote }}
@@ -59,8 +67,12 @@ spec:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports: [{containerPort: 5432, name: postgres}]
+          # Over TCP, not the socket. During the first-start install the
+          # entrypoint's temporary server listens on the socket only, so a
+          # socket probe reported Ready mid-install and `rollout status`
+          # returned before the extension existed.
           readinessProbe:
-            exec: {command: ["pg_isready", "-U", "{{ .Values.postgres.user }}", "-d", "{{ .Values.postgres.database }}"]}
+            exec: {command: ["pg_isready", "-h", "127.0.0.1", "-U", "{{ .Values.postgres.user }}", "-d", "{{ .Values.postgres.database }}"]}
             initialDelaySeconds: 10
             periodSeconds: 5
           livenessProbe:

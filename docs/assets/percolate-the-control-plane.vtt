@@ -1,0 +1,825 @@
+WEBVTT
+
+1
+00:00:00.180 --> 00:00:03.640
+<v Christina>Percolate pushes everything into Postgres. The agent
+
+2
+00:00:03.640 --> 00:00:07.600
+<v Christina>registry, the tool definitions, the model routing, the
+
+3
+00:00:07.600 --> 00:00:11.120
+<v Christina>session state, the loop itself. Why go that far?
+
+4
+00:00:11.900 --> 00:00:14.120
+<v Chris>Because compressing it that far shows you what is
+
+5
+00:00:14.120 --> 00:00:17.460
+<v Chris>actually in there. Most of an agentic system is data,
+
+6
+00:00:18.060 --> 00:00:19.840
+<v Chris>even though the frameworks around it are all written
+
+7
+00:00:19.840 --> 00:00:22.840
+<v Chris>in Python, and pushing it down is how you see that.
+
+8
+00:00:23.120 --> 00:00:24.840
+<v Christina>So what survives the compression?
+
+9
+00:00:24.840 --> 00:00:28.520
+<v Chris>One real engine that calls a model, parses what comes
+
+10
+00:00:28.520 --> 00:00:31.500
+<v Chris>back, works out whether that was a tool call, and goes
+
+11
+00:00:31.500 --> 00:00:34.980
+<v Chris>round again. That part is genuine software and it's
+
+12
+00:00:34.980 --> 00:00:37.900
+<v Chris>fiddly. Almost everything around it is a schema.
+
+13
+00:00:38.560 --> 00:00:40.100
+<v Christina>And the part that stays hard?
+
+14
+00:00:40.760 --> 00:00:43.540
+<v Chris>Orchestration. What is supposed to happen, what
+
+15
+00:00:43.540 --> 00:00:46.300
+<v Chris>already happened, what to do when a step fails at
+
+16
+00:00:46.300 --> 00:00:48.900
+<v Chris>three in the morning, and who is allowed to see the
+
+17
+00:00:48.900 --> 00:00:52.300
+<v Chris>result. That's a database problem wearing an AI hat.
+
+18
+00:00:52.300 --> 00:00:55.860
+<v Christina>Give me the concrete version. What's a row that I'd
+
+19
+00:00:55.860 --> 00:00:56.700
+<v Christina>expect to be code?
+
+20
+00:00:57.780 --> 00:01:01.100
+<v Chris>A prompt is data. A tool definition is an OpenAPI
+
+21
+00:01:01.100 --> 00:01:05.440
+<v Chris>document or an MCP manifest in a JSON column. An agent
+
+22
+00:01:05.440 --> 00:01:09.380
+<v Chris>is a row, a skill is a row, the model registry is
+
+23
+00:01:09.380 --> 00:01:12.800
+<v Chris>rows. A conversation is turns with a foreign key to a
+
+24
+00:01:12.800 --> 00:01:12.800
+<v Chris>session.
+
+25
+00:01:13.200 --> 00:01:15.760
+<v Christina>So adding an agent is what, exactly?
+
+26
+00:01:16.460 --> 00:01:20.140
+<v Chris>An insert. The capability is authored rather than
+
+27
+00:01:20.140 --> 00:01:22.540
+<v Chris>deployed, which means what an agent may do is
+
+28
+00:01:22.540 --> 00:01:25.840
+<v Chris>something you can query and scope and audit, instead
+
+29
+00:01:25.840 --> 00:01:28.400
+<v Chris>of a fact about whichever process happens to be
+
+30
+00:01:28.400 --> 00:01:28.700
+<v Chris>running.
+
+31
+00:01:29.040 --> 00:01:31.880
+<v Christina>In most stacks, permissions and workflow are what you
+
+32
+00:01:31.880 --> 00:01:35.260
+<v Christina>bolt on at the end, once the interesting part works.
+
+33
+00:01:35.780 --> 00:01:38.500
+<v Chris>Those are the two we built first. Permissions sit
+
+34
+00:01:38.500 --> 00:01:40.560
+<v Chris>underneath everything rather than in front of it:
+
+35
+00:01:41.160 --> 00:01:44.700
+<v Chris>users, roles, API keys, sessions and row-level
+
+36
+00:01:44.700 --> 00:01:45.460
+<v Chris>security.
+
+37
+00:01:45.920 --> 00:01:46.840
+<v Christina>Why underneath?
+
+38
+00:01:46.840 --> 00:01:50.720
+<v Chris>The moment an agent can query your data, which rows a
+
+39
+00:01:50.720 --> 00:01:53.960
+<v Chris>caller may see is the same question as what that agent
+
+40
+00:01:53.960 --> 00:01:56.840
+<v Chris>is allowed to know. If that lives above the database
+
+41
+00:01:57.200 --> 00:02:00.240
+<v Chris>there is always one more path to the data that forgot
+
+42
+00:02:00.240 --> 00:02:00.840
+<v Chris>to ask.
+
+43
+00:02:01.300 --> 00:02:02.940
+<v Christina>So where is the decision taken?
+
+44
+00:02:03.600 --> 00:02:07.380
+<v Chris>Where the data is. The tools an agent may call, the
+
+45
+00:02:07.380 --> 00:02:10.919
+<v Chris>rows a query returns, the files a run may read and the
+
+46
+00:02:10.919 --> 00:02:14.320
+<v Chris>tasks a worker may claim are all one authorization
+
+47
+00:02:14.320 --> 00:02:16.700
+<v Chris>model, not one invented per service.
+
+48
+00:02:17.220 --> 00:02:19.400
+<v Christina>And the workflow engine got the same promotion.
+
+49
+00:02:20.220 --> 00:02:22.720
+<v Chris>It went underneath the agent runtime rather than
+
+50
+00:02:22.720 --> 00:02:23.380
+<v Chris>beside it.
+
+51
+00:02:23.860 --> 00:02:27.180
+<v Christina>Say I bring you a domain of my own. Shipping, claims
+
+52
+00:02:27.180 --> 00:02:28.960
+<v Christina>processing, whatever it is.
+
+53
+00:02:29.380 --> 00:02:31.900
+<v Chris>The work splits four ways and it's the same four every
+
+54
+00:02:31.900 --> 00:02:35.060
+<v Chris>time. Where the data comes from, what kinds of thing
+
+55
+00:02:35.060 --> 00:02:38.460
+<v Chris>exist in your world, the agents and tools that do the
+
+56
+00:02:38.460 --> 00:02:40.700
+<v Chris>judging, and then the work itself.
+
+57
+00:02:41.060 --> 00:02:42.700
+<v Christina>And a package bundles all four?
+
+58
+00:02:43.140 --> 00:02:46.060
+<v Chris>A plugin records which bundle each thing came from, so
+
+59
+00:02:46.700 --> 00:02:49.180
+<v Chris>servers and skills and agents install and uninstall
+
+60
+00:02:49.180 --> 00:02:53.000
+<v Chris>together. A package widens that same document to carry
+
+61
+00:02:53.000 --> 00:02:56.360
+<v Chris>your data sources and your vocabulary as well, and the
+
+62
+00:02:56.360 --> 00:02:58.420
+<v Chris>whole thing applies in one transaction.
+
+63
+00:02:59.540 --> 00:03:00.380
+<v Christina>Including the sources.
+
+64
+00:03:01.080 --> 00:03:03.140
+<v Chris>They come with it, and that's what makes it a domain
+
+65
+00:03:03.140 --> 00:03:06.280
+<v Chris>rather than a toolbox. Every row it creates is stamped
+
+66
+00:03:06.280 --> 00:03:09.320
+<v Chris>with the package that created it, so uninstalling
+
+67
+00:03:09.320 --> 00:03:11.120
+<v Chris>prunes exactly what was put there.
+
+68
+00:03:11.580 --> 00:03:14.240
+<v Christina>Let's stay on sources, because that's usually where
+
+69
+00:03:14.240 --> 00:03:15.740
+<v Christina>these systems get thin.
+
+70
+00:03:16.620 --> 00:03:19.540
+<v Chris>Sourcing is one of the five subsystems here, not an
+
+71
+00:03:19.540 --> 00:03:22.680
+<v Chris>import script somebody wrote once. A channel is a row
+
+72
+00:03:22.680 --> 00:03:25.920
+<v Chris>saying where data comes from and how to reach it, and
+
+73
+00:03:25.920 --> 00:03:28.920
+<v Chris>uploaded content is parsed, chunked and embedded on
+
+74
+00:03:28.920 --> 00:03:29.540
+<v Chris>the way in.
+
+75
+00:03:29.880 --> 00:03:32.680
+<v Christina>I'm still not moving my warehouse into your database.
+
+76
+00:03:33.200 --> 00:03:36.680
+<v Chris>You don't have to. What Percolate keeps is how to
+
+77
+00:03:36.680 --> 00:03:39.900
+<v Chris>reach the service: the connection, the credential, the
+
+78
+00:03:39.900 --> 00:03:42.880
+<v Chris>schedule. Pulling from it is a workflow you author and
+
+79
+00:03:42.880 --> 00:03:45.760
+<v Chris>schedule like any other, so the pipeline feeding the
+
+80
+00:03:45.760 --> 00:03:48.400
+<v Chris>agent and the agent itself are the same machinery.
+
+81
+00:03:49.240 --> 00:03:50.980
+<v Christina>Which is the part that gets underestimated.
+
+82
+00:03:52.000 --> 00:03:54.140
+<v Chris>The hard part of an AI product is the dozen
+
+83
+00:03:54.140 --> 00:03:57.460
+<v Chris>unglamorous steps that have to run every night so the
+
+84
+00:03:57.460 --> 00:03:59.080
+<v Chris>clever bit has something to work with.
+
+85
+00:03:59.440 --> 00:04:03.900
+<v Christina>Once it's all in there, how do I ask across it? Some
+
+86
+00:04:03.900 --> 00:04:07.060
+<v Christina>of it is graph-shaped and some of it is just text.
+
+87
+00:04:07.620 --> 00:04:11.700
+<v Chris>Through one dialect called P8QL. A question arrives in
+
+88
+00:04:11.700 --> 00:04:14.200
+<v Chris>whatever shape the asker had it in, and the dialect
+
+89
+00:04:14.200 --> 00:04:18.339
+<v Chris>maps it onto the thing that answers it — a name to
+
+90
+00:04:18.880 --> 00:04:22.000
+<v Chris>resolve, a relationship to walk out from, a passage
+
+91
+00:04:22.000 --> 00:04:26.500
+<v Chris>that means roughly the same, or plain lexical text.
+
+92
+00:04:26.500 --> 00:04:29.720
+<v Chris>The same statement form for all of them, through one
+
+93
+00:04:30.360 --> 00:04:32.040
+<v Christina>And when none of those is what I want?
+
+94
+00:04:32.540 --> 00:04:36.380
+<v Chris>Then you write SQL, and there's no keyword for it. A
+
+95
+00:04:36.380 --> 00:04:38.980
+<v Chris>statement that starts with select is recognised by how
+
+96
+00:04:38.980 --> 00:04:42.060
+<v Chris>it starts, and it runs read-only, under the same
+
+97
+00:04:42.060 --> 00:04:44.880
+<v Chris>row-level security you have everywhere else. SQL is
+
+98
+00:04:45.980 --> 00:04:48.360
+<v Chris>the floor the modes sit on rather than a mode of its
+
+99
+00:04:48.360 --> 00:04:48.900
+<v Chris>own.
+
+100
+00:04:49.520 --> 00:04:52.380
+<v Christina>Why have the layer at all? People know SQL.
+
+101
+00:04:53.220 --> 00:04:55.720
+<v Chris>It isn't written for people. It's written so a model
+
+102
+00:04:55.720 --> 00:04:58.280
+<v Chris>can produce it. An agent arrives holding a
+
+103
+00:04:58.280 --> 00:05:00.940
+<v Chris>half-remembered name and a vague question at the same
+
+104
+00:05:00.940 --> 00:05:04.800
+<v Chris>time, and here those are the same kind of thing — one
+
+105
+00:05:04.800 --> 00:05:07.260
+<v Chris>statement with a different word on the front.
+
+106
+00:05:07.860 --> 00:05:09.900
+<v Christina>How does it know what any of that means in my
+
+107
+00:05:09.900 --> 00:05:12.800
+<v Christina>database, though? It hasn't read my documentation.
+
+108
+00:05:13.680 --> 00:05:18.040
+<v Chris>It asks. SCHEMA is the mode for that — the facets, the
+
+109
+00:05:18.040 --> 00:05:21.220
+<v Chris>entity types, the relations, which embedding models
+
+110
+00:05:21.220 --> 00:05:24.300
+<v Chris>are registered — and it's the one query answerable
+
+111
+00:05:24.300 --> 00:05:27.000
+<v Chris>before you know anything else. Most of that answer
+
+112
+00:05:27.000 --> 00:05:29.880
+<v Chris>comes off the catalog rather than out of a document,
+
+113
+00:05:29.880 --> 00:05:33.400
+<v Chris>so it can't drift the way a page describing the same
+
+114
+00:05:33.840 --> 00:05:37.240
+<v Christina>I want to push on workflow semantics, because plenty
+
+115
+00:05:37.240 --> 00:05:40.820
+<v Christina>of systems say the word and mean something thin by it.
+
+116
+00:05:41.040 --> 00:05:44.420
+<v Chris>What we mean is a run being a graph of steps with real
+
+117
+00:05:44.420 --> 00:05:47.980
+<v Chris>dependencies, retries with backoff, compensation when
+
+118
+00:05:47.980 --> 00:05:50.860
+<v Chris>something has to be undone, and state that survives
+
+119
+00:05:50.860 --> 00:05:52.560
+<v Chris>the process dying halfway.
+
+120
+00:05:53.100 --> 00:05:56.740
+<v Christina>That's a data pipeline. There's nothing especially AI
+
+121
+00:05:56.740 --> 00:05:57.400
+<v Christina>about it.
+
+122
+00:05:57.800 --> 00:06:00.260
+<v Chris>An agent framework and a workflow engine are the same
+
+123
+00:06:00.260 --> 00:06:03.720
+<v Chris>shape. A step is one of six kinds, and one of them
+
+124
+00:06:03.720 --> 00:06:06.700
+<v Chris>happens to call a model. Two of them execute inside
+
+125
+00:06:06.700 --> 00:06:09.400
+<v Chris>Postgres with no process running anywhere.
+
+126
+00:06:10.040 --> 00:06:13.600
+<v Christina>So retries on an agent step come from the same place
+
+127
+00:06:13.600 --> 00:06:14.900
+<v Christina>as on a SQL step.
+
+128
+00:06:15.440 --> 00:06:18.340
+<v Chris>Written once, applying to every kind, because an agent
+
+129
+00:06:18.340 --> 00:06:19.900
+<v Chris>step isn't a special case.
+
+130
+00:06:20.420 --> 00:06:23.660
+<v Christina>Here's the one I think gets handled badly. A step
+
+131
+00:06:23.660 --> 00:06:27.020
+<v Christina>needs a person to approve something, and she's asleep,
+
+132
+00:06:27.220 --> 00:06:29.200
+<v Christina>and she'll get to it in six hours.
+
+133
+00:06:30.060 --> 00:06:32.480
+<v Chris>A scheduler has three options there and none of them
+
+134
+00:06:32.480 --> 00:06:35.300
+<v Chris>are good. It can hold the slot, so something sits
+
+135
+00:06:35.300 --> 00:06:38.640
+<v Chris>doing nothing for six hours. It can time out and lose
+
+136
+00:06:38.640 --> 00:06:42.680
+<v Chris>the work. Or it can escalate, which just interrupts
+
+137
+00:06:42.680 --> 00:06:43.260
+<v Chris>somebody else.
+
+138
+00:06:43.740 --> 00:06:45.360
+<v Christina>So what happens instead?
+
+139
+00:06:45.920 --> 00:06:48.940
+<v Chris>Nothing at all. The task moves into a waiting state
+
+140
+00:06:48.940 --> 00:06:53.120
+<v Chris>and stops costing anything, because it's a row. When
+
+141
+00:06:53.120 --> 00:06:56.820
+<v Chris>she answers, that resolves it and the run carries on
+
+142
+00:06:56.820 --> 00:06:57.700
+<v Chris>from where it stopped.
+
+143
+00:06:58.240 --> 00:07:00.800
+<v Christina>And she can't approve something she was never meant to
+
+144
+00:07:00.800 --> 00:07:01.080
+<v Christina>see.
+
+145
+00:07:01.700 --> 00:07:04.100
+<v Chris>That's the same check as reading the row would be,
+
+146
+00:07:04.480 --> 00:07:06.400
+<v Chris>which is what having one authorization model
+
+147
+00:07:06.400 --> 00:07:07.860
+<v Chris>underneath everything buys you.
+
+148
+00:07:08.300 --> 00:07:11.620
+<v Christina>This runs across a cluster somewhere. What coordinates
+
+149
+00:07:11.620 --> 00:07:12.060
+<v Christina>it?
+
+150
+00:07:12.580 --> 00:07:15.700
+<v Chris>Nothing does. Postgres is the queue. Workers claim
+
+151
+00:07:15.700 --> 00:07:18.380
+<v Chris>work off it rather than having it handed to them, and
+
+152
+00:07:18.380 --> 00:07:20.420
+<v Chris>no single component is holding the plan.
+
+153
+00:07:21.140 --> 00:07:23.220
+<v Christina>What if I lose a worker halfway through a run?
+
+154
+00:07:24.060 --> 00:07:26.100
+<v Chris>Throughput drops and everything keeps going. There's
+
+155
+00:07:26.100 --> 00:07:28.720
+<v Chris>nothing to fail over, because there was never a
+
+156
+00:07:28.720 --> 00:07:29.540
+<v Chris>coordinator to fail.
+
+157
+00:07:29.940 --> 00:07:33.380
+<v Christina>So what am I actually installing? All of this sounds
+
+158
+00:07:33.380 --> 00:07:34.780
+<v Christina>like a lot of moving parts.
+
+159
+00:07:35.080 --> 00:07:38.540
+<v Chris>It's a Postgres extension. The whole system — the
+
+160
+00:07:38.740 --> 00:07:40.920
+<v Chris>schemas, the tables, the functions, the row-level
+
+161
+00:07:40.920 --> 00:07:44.640
+<v Chris>security — is one SQL file, and it's
+
+162
+00:07:44.640 --> 00:07:47.000
+<v Chris>architecture-independent. The only compiled thing in
+
+163
+00:07:47.000 --> 00:07:50.300
+<v Chris>the box is the parser that turns P8QL and workflow
+
+164
+00:07:50.300 --> 00:07:53.860
+<v Chris>YAML into rows, and that's a small Rust library we
+
+165
+00:07:53.860 --> 00:07:54.740
+<v Chris>build per platform.
+
+166
+00:07:55.560 --> 00:07:58.340
+<v Christina>So the permissions and the workflow engine are inside
+
+167
+00:07:58.340 --> 00:08:00.080
+<v Christina>that, rather than beside it.
+
+168
+00:08:00.620 --> 00:08:03.940
+<v Chris>Inside it, which is the point of the whole exercise. A
+
+169
+00:08:03.940 --> 00:08:06.420
+<v Chris>worker that's badly written can't route around a
+
+170
+00:08:06.420 --> 00:08:07.580
+<v Chris>policy that lives in the database.
+
+171
+00:08:08.300 --> 00:08:09.580
+<v Christina>Then what runs outside?
+
+172
+00:08:10.150 --> 00:08:14.160
+<v Chris>Two things speak HTTP. PostgREST puts the database's
+
+173
+00:08:14.160 --> 00:08:17.200
+<v Chris>own objects on a REST surface, and it isn't ours —
+
+174
+00:08:17.200 --> 00:08:20.660
+<v Chris>it's the standard one, pointed at our schema. Then a
+
+175
+00:08:20.660 --> 00:08:23.800
+<v Chris>runtime for the parts a database shouldn't do: the
+
+176
+00:08:23.800 --> 00:08:26.380
+<v Chris>content server that takes a file and turns it into
+
+177
+00:08:26.680 --> 00:08:27.960
+<v Chris>chunks, and the agent
+
+178
+00:08:28.300 --> 00:08:30.260
+<v Christina>Which is where the model actually gets called.
+
+179
+00:08:30.760 --> 00:08:33.760
+<v Chris>And that part isn't ours either. The agent API is a
+
+180
+00:08:33.760 --> 00:08:37.620
+<v Chris>thin layer over Pydantic AI, which is a genuinely good
+
+181
+00:08:37.620 --> 00:08:40.419
+<v Chris>agentic framework, and we let it keep the job it's
+
+182
+00:08:40.419 --> 00:08:44.620
+<v Chris>good at — calling the model, invoking tools, enforcing
+
+183
+00:08:44.620 --> 00:08:47.620
+<v Chris>structured output. Our layer turns a row into its
+
+184
+00:08:48.580 --> 00:08:50.900
+<v Chris>arguments. Instructions come from a column, tools from
+
+185
+00:08:50.900 --> 00:08:54.000
+<v Chris>the tool servers the row references, the output type
+
+186
+00:08:54.000 --> 00:08:57.000
+<v Chris>from the schema in the row, the model from the model
+
+187
+00:08:58.000 --> 00:09:00.160
+<v Chris>column. Changing which model an agent uses is an
+
+188
+00:09:00.160 --> 00:09:00.520
+<v Chris>update statement.
+
+189
+00:09:01.100 --> 00:09:01.800
+<v Christina>And the workers?
+
+190
+00:09:01.800 --> 00:09:05.420
+<v Chris>Workers claim from the queue in Postgres, so they're
+
+191
+00:09:05.420 --> 00:09:08.220
+<v Chris>ordinary processes with a connection string. We ship
+
+192
+00:09:08.220 --> 00:09:12.280
+<v Chris>two, one for outbound HTTP and one for ingestion, and
+
+193
+00:09:12.280 --> 00:09:14.740
+<v Chris>you can bring your own — nothing about them is
+
+194
+00:09:15.380 --> 00:09:18.200
+<v Christina>Is there anything to look at, or is it all psql?
+
+195
+00:09:18.560 --> 00:09:20.940
+<v Chris>There's a workbench, and it's worth a look because of
+
+196
+00:09:20.940 --> 00:09:24.040
+<v Chris>what it demonstrates rather than how it looks. It
+
+197
+00:09:24.040 --> 00:09:27.480
+<v Chris>talks to PostgREST directly, so every screen in it is
+
+198
+00:09:27.480 --> 00:09:31.220
+<v Chris>the surface a worker uses. You run it yourself; the
+
+199
+00:09:31.220 --> 00:09:33.260
+<v Chris>Compose file starts the backend and leaves the browser
+
+200
+00:09:33.260 --> 00:09:34.260
+<v Chris>part to you.
+
+201
+00:09:34.440 --> 00:09:36.620
+<v Christina>So the pitch isn't really a better agent.
+
+202
+00:09:37.100 --> 00:09:40.260
+<v Chris>It's one control plane. Your sources, your vocabulary,
+
+203
+00:09:40.560 --> 00:09:43.280
+<v Chris>your agents, your workflows and your permissions, all
+
+204
+00:09:43.280 --> 00:09:45.600
+<v Chris>in one place, as data you can query.
+
+205
+00:09:46.160 --> 00:09:48.400
+<v Christina>Which is where the work was the whole time.
+
+206
+00:09:48.800 --> 00:09:51.060
+<v Chris>It's the part we'd build first if we started again.

@@ -348,10 +348,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with: {path: assets}
+      # bootstrap.sql goes out WITH the release. install.sh asks the release
+      # for it first and falls back to main, so a release without it handed a
+      # pinned VERSION= install whatever bootstrap.sql main had that day.
+      - uses: actions/checkout@v4
+        with: {path: repo, sparse-checkout: bootstrap.sql, sparse-checkout-cone-mode: false}
       - name: Flatten and check the manifest
         env: {V: "${{ inputs.version }}"}
         run: |
           mkdir -p out && find assets -type f -exec cp -n {} out/ \;
+          cp repo/bootstrap.sql out/
           ls -la out/
           # install.sh downloads by exact name -- it reads the version out of
           # the control file and then asks for percolate--<that>.sql. A missing
@@ -360,7 +366,7 @@ jobs:
           for f in percolate.control "percolate--$V.sql" \
                    percolate_parser.control "percolate_parser--$V.sql" \
                    percolate_parser-linux-amd64.so percolate_parser-linux-arm64.so \
-                   percolate_parser-macos-arm64.so; do
+                   percolate_parser-macos-arm64.so bootstrap.sql; do
             [ -f "out/$f" ] || { echo "::error::missing release asset: $f" >&2; exit 1; }
           done
           # And the control files must agree with the number being published,
@@ -387,10 +393,11 @@ jobs:
             Or pull the image, which carries the same build:
             `percolationlabs/percolate-postgres:19-${{ inputs.version }}`
 
-            **Pre-1.0 there is no in-place upgrade.** These extensions ship no
-            `percolate--<old>--<new>.sql`, so `ALTER EXTENSION percolate UPDATE`
-            has nothing to run. Pin the version you install; moving to a new one
-            means a fresh database.
+            Upgrading an existing database: install the new files, then, as a
+            role that can act as app_owner,
+            `set role app_owner; alter extension percolate update;` -- the
+            `percolate--<old>--${{ inputs.version }}.sql` scripts attached here
+            are what it runs.
 
   # The image comes last and only after the assets exist, because it fetches
   # the .so files FROM this release -- the same bytes install.sh hands out.

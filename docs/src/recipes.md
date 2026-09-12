@@ -10,17 +10,20 @@ which is where the vocabulary lives. These pages divide the work deliberately:
 the grammar page answers *what does `matrix` accept*, and this one answers *what
 do I write to poll a source into a corpus an agent can be asked about*.
 
-Two of the seven lean on something incomplete — the channel poller, and an Agent
-Runtime that ships but has no compose service — and each is named in the recipe
-that needs it rather than in a list at the bottom. Every function, column and key
+Two of the seven lean on something incomplete or unconfigured — the channel
+poller, which does not exist yet, and `agent:` steps, which need a worker token
+the compose file does not ship — and each is named in the recipe that needs it
+rather than in a list at the bottom. Every function, column and key
 below is checked against the installed schema; what has not been run end to end
 is the seven pipelines as wholes.
 
 ## Before any of this runs
 
-There are six things to set up before a recipe will work, and all of them are
-one-time. Most produce a clear error in your hand if you skip them; the fourth
+There are five things to set up before a recipe will work, and all of them are
+one-time. Most produce a clear error in your hand if you skip them; the third
 produces no error at all, which is why it gets more space than the others.
+Registering a function of your own is not among them, because it needs the
+function first — recipe 1 does both.
 
 ### Keys are names, never values
 
@@ -120,38 +123,6 @@ rather than failing on every run.
 <a href="grammar-workflow.html#a-vector-query-is-two-tasks">how the embed step
 gets written for you</a> ·
 <a href="query.html">the three search modes</a></p>
-</details>
-
-### Registering a function, and when it is worth it
-
-What we are trying to do here is bless one operation the deployment wants
-reviewed — while ordinary queries stay ordinary queries.
-{: .goal }
-
-```sql
-select workflow.register_step_function(
-    'land_notices', 'harbour.land_notices', array['jsonb'],
-    p_description => 'register fetched notices and chunk their text');
-```
-
-<details class="why" markdown="1">
-<summary>Why it works — registration refuses the grant problem instead of
-deferring it</summary>
-
-A step can carry its own SQL, so this is not the only door — it is the
-one worth using for the operations you want reviewed, because a registered
-function carries its own timeout and a description a model reads before calling
-it. That is why the recipes below that *land* data have a small function behind
-them, while the ones that only ask questions do not.
-
-`execute_sql_step` is `SECURITY DEFINER`, so your function runs as *its* owner
-and not as you. If that role cannot reach your schema, registration refuses with
-the grant that fixes it — rather than succeeding and failing at every single
-run, which is the version of this that costs an afternoon to diagnose.
-
-<p class="related"><strong>Related</strong>
-<a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">the exact
-error, and the `sql:` key</a></p>
 </details>
 
 ### A throttle has to exist before a step names it
@@ -275,6 +246,81 @@ values ('harbour-notices', 'http_pull',
         interval '1 hour');
 ```
 
+### Registering a function, and when it is worth it
+
+The poll calls two functions of yours: one that says where the last poll got
+to, and one that lands what came back. Registration refuses a function that
+does not exist yet, so they are created first.
+
+What we are trying to do here is bless the two operations this recipe runs, so
+each is reviewed and carries a description a model reads — while ordinary
+queries stay ordinary queries.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+create function harbour.notices_cursor() returns jsonb as $$
+    select jsonb_build_object('since', coalesce(last_polled_at, 'epoch'))
+      from content.channels where name = 'harbour-notices'
+$$ language sql stable;
+
+create function harbour.land_notices(p_items jsonb) returns jsonb as $$
+declare it jsonb; v_res uuid; v_new int := 0;
+begin
+    for it in select * from jsonb_array_elements(p_items) loop
+        v_res := content.register_fetched(
+            p_channel     => 'harbour-notices',
+            p_external_id => it->>'id',
+            p_title       => it->>'title',
+            p_uri         => it->>'url',
+            p_metadata    => it);
+        continue when v_res is null;      -- seen on an earlier poll, not an error
+
+        perform content.record_chunks(v_res, jsonb_build_array(jsonb_build_object(
+            'ordinal', 0, 'content', it->>'body',
+            'start_offset', 0, 'end_offset', length(it->>'body'))));
+        v_new := v_new + 1;
+    end loop;
+    update content.channels set last_polled_at = now() where name = 'harbour-notices';
+    return jsonb_build_object('registered', v_new);
+end $$ language plpgsql;
+
+select workflow.register_step_function(
+    'notices_cursor', 'harbour.notices_cursor', '{}',
+    p_description => 'when the harbour-notices channel was last polled');
+select workflow.register_step_function(
+    'land_notices', 'harbour.land_notices', array['jsonb'],
+    p_description => 'register fetched notices and chunk their text');
+```
+
+<details class="why" markdown="1">
+<summary>Why it works — registration refuses the grant problem instead of
+deferring it</summary>
+
+A step can carry its own SQL, so this is not the only door — it is the
+one worth using for the operations you want reviewed, because a registered
+function carries its own timeout and a description a model reads before calling
+it. That is why the recipes below that *land* data have a small function behind
+them, while the ones that only ask questions do not.
+
+`execute_sql_step` is `SECURITY DEFINER`, so your function runs as *its* owner
+and not as you. If that role cannot reach your schema, registration refuses with
+the grant that fixes it — rather than succeeding and failing at every single
+run, which is the version of this that costs an afternoon to diagnose. The
+`harbour` schema belongs to that role already, which is why these register
+cleanly.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-workflow.html#registering-a-function-and-what-it-still-buys">the exact
+error, and the `sql:` key</a></p>
+</details>
+
+### The poll, on a clock
+
+What we are trying to do here is fetch the feed from where the last poll
+stopped, land it, and do that at seventeen minutes past every hour.
+{: .goal }
+
 ```yaml
 name: harbour_notices_poll
 steps:
@@ -307,38 +353,13 @@ select cron.schedule('workflow-tick', '* * * * *', $$select workflow.tick()$$);
 <summary>Why it works — `external_id` is the idempotency key, and it is the whole
 design of a poller</summary>
 
-The landing function is the small piece of SQL this recipe costs you, and the
-important line in it is that `content.register_fetched` returns **null** rather
-than raising when the id has already been seen:
-
-<!-- run: sql -->
-```sql
-create function harbour.land_notices(p_items jsonb) returns jsonb as $$
-declare it jsonb; v_res uuid; v_new int := 0;
-begin
-    for it in select * from jsonb_array_elements(p_items) loop
-        v_res := content.register_fetched(
-            p_channel     => 'harbour-notices',
-            p_external_id => it->>'id',
-            p_title       => it->>'title',
-            p_uri         => it->>'url',
-            p_metadata    => it);
-        continue when v_res is null;      -- seen on an earlier poll, not an error
-
-        perform content.record_chunks(v_res, jsonb_build_array(jsonb_build_object(
-            'ordinal', 0, 'content', it->>'body',
-            'start_offset', 0, 'end_offset', length(it->>'body'))));
-        v_new := v_new + 1;
-    end loop;
-    update content.channels set last_polled_at = now() where name = 'harbour-notices';
-    return jsonb_build_object('registered', v_new);
-end $$ language plpgsql;
-```
-
-A source that hands you the same fifty items every hour therefore costs fifty
-no-ops, which makes overlapping windows free — and that in turn means you can
-poll a source with no reliable cursor at all. A puller that treated the repeat
-as an error would re-process its whole backlog every cycle.
+The landing function above is the small piece of SQL this recipe costs you, and
+the important line in it is that `content.register_fetched` returns **null**
+rather than raising when the id has already been seen. A source that hands you
+the same fifty items every hour therefore costs fifty no-ops, which makes
+overlapping windows free — and that in turn means you can poll a source with no
+reliable cursor at all. A puller that treated the repeat as an error would
+re-process its whole backlog every cycle.
 
 **A resource does not need bytes.** `record_chunks` makes the text answerable
 with nothing in object storage, because a scraped JSON record has no file and
@@ -642,10 +663,13 @@ actually held rather than from what the model says it used.
 `agent:` keys</a></p>
 </details>
 
-> **What is missing.** The Agent Runtime ships in the image and its schema is
-> installed, but it has no compose service and no seeded agents, and it is the
-> least-exercised corner of the collection. Treat the streaming and delegation
-> behaviour as specified and reviewed rather than measured.
+> **What is missing.** The Agent Runtime runs as the compose `agent` service,
+> but an `agent:` step reaches it only once the http worker has a `P8_API_KEY`
+> — a token signed for a user, which the compose file leaves empty (the
+> [README](https://github.com/Percolation-Labs/get-percolate#agent-steps-need-a-token-of-their-own)
+> has the two commands). No agents are seeded beyond the sample's. Treat the
+> streaming and delegation behaviour as specified and reviewed rather than
+> measured.
 
 ## 6. A pipeline that waits for a person
 
@@ -678,9 +702,17 @@ hour, and issue it only once a harbourmaster has signed off.
 ```
 
 ```sql
-select workflow.signal_task(:run_id, 'approve',
-    '{"decision":"released","by":"harbourmaster"}'::jsonb);
+select workflow.signal_task(
+    (select run_id from workflow.tasks
+      where step_key = 'approve' and status = 'waiting_external'
+      order by created_at desc limit 1),
+    'approve', '{"decision":"released","by":"harbourmaster"}'::jsonb);
 ```
+
+The subquery finds the newest run waiting on `approve`. From `psql` it needs the
+identity claim that [your first workflow](first-workflow.html#watching-a-run)
+sets, because `signal_task` checks who is signing and refuses a session that
+carries nobody.
 
 <details class="why" markdown="1">
 <summary>Why it works — a run with no owner is not owned by everyone</summary>
@@ -728,7 +760,11 @@ of the order they were taken, when the tide window is missed.
 ```
 
 ```sql
-select workflow.begin_compensation(:run_id, 'booking');
+select workflow.begin_compensation(
+    (select run_id from workflow.tasks
+      where step_key = 'confirm_tide' and status = 'failed'
+      order by created_at desc limit 1),
+    'booking');
 ```
 
 <div class="evidence" markdown="1">

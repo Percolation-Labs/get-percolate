@@ -72,7 +72,11 @@ services:
     # apply here: a PVC is never empty, because of lost+found.
     volumes: ["pgdata:/var/lib/postgresql"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-p8} -d percolate"]
+      # Over TCP, not the socket. During the first-start install the image's
+      # temporary server listens on the socket only, so a socket check passed
+      # mid-install and started every service below before the extension
+      # existed. The chart's readiness probe says the same (d6f79fc).
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-p8} -d percolate"]
       interval: 3s
       timeout: 3s
       retries: 30
@@ -113,7 +117,21 @@ services:
       # Credentials named by http_call tasks are resolved from HERE, by name.
       # The database stores only the reference, so a dump of workflow.tasks
       # never contains a secret and a task stays replayable.
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      #
+      # FALLING BACK TO OPENAI_API_KEY, because on the path these docs walk the
+      # two are the same key: the sample embeds with an OpenAI model and the
+      # agents answer with one. Two names for one key meant setting one of
+      # them, getting a working agent, and a corpus whose every embed task
+      # failed on `credential_ref 'LLM_API_KEY' is not set`. Set LLM_API_KEY
+      # itself when embeddings go to a different provider.
+      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
+      # AND WHERE THAT KEY MAY GO. From percolate-core 0.1.9 a credential is
+      # sent only to an origin it is bound to, and one with no binding goes
+      # nowhere: an upload's metadata could otherwise name a transcription
+      # endpoint on any host and receive the worker's key as a bearer token.
+      # Add a provider's origin here when LLM_API_KEY is meant for it. Read by
+      # nothing before 0.1.9, so it is harmless on the image pinned above.
+      P8_CREDENTIAL_ORIGINS: ${P8_CREDENTIAL_ORIGINS:-{"LLM_API_KEY":["https://api.openai.com"]}}
       # WHERE AN `agent:` STEP SENDS ITS CALL. The compiler emits
       # `POST {{env.P8_AGENT_URL}}/v1/chat/completions` rather than making the
       # author write a deployment fact into a document that outlives it -- so
@@ -165,7 +183,10 @@ services:
       # aiq.embedding_models.credential_ref, which is LLM_API_KEY by
       # convention. Parsing and chunking work without it; embedding retries and
       # then fails, so an upload is searchable by text and not by vector.
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      # Falls back to OPENAI_API_KEY for the worker's reason above.
+      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
+      # Where the key may be sent: the worker's binding, for the worker's reason.
+      P8_CREDENTIAL_ORIGINS: ${P8_CREDENTIAL_ORIGINS:-{"LLM_API_KEY":["https://api.openai.com"]}}
 
   content:
     image: percolationlabs/percolate-core:0.1.8
@@ -250,11 +271,14 @@ services:
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
     ports: ["${P8_AGENT_PORT:-8080}:8080"]
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # From MinIO's own registry. `minio/minio` on Docker Hub stopped resolving
+    # on 2026-09-11 ("pull access denied ... repository does not exist"), which
+    # broke every `docker compose up`; this is the same image, same id.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:

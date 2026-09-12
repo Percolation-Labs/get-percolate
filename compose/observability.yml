@@ -1,0 +1,94 @@
+# Percolate's telemetry, as an overlay on the main stack.
+#
+#   compose/observability/signoz.sh up          # a backend to look at, once
+#   docker compose -f compose/docker-compose.yml -f compose/observability.yml up -d
+#
+# Then ask the agent something and the turn is a trace, with the model call,
+# every tool call and every delegated sub-agent underneath it.
+#
+# WHY AN OVERLAY AND NOT A PROFILE. The main file opens by arguing "six
+# services because there are six roles, not because you need six processes",
+# and that argument is the most useful paragraph in it. Adding services to that
+# file makes the sentence false at a glance. Compose merges `-f` files --
+# including the `environment` map of a service the first file defines -- so an
+# overlay does everything a profile would and leaves the claim standing.
+#
+# WHY SIGNOZ IS NOT IN THIS FILE, which is the decision worth reading.
+# It would be seven more services, five mounted ClickHouse XML files and a
+# startup step that downloads a binary from GitHub releases. Vendoring that
+# means this repository owns SigNoz's upgrade path: their next release moves a
+# config key and percolate's compose file is broken by a project it does not
+# ship. So SigNoz is brought up by SigNoz's own pinned compose, from a script
+# next to this file, and what percolate ships is the ONE service that is
+# actually ours.
+#
+# That service is the portable part, and it is the point:
+#
+#   * it relays what the agent runtime emits over OTLP
+#   * it reads percolate's own views -- queue depth, run outcomes, connection
+#     headroom -- and turns them into metrics
+#   * it exports to whatever `P8_OTLP_BACKEND` names
+#
+# Nothing in `observability/percolate-collector.yaml` mentions SigNoz. Point it
+# at Grafana, Datadog, Honeycomb or a collector you already run and it works
+# the same; the queries that make percolate's rows into metrics do not change
+# when the backend does.
+
+name: percolate
+
+services:
+  # ---- the runtime learns where to send ---------------------------------
+  # Merged into the service the main file defines. The runtime treats an unset
+  # endpoint as "off", which is what keeps the base stack free of an exporter
+  # it never uses -- so these two lines are the entire switch.
+  agent:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://p8-collector:4318
+      OTEL_SERVICE_NAME: percolate-agent-runtime
+      # PROMPTS AND COMPLETIONS, OFF, and this is the one switch in the stack
+      # that can quietly undo row-level security.
+      #
+      # Set it to 1 and message bodies go into span attributes, which puts them
+      # in the telemetry backend, where nothing re-applies RLS: every tenant's
+      # conversations become readable by anyone who can open the dashboard.
+      # Percolate's entire read path is RLS-scoped; an exporter is a hole
+      # straight through it. Turn this on for a debugging session you are
+      # watching, on a backend you own, then turn it off.
+      P8_OTEL_CONTENT: ${P8_OTEL_CONTENT:-0}
+
+  p8-collector:
+    image: otel/opentelemetry-collector-contrib:0.144.0
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    command: ["--config=/etc/percolate-collector.yaml"]
+    volumes:
+      - ./observability/percolate-collector.yaml:/etc/percolate-collector.yaml:ro
+    environment:
+      # A ROLE THAT CAN SELECT THE VIEWS, and deliberately not `authenticator`.
+      # That role owns no privileges of its own and SET ROLEs per request, so a
+      # background scraper connecting as it reads nothing at all. This scraper
+      # is not acting for a user -- it is asking how deep the queue is -- so it
+      # is the one connection in this stack that is legitimately not
+      # RLS-scoped, and it gets its own variable rather than borrowing another
+      # service's so that fact is visible rather than inherited.
+      P8_OTEL_DSN: "host=db port=5432 user=p8 password=${P8_PASSWORD:-p8} dbname=percolate sslmode=disable"
+      # Where the telemetry goes. `host.docker.internal` because the backend
+      # runs in its own compose project on its own network -- joining that
+      # network from here would make this file fail to start whenever the
+      # backend is something else, which is most of the time in a real
+      # deployment.
+      P8_OTLP_BACKEND: ${P8_OTLP_BACKEND:-host.docker.internal:4317}
+    # Docker Desktop resolves host.docker.internal already; this is what makes
+    # the same default work on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # 4327/4328, NOT 4317/4318: the backend publishes the standard pair on
+      # the host, and two collectors cannot both have them. These are here so
+      # something outside the compose network -- a worker on the host, a second
+      # stack, a script -- can send to percolate's collector rather than
+      # straight to the backend, and keep the percolate resource attributes.
+      # Delete them if nothing does.
+      - "${P8_OTLP_GRPC_PORT:-4327}:4317"
+      - "${P8_OTLP_HTTP_PORT:-4328}:4318"

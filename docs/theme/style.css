@@ -117,9 +117,30 @@ body {
 }
 @media (max-width: 900px) { .shell { grid-template-columns: 1fr; gap: 0; } }
 
-nav.toc { padding: 36px 0; align-self: start; position: sticky; top: 0; }
+/* Sticky AND scrollable. Sticky alone was the bug: the nav is taller than a
+ * laptop viewport, so pinning it at top:0 put its last section permanently
+ * below the fold with no way to reach it -- the page scrolls, the pinned
+ * element does not. max-height plus overflow gives the nav its own scroll, so
+ * every entry is reachable from anywhere on the page. dvh after vh because
+ * mobile browsers count the collapsing address bar in vh; the vh line stays as
+ * the fallback for anything that does not know dvh. */
+nav.toc {
+  padding: 36px 0; align-self: start; position: sticky; top: 0;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
+nav.toc::-webkit-scrollbar { width: 6px; }
+nav.toc::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+nav.toc::-webkit-scrollbar-track { background: transparent; }
 @media (max-width: 900px) {
-  nav.toc { position: static; border-bottom: 1px solid var(--rule); padding-bottom: 20px; }
+  nav.toc {
+    position: static; border-bottom: 1px solid var(--rule); padding-bottom: 20px;
+    max-height: none; overflow-y: visible;
+  }
 }
 nav.toc .group {
   font-family: var(--sans); font-size: 11px; font-weight: 600;
@@ -150,6 +171,7 @@ main > * { grid-column: text; min-width: 0; }
 main > pre,
 main > table,
 main > .evidence,
+main > figure.film,
 main > .wide { grid-column: full; justify-self: stretch; }
 
 /* ------------------------------------------------------------------- type */
@@ -357,3 +379,17 @@ p.goal {
 .claim-id{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; white-space:nowrap;
   margin-left:.5em; opacity:.75}
 .claim-id em{font-style:normal; opacity:.7; margin-left:.35em}
+
+/* ------------------------------------------------------------------- film */
+figure.film { margin: 4px 0 26px; }
+figure.film video {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule); border-radius: 4px;
+  background: #0B0E10;
+}
+figure.film figcaption {
+  font-family: var(--sans); font-size: 12.5px; color: var(--ink-3);
+  margin-top: 9px;
+}
+figure.film figcaption a { color: var(--ink-3); border-bottom: 1px solid var(--rule); text-decoration: none; }
+figure.film figcaption a:hover { color: var(--accent); border-color: var(--accent); }

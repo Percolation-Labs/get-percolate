@@ -198,23 +198,28 @@ select aiq.query('TEXT "PSC-441" FROM chunks LIMIT 3');
 ```
  score  |                         content
 --------+----------------------------------------------------------
- 0.0991 | Port state control at Rotterdam raised deficiency PSC-44
- 0.0991 | Meridian internal: PSC-441 exposure now covers two vesse
+ 0.0991 | # Port state control, Rotterdam Meridian Dawn (IMO 93318
+ 0.0991 | # Meridian fleet exposure Internal. PSC-441 exposure now
 ```
 </div>
 
 `:query_vector` is the embedding of *"a boiler fault"*, and it is an argument
 because the database makes no model calls — which is the whole reason a vector
-query compiles to two tasks. Embed the phrase with the model the corpus was
-embedded with and paste the array in, or run it as a two-step workflow and let
-the compiler write the embed step. Do not substitute a short literal to see it
-run: the wrong width is caught, and the wrong *provenance* is not.
+query compiles to two tasks. The `\set` line asks the model the corpus was
+embedded with, from `psql`, using the `LLM_API_KEY` that loaded the corpus and
+`curl` and `jq` from your shell; in a workflow the compiler writes that embed
+step for you. Write it `:'query_vector'`, with the quotes, so the array arrives
+as one literal. Do not substitute a short literal to see it run: the wrong width
+is caught, and the wrong *provenance* is not.
 
 ```sql
-select round((r->>'distance')::numeric,3) as distance, left(c.content,56) as content
+\set query_vector `curl -s https://api.openai.com/v1/embeddings -H "Authorization: Bearer $LLM_API_KEY" -H 'Content-Type: application/json' -d '{"model": "text-embedding-3-small", "input": "a boiler fault"}' | jq -c '.data[0].embedding'`
+
+select round((r->>'distance')::numeric,3) as distance,
+       left(regexp_replace(c.content, '\s+', ' ', 'g'), 56) as content
 from jsonb_array_elements(
        aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3',
-                 :query_vector)->'rows') r
+                 :'query_vector')->'rows') r
 join content.resource_chunks c on c.id = (r->>'chunk_id')::uuid
 order by 1;
 ```
@@ -225,14 +230,14 @@ order by 1;
 ```
  distance |                         content
 ----------+----------------------------------------------------------
-    0.000 | The secondary steam generator was found unserviceable an
-    0.010 | Meridian internal: PSC-441 exposure now covers two vesse
-    0.055 | Port state control at Rotterdam raised deficiency PSC-44
+    0.599 | # Auxiliary machinery note The secondary steam generator
+    0.626 | # Port state control, Rotterdam Meridian Dawn (IMO 93318
+    0.699 | # Meridian fleet exposure Internal. PSC-441 exposure now
 ```
 </div>
 
 ```sql
-select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :query_vector);
+select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :'query_vector');
 ```
 
 <div class="evidence" markdown="1">
@@ -241,15 +246,15 @@ select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :query_vector);
 ```
  lex | sem |   rrf   |                       content
 -----+-----+---------+------------------------------------------------------
- 1   | 3   | 0.03227 | Port state control at Rotterdam raised deficiency PS
-     | 1   | 0.01639 | The secondary steam generator was found unserviceabl
-     | 2   | 0.01613 | Meridian internal: PSC-441 exposure now covers two v
+ 1   | 2   | 0.03252 | # Port state control, Rotterdam Meridian Dawn (IMO 9
+ 2   | 3   | 0.03200 | # Meridian fleet exposure Internal. PSC-441 exposure
+     | 1   | 0.01639 | # Auxiliary machinery note The secondary steam gener
 ```
 </div>
 
 <details class="why" markdown="1">
-<summary>Why it works — the winner is first on one ranking and third on the
-other, and neither alone would have found it</summary>
+<summary>Why it works — the nearest page by meaning shares no word with the
+query, and fusion still places it</summary>
 
 The nearest semantic hit shares not one word with "a boiler fault", which is
 exactly the case `TEXT` cannot reach. Meanwhile `TEXT` finds the rare token
@@ -368,6 +373,7 @@ What we are trying to do here is register bytes that live in object storage,
 record what they say, and have them searchable with no reindex step.
 {: .goal }
 
+<!-- run: sql -->
 ```sql
 select content.register_upload(
     p_channel      => 'harbour-reports',
@@ -378,21 +384,23 @@ select content.register_upload(
     p_content_type => 'application/pdf',
     p_title        => 'Gothenburg PSC report',
     p_org_id       => 'd0000000-0000-0000-0000-00000000000a',
-    p_external_id  => 'psc-2026-018');
+    p_external_id  => 'psc-2026-018') as resource_id \gset
 
-select content.record_chunks(:resource_id, $j$[
+select content.record_chunks(:'resource_id', $j$[
   {"ordinal":0,"content":"Gothenburg PSC inspection found the auxiliary boiler within tolerance.","start_offset":0,"end_offset":69},
   {"ordinal":1,"content":"No deficiencies were recorded against Aurora Kestrel on this call.","start_offset":70,"end_offset":135}
 ]$j$::jsonb);
 ```
 
 <div class="evidence" markdown="1">
-<div class="label">TEXT "auxiliary boiler" FROM chunks — immediately afterwards</div>
+<div class="label">TEXT "auxiliary boiler" FROM chunks — immediately afterwards, beside the sample's two reports that say the same</div>
 
 ```
- score  |                       content
---------+------------------------------------------------------
- 0.0608 | Gothenburg PSC inspection found the auxiliary boiler
+ score  |                        content
+--------+--------------------------------------------------------
+ 0.0991 | # Port state control, Rotterdam Meridian Dawn (IMO 933
+ 0.0991 | # Meridian fleet exposure Internal. PSC-441 exposure n
+ 0.0991 | Gothenburg PSC inspection found the auxiliary boiler w
 ```
 </div>
 
@@ -484,10 +492,9 @@ that makes it ready. There is no queue to poll and no process to deploy, and the
 rows land on the task, so the graph walk the middle step did is readable
 straight out of `workflow.tasks.output`.
 
-The thing worth knowing before you write these is **whose privileges a step
-runs with**. A `p8ql:` step holding a *dialect* query executes and returns rows,
-as above, scoped the way every other read is. A `p8ql:` step holding **plain
-SQL** also executes — and it runs as the **engine owner**, not as you:
+Before you write these, know **whose privileges a step runs with**. Every
+`p8ql:` step runs as the **engine owner**, not as you. That is true of a dialect
+query and of plain SQL alike, and plain SQL shows it most directly:
 
 <div class="evidence" markdown="1">
 <div class="label">workflow.tasks.output, for `p8ql: "select current_user"`</div>
@@ -500,34 +507,44 @@ SQL** also executes — and it runs as the **engine owner**, not as you:
 </div>
 
 `app_owner` owns every table and is not subject to their row-level security, so
-a plain-SQL step reads across tenants and reads tables you hold no grant on.
-**Anyone who may define a workflow may therefore read anything in the
-database.** That is a deliberate trade for the beta — expressiveness over
-isolation — and it is stated here rather than discovered, because the previous
-version of this page claimed the opposite: that such a step did not execute and
-returned a note. It executes.
+a step reads across tenants. A `SEARCH … FROM chunks` returns every org's
+uploads, and a plain-SQL step reads tables you hold no grant on. **Anyone who
+may define a workflow may therefore read anything in the database.** That is
+the trade the beta makes, expressiveness over isolation. It is stated here
+because earlier versions of this page claimed two opposites: that a plain-SQL
+step did not execute, and that a dialect step was scoped to you. Both run as
+the owner.
 
-Two things bound it. A step without `write: true` runs in a read-only
+**It reaches further than the people who define.** In @@extension@@ anyone
+signed in may start any workflow, and the steps read with the owner's reach
+whoever started the run. A member of one org who starts a retrieval workflow an
+admin wrote gets answers from every org's documents, and the raw rows sit on
+their own run's tasks. The next extension release refuses such a read when the
+person who started the run may not define workflows. Until you run it, do not
+define a workflow that reads tenant data on a deployment holding more than one
+org's data, unless everyone who can sign in may read all of it.
+
+Two more things bound it. A step without `write: true` runs in a read-only
 transaction, which the database enforces rather than a keyword filter, so this
-is a read rather than a tamper. And a deployment that will not take the trade
-turns it off:
+is a read rather than a tamper. And a deployment can refuse the SQL an author
+writes:
 
 ```sql
 alter database <yourdb> set percolate.sql_policy = 'registered';
 ```
 
-Statements are then refused and only functions someone registered will run.
-**Both spellings from @@extension_min@@ onward**: `sql:` at authoring, and
-`p8ql:` at execution. Before that release the policy refused `sql:` only — a
-`p8ql:` step is not a `statement` in the compiled spec, so it went round the
-check — which means on an older extension setting this leaves the door this
-section is about still open. `select * from percolate_build()` says which you
-are running. Calling
-`workflow.p8ql()` directly is unaffected either way: outside a step you are the
-invoker, so it runs as you, under RLS.
+Statements are then refused, and so is plain SQL in a `p8ql:` step:
+`sql:` at authoring, `p8ql:` at execution, **both from @@extension_min@@
+onward**. Before that release the policy refused `sql:` only, because a `p8ql:`
+step is not a `statement` in the compiled spec. `select * from
+percolate_build()` says which you are running. The dialect modes are not
+refused: `p8ql` is itself a registered function, so a SEARCH or TEXT step still
+runs as the owner under either policy. Calling `workflow.p8ql()` directly is
+unaffected: outside a step you are the invoker, so it runs as you, under RLS.
 
-If you want SQL in a workflow and do not want the owner's reach, register a
-function and use `sql: {function: …}`, which is scenario 7.
+A registered function (`sql: {function: …}`, scenario 7) narrows what a step
+can ask to something a person reviewed. It still runs as the owner, so a
+function meant to serve any caller has to scope itself to the run's owner.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-p8ql.html#plain-sql-is-a-mode">the passthrough, and why SQL is
@@ -634,7 +651,6 @@ and then a human decision, with no process doing the waiting.
 <div class="label">immediately after start_workflow — the timer is holding it</div>
 
 ```
-  step_key   |  kind  | status  | still_waiting
   step_key   |  kind  |  status   | still_waiting
 -------------+--------+-----------+---------------
  approve     | signal | pending   | f
@@ -644,9 +660,17 @@ and then a human decision, with no process doing the waiting.
 </div>
 
 ```sql
-select workflow.signal_task(:run_id, 'approve',
-    '{"decision":"released","by":"harbourmaster"}'::jsonb);
+select workflow.signal_task(
+    (select run_id from workflow.tasks
+      where step_key = 'approve' and status = 'waiting_external'
+      order by created_at desc limit 1),
+    'approve', '{"decision":"released","by":"harbourmaster"}'::jsonb);
 ```
+
+The subquery finds the newest run waiting on `approve`. From `psql` it needs the
+identity claim that [your first workflow](first-workflow.html#watching-a-run)
+sets, because `signal_task` checks who is signing and refuses a session that
+carries nobody.
 
 <div class="evidence" markdown="1">
 <div class="label">after the signal</div>
@@ -718,7 +742,6 @@ succeeded, after a later step fails terminally.
 <div class="label">after begin_compensation</div>
 
 ```
-                      step_key                      |   kind    | status
                       step_key                      |   kind    |  status
 ----------------------------------------------------+-----------+-----------
  book_pilot                                         | sql       | succeeded
@@ -726,6 +749,7 @@ succeeded, after a later step fails terminally.
  confirm_tide                                       | http_call | failed
  release_berth:e765c77e-87e1-4be6-ade7-096c551af57b | sql       | succeeded
  reserve_berth                                      | sql       | succeeded
+```
 
 ```
  status | compensation_state

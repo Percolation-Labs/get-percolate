@@ -145,7 +145,7 @@ select aiq.query('PATH "bulk harmony", "rotterdam", "meri"');
 ```
 
 <div class="evidence" markdown="1">
-<div class="label">the envelope, with the two keys only this mode carries</div>
+<div class="label">the envelope, with the two keys only the budgeted modes carry</div>
 
 ```json
 {"mode": "RELEVANCE",
@@ -158,7 +158,7 @@ select aiq.query('PATH "bulk harmony", "rotterdam", "meri"');
 </div>
 
 <details class="why" markdown="1">
-<summary>Why it works — eight modes, still six modifiers, and two refusals that
+<summary>Why it works — nine modes, still six modifiers, and two refusals that
 teach</summary>
 
 The dialect budgeted seven modes and six modifiers so that it fits in a prompt,
@@ -175,10 +175,11 @@ error message — *it ranks by how much score reaches a node, not by how many ho
 away it is*. A caller who writes it is reaching for `GRAPH`, and the error says
 so. `PATH` with one name is refused for the mirror reason.
 
-`unresolved` and `exhausted` appear on this envelope and on no other, each for a
-stated reason: the first because a dropped seed would make "no such entity" look
-like "nothing is related", the second because this is the only budgeted mode and
-a flag on the seven that cannot be truncated is a flag nobody reads.
+`unresolved` and `exhausted` appear on these two envelopes, each for a stated
+reason: the first — which `LOOKUP` carries too — because a dropped seed would
+make "no such entity" look like "nothing is related", the second because these
+are the two budgeted modes and a flag on the seven that cannot be truncated is a
+flag nobody reads.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-p8ql.html#ranking-which-a-walk-cannot-do">the mode in the
@@ -785,10 +786,10 @@ algorithm, `build_ms` for the snapshot, and keeps `exhausted` (the *answer* is
 partial) separate from `over_budget` (the *call* took longer than it was given)
 — opposite problems with opposite fixes.
 
-Figures are from one run of `dev/scale/graph/run.sh` and
-`03-concurrency.sh`. Re-running moves the latency probes by 10–30% and the
-build probes by up to 2×, so read the ordering and the slope rather than the
-third digit.
+Figures are from one run of our graph benchmark — a latency probe and a
+concurrency probe, neither published. Re-running moves the latency probes by
+10–30% and the build probes by up to 2×, so read the ordering and the slope
+rather than the third digit.
 
 <p class="related"><strong>Related</strong>
 <a href="scaling.html">the engine's own hot paths, measured the same way</a> ·

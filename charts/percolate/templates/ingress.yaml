@@ -31,6 +31,6 @@ spec:
             backend:
               service:
                 name: {{ include "percolate.fullname" $ }}-{{ required "each ingress host needs a `service` (postgrest | content | agent)" .service }}
-                port: {number: {{ .port }}}
+                port: {number: {{ required "ingress.hosts[].port is required (agent 8080, content 8081, postgrest 3000)" .port }}}
     {{- end }}
 {{- end }}

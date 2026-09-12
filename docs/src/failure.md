@@ -65,6 +65,7 @@ outage, while still refusing to aggregate over too little.
   - id: run
     matrix:
       rows: {function: labelled_sample, args: ['gazette', 30]}
+      max_fanout: 30
       continue_on: failed
       min_success: 20
       template: {agent: extractor, input: '{{item.text}}'}

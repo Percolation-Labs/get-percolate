@@ -19,27 +19,47 @@ fullnameOverride: ""
 secrets:
   # Name of a Secret you manage. When set, every value below is ignored and the
   # keys are read from it: postgres-password, authenticator-password,
-  # worker-password, jwt-secret, s3-key, s3-secret, llm-api-key.
+  # worker-password, jwt-secret, s3-key, s3-secret -- and, optionally,
+  # llm-api-key, openai-api-key and worker-api-key.
   existingSecret: ""
+
+  # openssl rand -hex 24 for the two below. They are written into postgres://
+  # URLs, and base64 output contains `/`, which ends the password there; the
+  # chart refuses those characters at render time rather than crash-looping.
 
   postgresPassword: ""
   authenticatorPassword: ""
   workerPassword: ""
-  # HS256, so at least 32 bytes: openssl rand -base64 48
+  # HS256, so at least 32 bytes: openssl rand -hex 32. Keep it: it is also
+  # what you sign tokens with (`percolate auth token --secret ...`).
   jwtSecret: ""
   # THE AGENT RUNTIME'S PROVIDER KEY, which is not llmApiKey. The runtime calls
   # models through pydantic-ai, which reads the variable its provider names --
   # OPENAI_API_KEY -- and never looks at LLM_API_KEY. Set only the latter and
   # you get a saved agent, a 200 on /chat, and a RUN_ERROR about missing
-  # credentials inside the stream. The image ships the OpenAI provider only, so
-  # `anthropic:` models fail on ImportError however this is spelled; point
-  # agent.openaiBaseUrl at an OpenAI-shaped gateway for anything else.
+  # credentials inside the stream. Point agent.openaiBaseUrl at an
+  # OpenAI-shaped gateway to use one with the same client.
   openaiApiKey: ""
 
   # Resolved by NAME when a step names it as credential_ref -- the WORKER'S
   # mechanism, for http_call and embedding steps. Empty is fine if no step
-  # calls a model.
+  # calls a model. With OpenAI embeddings it is the same key as openaiApiKey.
   llmApiKey: ""
+
+  # The token an `agent:` workflow step presents to the Agent Runtime -- a
+  # Percolate JWT signed with jwtSecret, not a provider key. Leave it empty
+  # until there is a user to sign it for, then:
+  #   percolate auth token --email you@example.com --ttl 31536000 --secret <jwtSecret>
+  # The CLI's default lifetime is an hour, which is right for a person and
+  # wrong for a worker.
+  workerApiKey: ""
+
+  # The object store's credentials: the bundled MinIO's root user when
+  # minio.enabled, your bucket's keys otherwise. Left empty they fall back to
+  # p8admin / p8password, which is fine on a laptop and a known credential
+  # anywhere else -- set both (openssl rand -hex 16 / -hex 24).
+  s3Key: ""
+  s3Secret: ""
 
 # ---------------------------------------------------------------------------
 # The database. One instance, because this chart is the getting-started path,
@@ -50,7 +70,10 @@ postgres:
   enabled: true
   image:
     repository: percolationlabs/percolate-postgres
-    tag: "19"
+    # Pinned, like the compose file, and for its reason: a bare "19" moves
+    # under an existing install and IfNotPresent keeps whatever each node last
+    # pulled. ci/versions.py holds it to versions.toml's extension.
+    tag: "19-0.1.6"
     pullPolicy: IfNotPresent
   user: p8
   database: percolate
@@ -65,11 +88,10 @@ postgres:
   # cron.database_name must name the database the jobs run in. Without this
   # every scheduled workflow, the stale-task reaper and every timer step
   # silently never fires.
+  # cron.database_name is added by the template, from `database` above.
   extraArgs:
     - -c
     - shared_preload_libraries=pg_cron
-    - -c
-    - cron.database_name=percolate
 
 externalDatabase:
   host: ""
@@ -105,6 +127,13 @@ agent:
   replicas: 1
   # Any OpenAI-shaped endpoint. Empty means api.openai.com.
   openaiBaseUrl: ""
+  # Extra environment for the runtime: the key for any provider other than
+  # OpenAI, under the name that provider's SDK reads. The model is a column
+  # on agentic.agents, so which of these matters is decided by a row.
+  #   env:
+  #     - name: ANTHROPIC_API_KEY
+  #       valueFrom: {secretKeyRef: {name: my-keys, key: anthropic}}
+  env: []
   resources:
     requests: {cpu: 200m, memory: 512Mi}
     limits: {memory: 2Gi}
@@ -177,8 +206,23 @@ workers:
 # ---------------------------------------------------------------------------
 minio:
   enabled: true
-  image: {repository: minio/minio, tag: latest}
+  # Pinned to the release the compose file runs, for the database image's
+  # reason: `latest` moves under an existing install.
+  # MinIO's own registry: `minio/minio` on Docker Hub stopped resolving on
+  # 2026-09-11. Same image, same id.
+  image: {repository: quay.io/minio/minio, tag: RELEASE.2025-09-07T16-13-09Z}
   persistence: {enabled: true, size: 50Gi, storageClass: ""}
+
+# ---------------------------------------------------------------------------
+# Where each credential a worker holds may be SENT, by origin. From
+# percolate-core 0.1.9 a credential with no entry goes nowhere: an upload's
+# metadata could otherwise name a transcription endpoint on any host and
+# receive the worker's key as a bearer token. Add a provider's origin when
+# secrets.llmApiKey is meant for it. Rendered into P8_CREDENTIAL_ORIGINS on
+# every worker; read by nothing before 0.1.9.
+# ---------------------------------------------------------------------------
+credentialOrigins:
+  LLM_API_KEY: ["https://api.openai.com"]
 
 objectStorage:
   external:
@@ -190,6 +234,7 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
+  # port is required: agent 8080, content 8081, postgrest 3000
   hosts: []            # [{host: percolate.example.com, service: agent, port: 8080}]
   tls: []
 

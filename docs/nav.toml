@@ -27,6 +27,11 @@ name = "Start"
   summary = "Postgres as the system rather than the backing store: what that buys, and what it costs."
 
   [[section.page]]
+  file = "video.md"
+  title = "The video"
+  summary = "Ten minutes on why any of this is in Postgres."
+
+  [[section.page]]
   file = "install.md"
   title = "Install"
   summary = "Docker Compose, Helm, or the extension in a Postgres 19 you already run."
@@ -80,7 +85,7 @@ name = "Content and querying"
   [[section.page]]
   file = "query.md"
   title = "Querying"
-  summary = "LOOKUP, FUZZY, GRAPH, TEXT, SEMANTIC, SEARCH and plain SQL in one dialect."
+  summary = "LOOKUP, GRAPH, TEXT, SEMANTIC, SEARCH, SCHEMA and plain SQL in one dialect, with FUZZY as a way to LOOKUP."
 
   [[section.page]]
   file = "graph.md"
@@ -93,12 +98,12 @@ name = "Reference"
   [[section.page]]
   file = "grammar-p8ql.md"
   title = "The P8QL grammar"
-  summary = "Every query mode at version 0.1.0, what each modifier belongs to, which one is refused where, and how to read the grammar out of your own parser."
+  summary = "Every query mode at version @@extension@@, what each modifier belongs to, which one is refused where, and how to read the grammar out of your own parser."
 
   [[section.page]]
   file = "grammar-workflow.md"
   title = "The workflow grammar"
-  summary = "Every key the YAML compiler accepts at version 0.1.0, what each one compiles to, and who executes the result."
+  summary = "Every key the YAML compiler accepts at version @@extension@@, what each one compiles to, and who executes the result."
 
 [[section]]
 name = "Putting it together"
@@ -115,6 +120,11 @@ name = "Putting it together"
 
 [[section]]
 name = "Operating"
+
+  [[section.page]]
+  file = "ui.md"
+  title = "Using the UI"
+  summary = "Connect the workbench, ingest an API feed, develop a query and turn it into a workflow you can inspect and schedule."
 
   [[section.page]]
   file = "scaling.md"

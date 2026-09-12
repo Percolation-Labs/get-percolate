@@ -14,3 +14,8 @@ extension/*.control
 .DS_Store
 __pycache__/
 .venv/
+
+# SigNoz's own checkout, fetched by compose/observability/signoz.sh at a
+# pinned ref. Their repository, not ours -- vendoring it would mean owning
+# their upgrade path.
+compose/observability/.signoz/

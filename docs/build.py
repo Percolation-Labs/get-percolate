@@ -33,7 +33,10 @@ def load_nav() -> dict:
         return tomllib.load(fh)
 
 
-EXPLORER = "https://claude.ai/code/artifact/e71cf372-9bd3-4ffd-97c4-298e24ebb7b8"
+# Where the claim counts link to. Unset: the explorer was a claude.ai artifact,
+# which is private unless shared, so the link a stranger clicked led to a
+# sign-in page. Put a URL here once it is somewhere anyone can open.
+EXPLORER: str | None = None
 
 
 def load_claims() -> dict:
@@ -84,7 +87,9 @@ def claim_footnote(page_file: str, claims: dict, versions: dict) -> str:
     covered = sum(1 for r in rows if r["status"] == "covered")
     return (
         '<aside class="claims">'
-        f'<a href="{EXPLORER}">{covered} of {len(seen)} claims on this page have a test</a> '
+        + (f'<a href="{EXPLORER}">' if EXPLORER else '<span>')
+        + f'{covered} of {len(seen)} claims on this page have a test'
+        + ('</a> ' if EXPLORER else '</span> ')
         + " ".join(items) + "</aside>")
 
 
@@ -282,6 +287,30 @@ def broken_anchors() -> list[str]:
     return bad
 
 
+def unrendered_anchors(pages_out: list[str]) -> list[str]:
+    """Links in the BUILT pages whose `#anchor` is no id on the target page.
+
+    broken_anchors() above reads the markdown, so it cannot see what the
+    renderer did with it. A stray code fence in cookbook.md section 9 turned the
+    rest of that page -- its `## 10. An agent is a row` heading included -- into
+    one code block; the heading was still in the source, so the check passed,
+    and agents.md's link to `cookbook.html#10-an-agent-is-a-row` landed on
+    nothing. The ids in the HTML are what a browser resolves against, and this
+    covers the `<a href>` links in the Related paragraphs, which the markdown
+    pattern never matched.
+    """
+    ids = {name: set(re.findall(r'\sid="([^"]+)"', (OUT / name).read_text()))
+           for name in pages_out}
+    bad = []
+    for name in pages_out:
+        for target, anchor in re.findall(r'href="([a-z0-9-]+\.html)?#([^"]+)"',
+                                         (OUT / name).read_text()):
+            target = target or name
+            if target in ids and anchor not in ids[target]:
+                bad.append(f"{name}: #{anchor} is not an id in the built {target}")
+    return sorted(set(bad))
+
+
 def build() -> int:
     nav = load_nav()
     versions = load_versions()
@@ -318,7 +347,11 @@ def build() -> int:
     for i, page in enumerate(all_pages):
         text = substitute((SRC / page["file"]).read_text(), versions, page["file"])
         body, first_para = render_markdown(text)
-        summary = page.get("summary") or first_para
+        # Substituted like the page body. nav.toml summaries reach the meta
+        # description, og:description and llms.txt, and two of them said
+        # "at version 0.1.0" while the pages they describe said 0.1.6.
+        summary = (substitute(page["summary"], versions, f"nav.toml ({page['file']})")
+                   if page.get("summary") else first_para)
 
         (OUT / page["url"]).write_text(SHELL.format(
             title=html.escape(page["title"]),
@@ -369,6 +402,12 @@ def build() -> int:
     (OUT / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>'
         f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>')
+
+    unresolved = unrendered_anchors([page["url"] for page in all_pages])
+    if unresolved:
+        print("error: built pages link to anchors they do not have:\n  "
+              + "\n  ".join(unresolved), file=sys.stderr)
+        return 1
 
     print(f"built {len(all_pages)} pages + llms.txt + llms-full.txt -> {OUT}")
     return 0

@@ -66,7 +66,22 @@ spec:
             - name: P8_WORKER_ID
               valueFrom: {fieldRef: {fieldPath: metadata.name}}
             - name: LLM_API_KEY
-              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key}}
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key, optional: true}}
+            # And where it may go (values.yaml, credentialOrigins).
+            - name: P8_CREDENTIAL_ORIGINS
+              value: {{ toJson $root.Values.credentialOrigins | quote }}
+            # WHERE AN `agent:` STEP SENDS ITS CALL, AND WHO IT CALLS AS. The
+            # compiler emits `POST {{"{{"}}env.P8_AGENT_URL{{"}}"}}/v1/chat/completions`
+            # with credential_ref P8_API_KEY on the http queue, so a worker
+            # without both fails every agent step -- `template ... resolved to
+            # nothing`, then `credential_ref 'P8_API_KEY' is not set`. The
+            # compose file carries both; this chart carried neither.
+            {{- if $root.Values.agent.enabled }}
+            - name: P8_AGENT_URL
+              value: {{ printf "http://%s-agent.%s.svc.cluster.local:8080" (include "percolate.fullname" $root) $root.Release.Namespace | quote }}
+            {{- end }}
+            - name: P8_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: worker-api-key, optional: true}}
             {{- include "percolate.commonEnv" $root | nindent 12 }}
             {{- with $w.env }}{{- toYaml . | nindent 12 }}{{- end }}
           resources: {{- toYaml ($w.resources | default dict) | nindent 12 }}

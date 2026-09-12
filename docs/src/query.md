@@ -5,7 +5,7 @@ is about what gets into the graph in the first place, and what a caller sees
 when they ask.
 {: .lede }
 
-[The P8QL grammar](grammar-p8ql.html) is the reference for the eight modes and
+[The P8QL grammar](grammar-p8ql.html) is the reference for the nine modes and
 every modifier, and [Graph algorithms](graph.html) is the page for the
 questions a walk cannot answer at all — ranked relatedness, the best routes
 between two things, what connects a result set, and what all of that costs. The four things a reference cannot tell you are who the dialect
@@ -169,10 +169,11 @@ What we are trying to do here is get a table into the graph without copying it.
 <!-- run: sql -->
 ```sql
 select aiq.register_entity_table(
-    p_entity_type  => 'vessel',
-    p_source_table => 'harbour.vessels',
-    p_key_expr     => 'lower(n.name)',
-    p_summary_expr => $$n.name || ' (IMO ' || n.imo || ')'$$,
+    p_entity_type   => 'vessel',
+    p_source_table  => 'harbour.vessels',
+    p_key_expr      => 'n.name',
+    p_summary_expr  => $$n.name || ' (IMO ' || n.imo || ')'$$,
+    p_org_expr      => 'n.org_id',
     p_include_where => $$n.status <> 'scrapped'$$);
 ```
 
@@ -194,6 +195,12 @@ resource status rather than `ready` — step output is machine-generated too.
 `include_where` is why a scrapped vessel stays in your table and stops being an
 identity anybody can look up. Nothing is deleted; it simply stops being findable
 by name.
+
+`org_expr` is what keeps a tenant's vessel its tenant's. This is the sample's
+own registration, repeated, and registering again replaces the whole row — so
+an argument you leave out goes back to its default rather than keeping what was
+there. Without `p_org_expr` the default is `null`, and the next rebuild projects
+every vessel with no org and `visibility = public`, readable by every tenant.
 
 There is a second way in. An uploaded file can be read by a structured-output
 extractor whose nodes and edges land through `aiq.upsert_graph`, so the things
@@ -304,5 +311,5 @@ claims</a> ·
 <a href="operating.html">what to watch in production</a></p>
 </details>
 
-Next: [the P8QL grammar](grammar-p8ql.html) for the modes themselves, or
-[operating it](operating.html).
+Next: [graph algorithms](graph.html), which asks harder questions of the same
+graph; [the P8QL grammar](grammar-p8ql.html) has the modes themselves.

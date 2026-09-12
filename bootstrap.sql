@@ -1,16 +1,22 @@
 -- Prepare a PostgreSQL 19 you already run to hold Percolate.
 --
+--   export P8_AUTH_PW=$(openssl rand -hex 24) P8_WORKER_PW=$(openssl rand -hex 24)
 --   psql -d yourdb -v ON_ERROR_STOP=1 \
---        -v auth_pw="$(openssl rand -base64 24)" \
---        -v worker_pw="$(openssl rand -base64 24)" \
+--        -v auth_pw="$P8_AUTH_PW" -v worker_pw="$P8_WORKER_PW" \
 --        -f bootstrap.sql
+--
+-- Hex, not base64: the services connect with a URL, and base64 emits `/` and
+-- `+`, so postgres://authenticator:Ab+c/Def@host/db stops parsing at the `/`
+-- (`invalid integer value "Ab+c" for connection option "port"`). Exported
+-- first, because a password generated inline is printed nowhere and the
+-- services' connection strings need it next.
 --
 -- Run it as a SUPERUSER, and note that this is the only part that is. The
 -- extension itself refuses to be installed by one:
 --
 --   REFUSING TO LOAD: current_user (postgres) is a cluster superuser.
 --   Superusers bypass RLS unconditionally, so the owner-privileged views
---   below would silently return ALL rows to every caller.
+--   below would return ALL rows to every caller.
 --
 -- That refusal is the whole reason this file exists. Creating a role is a
 -- superuser action; owning the schema must not be. `CREATE EXTENSION percolate`
@@ -18,9 +24,9 @@
 -- refused, and as anybody else the roles it needs do not exist yet. So the
 -- roles come first, and then the extension is installed *by* app_owner.
 --
--- The compose image runs exactly this at initdb, which is why `docker compose
--- up` needs no bootstrap step. If you are using the image, you do not need
--- this file.
+-- The compose image does the same at initdb from its own script, which is why
+-- `docker compose up` needs no bootstrap step. If you are using the image, you
+-- do not need this file.
 --
 -- Idempotent: safe to run against a cluster that already has some of it.
 
@@ -57,9 +63,15 @@ end $$;
 -- The values come through set_config rather than as :variables because psql
 -- does not substitute inside a dollar-quoted block; the loop would try to
 -- create a role literally named :'auth_pw'. `true` makes them transaction-local
--- so they do not linger in the session.
-select set_config('bootstrap.auth_pw',   :'auth_pw',   true),
-       set_config('bootstrap.worker_pw', :'worker_pw', true);
+-- so they do not linger in the session -- which is why the BEGIN is here. psql
+-- commits every statement on its own, so without it the settings were gone
+-- before the loop below read them: both roles were created with an empty
+-- password (`NOTICE: empty string is not a valid password, clearing password`)
+-- and the script exited 0. `\gset` rather than a bare select, which printed
+-- both passwords to the terminal.
+begin;
+select set_config('bootstrap.auth_pw',   :'auth_pw',   true) as _auth_pw,
+       set_config('bootstrap.worker_pw', :'worker_pw', true) as _worker_pw \gset
 
 do $$
 declare
@@ -99,10 +111,15 @@ begin
         end if;
     end loop;
 end $$;
+commit;
 
 grant api_viewer    to app_owner;      -- so app_owner can hand it the views
 grant web_anon      to authenticator;
 grant authenticated to authenticator;
+-- From 0.2.0 a workflow step runs as the person who started its run, through
+-- api_viewer, which therefore needs what a signed-in person holds. The 0.2.0
+-- extension refuses to install or upgrade without it, and names this line.
+grant authenticated to api_viewer;
 
 -- ---------------------------------------------------------------------------
 -- 2. The extensions a non-superuser cannot install, and the room app_owner
@@ -115,6 +132,24 @@ do $$ begin
     execute format('grant create on database %I to app_owner', current_database());
 end $$;
 grant create, usage on schema public to app_owner;
+
+-- NOBODY A PERSON CAN BECOME MAY REWRITE WHO THEY ARE, from 0.2.0. Every row
+-- rule reads the caller from `request.jwt.claims`, and set_config writes it:
+-- through the SQL passthrough a signed-in user could put anyone's id there and
+-- read as them. So set_config belongs to the roles that set identity on
+-- someone's behalf. Per database, because a function's ACL lives in the
+-- database. Conditional on the version this database will install, because
+-- 0.1.x's passthrough still calls set_config as the caller and would stop
+-- working; 0.2.0 refuses to install until this has run.
+do $$
+declare v text := (select default_version from pg_available_extensions where name = 'percolate');
+begin
+    if v is not null and string_to_array(v, '.')::int[] >= array[0, 2, 0] then
+        revoke execute on function pg_catalog.set_config(text, text, boolean) from public;
+        grant execute on function pg_catalog.set_config(text, text, boolean)
+            to authenticator, app_owner, worker, scheduler;
+    end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- 3. The system itself, installed BY app_owner so that app_owner owns it.
@@ -152,12 +187,26 @@ begin
            = current_database()
     then
         create extension if not exists pg_cron;
-        perform cron.schedule('workflow-tick',   '* * * * *', 'select workflow.tick()');
-        perform cron.schedule('workflow-reaper', '* * * * *', 'select workflow.reap_stale_tasks()');
-        perform cron.schedule('workflow-timers', '* * * * *', 'select workflow.promote_due_timers()');
-        update cron.job set username = 'scheduler'
-         where jobname in ('workflow-tick','workflow-reaper','workflow-timers');
+        -- Scheduled AS scheduler in one call. cron.schedule() makes the job
+        -- the caller's, and the rename that followed it collided with the row
+        -- the previous run had already renamed (`jobname_username_uniq`), so
+        -- the third run of an "idempotent" script failed. A job name that
+        -- already exists for scheduler is updated in place.
+        perform cron.schedule_in_database('workflow-tick',   '* * * * *',
+                    'select workflow.tick()',               current_database(), 'scheduler');
+        perform cron.schedule_in_database('workflow-reaper', '* * * * *',
+                    'select workflow.reap_stale_tasks()',   current_database(), 'scheduler');
+        perform cron.schedule_in_database('workflow-timers', '* * * * *',
+                    'select workflow.promote_due_timers()', current_database(), 'scheduler');
         raise notice 'percolate: pg_cron scheduled -- tick, reaper and timers are live';
+        -- scheduler has no password, so a job that connects over libpq fails
+        -- once a minute wherever pg_hba asks for one, and still shows active.
+        if coalesce(current_setting('cron.use_background_workers', true), 'off') <> 'on' then
+            raise notice 'percolate: cron.use_background_workers is off, so each job logs in '
+                         'as scheduler over libpq -- set it to on, or give pg_hba a rule '
+                         'that lets scheduler connect locally, or the jobs fail with '
+                         '"connection failed" while cron.job shows them active.';
+        end if;
     elsif coalesce(current_setting('shared_preload_libraries', true), '') like '%pg_cron%'
     then
         raise notice 'percolate: pg_cron is preloaded but cron.database_name is %, not '

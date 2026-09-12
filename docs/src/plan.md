@@ -251,17 +251,17 @@ the next step can be written against it.
 {: .goal }
 
 ```sql
-select * from workflow.plan_status('sec_revenue');
+select step, status, attempts, returned from workflow.plan_status('sec_revenue');
 ```
 
 <div class="evidence" markdown="1">
 <div class="label">shapes, not values</div>
 
 ```
-   step   | status | attempts |                      returned
-----------+--------+----------+----------------------------------------------------
- quarters | done   |        1 | {"of": {"fp": "string", "fy": "number"}, "rows": 2}
- tally    | done   |        1 | {"of": {"n": "number", "peak": "number"}, "rows": 1}
+   step   |  status   | attempts |                      returned
+----------+-----------+----------+----------------------------------------------------
+ quarters | succeeded |        1 | {"of": {"fp": "string", "fy": "number"}, "rows": 2}
+ tally    | succeeded |        1 | {"of": {"n": "number", "peak": "number"}, "rows": 1}
 ```
 </div>
 

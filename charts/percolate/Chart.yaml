@@ -4,7 +4,7 @@ description: An AI workflow engine in Postgres — DAG workflows, agents, graph 
 type: application
 # The chart's own version. Bumped whenever templates or defaults change, which
 # is not the same event as the application changing -- appVersion tracks that.
-version: 0.1.4
+version: 0.1.5
 appVersion: "0.1.8"
 home: https://percolation-labs.github.io/get-percolate
 icon: https://percolation-labs.github.io/get-percolate/assets/logo.png

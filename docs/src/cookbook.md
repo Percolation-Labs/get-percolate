@@ -334,10 +334,13 @@ of `LOCAL`.
 <details class="why" markdown="1">
 <summary>Why it works — RLS reorders results, it does not only remove rows</summary>
 
-Nordvik appears in both because its `org_id` is null, and the three ports are
-visible to everyone for the same reason. A shared tier is a real category rather
-than a gap in the policy: without it, every tenant would need a private copy of
-Rotterdam.
+Nordvik appears in both because it belongs to the **shared tier**, and the three
+ports are there for the same reason. That tier is a real organisation — a
+well-known row with the same id in every deployment — rather than a null
+standing in for one. The distinction is the point: a NULL can only mean
+*unknown*, so "shared" and "nobody filled this in" would be the same value, and
+a policy cannot tell a deliberate choice from an omission. Without a shared tier
+at all, every tenant would need a private copy of Rotterdam.
 
 The part worth checking by behaviour rather than by reading the policy is that a
 name does not resolve at all. `select count(*) from aiq.lookup('Meridian Dawn')`

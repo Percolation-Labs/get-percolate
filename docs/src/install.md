@@ -110,18 +110,30 @@ select * from percolate_build();
 ```
 
 ```
- component | version | commit_sha | built_at             | consistent
------------+---------+------------+----------------------+-----------
- parser    | @@extension@@   | 2e679e3    | 2026-09-03 16:04:00Z | f
- schema    | @@extension@@   | 9f832b1    | 2026-09-03 19:52:00Z | f
+ component | version | installed_version | commit_sha | artifact                              | built_at             | stamp_current
+-----------+---------+-------------------+------------+---------------------------------------+----------------------+---------------
+ parser    | @@extension@@   | @@extension@@   |            | v0.1.6, amd64 .so sha256:9c2f…, arm64 .so sha256:4be1… | 2026-09-03 16:04:00Z | t
+ schema    | @@extension@@   | @@extension@@   | 9f832b1    |                                       | 2026-09-03 19:52:00Z | t
 ```
 
-`consistent` is `f` there because the two halves were built from different
-commits — the shape of a real incident, not a decorative example. A `-dirty`
-suffix on a commit means that build came from a working tree that matched no
-commit at all. It answers from the image and the Helm chart; an install from
-the release files returns no rows, because the build is recorded when the
-image is built and the files carry no such record.
+**The two rows answer differently, because the two halves are made
+differently.** The schema is generated from a commit, so `commit_sha`
+identifies it and `artifact` is empty. The compiled parser is *downloaded from
+a release* — no commit of the schema's repository produced that binary — so
+`artifact` names the release and both architectures' `.so` digests, and
+`commit_sha` is empty rather than filled with the nearest plausible commit. A
+`-dirty` suffix on a commit means that build came from a working tree that
+matched no commit at all.
+
+`stamp_current` compares what the image stamped against what the database is
+running now. It goes `f` after `ALTER EXTENSION percolate UPDATE`, which moves
+the database without touching the stamp — so the row still describes the image
+you started from and no longer describes this database. That is the case worth
+catching, because everything else in the row is then about the wrong build.
+
+It answers from the image and the Helm chart; an install from the release files
+returns no rows, because the build is recorded when the image is built and the
+files carry no such record.
 
 <details class="why" markdown="1">
 <summary>Why it works — the database installs itself, and `missing` is the field

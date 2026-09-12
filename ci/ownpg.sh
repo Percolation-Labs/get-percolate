@@ -71,9 +71,23 @@ missing=$(psql_ -tAc "select workflow.compiler_capabilities()->>'missing'")
 owner=$(psql_ -tAc "select r.rolname from pg_extension e join pg_roles r on r.oid = e.extowner where e.extname = 'percolate'")
 [ "$owner" = "app_owner" ] || fail "percolate is owned by $owner, not app_owner"
 
-say "the clock: three jobs, as scheduler"
-jobs=$(psql_ -tAc "select count(*) from cron.job where username = 'scheduler' and database = 'appdb'")
-[ "$jobs" = "3" ] || fail "expected 3 scheduler-owned cron jobs, found $jobs"
+# EVERY workflow job, AS scheduler -- not a count. This asserted `= 3`, and
+# adding a fourth job (`workflow-purge`, REM-109) failed a check that was
+# asking the wrong question: the guarantee is that no maintenance job runs as a
+# privileged role, and three is an implementation detail of how many there are
+# today. A count has to be edited by whoever adds a job, which is how it ends
+# up out of step with `bootstrap.sql` -- and the version that catches the real
+# defect is the one `p8-subsystems/dev/tests/workflow/03-cron-tick.sql:49`
+# already uses, so this now asks it the same way.
+say "the clock: every workflow job, as scheduler"
+bad=$(psql_ -tAc "select string_agg(jobname || ' as ' || username, ', ')
+                    from cron.job
+                   where database = 'appdb' and jobname like 'workflow-%'
+                     and username <> 'scheduler'")
+[ -z "$bad" ] || fail "maintenance jobs must run as scheduler, not: $bad"
+jobs=$(psql_ -tAc "select count(*) from cron.job where username = 'scheduler' and database = 'appdb' and jobname like 'workflow-%'")
+[ "$jobs" -ge 1 ] || fail "no scheduler-owned workflow cron jobs at all -- the clock is not registered"
+say "  $jobs workflow job(s), all scheduler-owned"
 
 say "the first administrator and the README's first workflow"
 psql_ -qc "select rbac.bootstrap_admin('you@example.com', 'a long passphrase')" >/dev/null

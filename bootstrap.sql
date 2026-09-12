@@ -198,7 +198,24 @@ begin
                     'select workflow.reap_stale_tasks()',   current_database(), 'scheduler');
         perform cron.schedule_in_database('workflow-timers', '* * * * *',
                     'select workflow.promote_due_timers()', current_database(), 'scheduler');
-        raise notice 'percolate: pg_cron scheduled -- tick, reaper and timers are live';
+        -- A FOURTH JOB, BECAUSE NOTHING DELETED A FINISHED RUN (REM-109).
+        -- workflow.purge_completed shipped and was scheduled by no deployment,
+        -- so an operator who left this running kept every run, task and
+        -- task_event for ever. Disk is the least of it: workflow.queue_depth --
+        -- what the autoscaler asks how much work there is -- degrades with the
+        -- live-to-total row ratio, so at around 10k tasks/day the thing that
+        -- decides how many workers to run gets slower for a quarter and then
+        -- starts mattering.
+        --
+        -- Daily, not per-minute, because it is retention rather than clock
+        -- work; 03:17 rather than 03:00 so it does not land with everything
+        -- else on the hour. Its own defaults bound one pass (30 days, 50 runs
+        -- a batch, 1000 batches), and the three jobs above are `scheduler` for
+        -- the same reason this is: the function is SECURITY DEFINER and is
+        -- granted to scheduler and to nobody else.
+        perform cron.schedule_in_database('workflow-purge',  '17 3 * * *',
+                    'select workflow.purge_completed()',    current_database(), 'scheduler');
+        raise notice 'percolate: pg_cron scheduled -- tick, reaper, timers and purge are live';
         -- scheduler has no password, so a job that connects over libpq fails
         -- once a minute wherever pg_hba asks for one, and still shows active.
         if coalesce(current_setting('cron.use_background_workers', true), 'off') <> 'on' then

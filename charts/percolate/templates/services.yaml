@@ -58,6 +58,11 @@ spec:
               value: {{ $s.cfg.schemas | quote }}
             - name: PGRST_DB_ANON_ROLE
               value: web_anon
+            # No read returns an unbounded number of rows. PostgREST otherwise
+            # streams a whole table to anybody holding select on it, which is
+            # the larger surface than aiq.sql_passthrough's own cap.
+            - name: PGRST_DB_MAX_ROWS
+              value: {{ $root.Values.postgrest.maxRows | default 10000 | quote }}
             - name: PGRST_JWT_SECRET
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: jwt-secret}}
             # The admin server is what gives PostgREST a readiness answer:

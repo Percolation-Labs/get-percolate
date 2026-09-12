@@ -44,6 +44,32 @@ services:
       - shared_preload_libraries=pg_cron
       - -c
       - cron.database_name=percolate
+      # BOUNDS, EXPLICIT RATHER THAN PACKAGED. Nothing in this file, the chart
+      # or the image set a single limit before this: no statement_timeout, no
+      # max_connections, no work_mem. A query from an agent could run until
+      # somebody noticed the bill. The per-role timeouts are in the image's own
+      # bootstrap; these are the ones that have to be process flags.
+      # p8-subsystems meta/postgres-manifest.md §"What the database refuses"
+      # argues the values.
+      - -c
+      - max_connections=200
+      - -c
+      - work_mem=8MB
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - maintenance_work_mem=256MB
+    # /dev/shm, AND THIS WAS MISSING FROM THE FILE USERS ACTUALLY RUN. Docker's
+    # default is 64MB and maintenance_work_mem above is 256MB; pgvector sizes a
+    # parallel HNSW build's shared-memory segment from the latter, so an index
+    # build over a real corpus dies with
+    #
+    #     could not resize shared memory segment ... No space left on device
+    #
+    # The dev stack has carried this fix since the incident that produced it
+    # (p8-subsystems dev/docker-compose.yml) and the shipped compose did not,
+    # which means it was fixed for us and not for anybody who installs.
+    shm_size: 1gb
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-p8}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-p8}
@@ -94,6 +120,9 @@ services:
       # with Accept-Profile.
       PGRST_DB_SCHEMAS: content, aiq, rbac, workflow, agentic, public
       PGRST_DB_ANON_ROLE: web_anon
+      # No read returns an unbounded number of rows. PostgREST will otherwise
+      # stream a whole table to anybody holding select on it.
+      PGRST_DB_MAX_ROWS: 10000
       PGRST_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
       PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3000
     ports: ["${P8_REST_PORT:-3000}:3000"]

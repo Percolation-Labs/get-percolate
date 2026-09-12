@@ -374,7 +374,7 @@ embedded and a node can be traced back to the passage that named it.
 The extractor is a row in `agentic.agents` rather than a prompt in the workflow,
 which means changing what it looks for is an update rather than an edit to every
 pipeline that uses it. `aiq.install_structure_null()` writes the default one: a
-system prompt asking for what the document names and how those things connect,
+system instructions asking for what the document names and how those things connect,
 and a JSON Schema whose relation field is an enum built from
 `aiq.graph_vocabulary`. The vocabulary is closed, so an extractor cannot invent a
 relation the graph then has to carry forever.

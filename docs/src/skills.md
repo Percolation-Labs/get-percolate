@@ -1,9 +1,10 @@
 # Skills and plugins
 
-A skill is a prompt fragment in a row. An agent **attaches** the ones it may
-use the same way it binds tools — by name, carrying the listing and not the
-text — and a body is loaded on demand when a turn calls for it. So a prompt is
-assembled at invocation rather than authored whole, attaching a capability
+A skill is a fragment of system instructions, kept in a row. An agent
+**attaches** the ones it may use the same way it binds tools — by name, carrying
+the listing and not the text — and a body is loaded on demand when a turn calls
+for it. So an agent's system instructions are assembled at invocation rather
+than authored whole, attaching a capability
 costs a line rather than a page, and adding one is an insert.
 {: .lede }
 
@@ -25,8 +26,9 @@ transaction.
 Before reading on, know which half of this ships. Skills, attachment, plugins
 and the checks on them are installed, and every statement below runs against
 them. The Agent Runtime in percolate-core @@core@@ does not yet read
-`agents.skills` or `context_policy.skills`: the prompt it sends is the agent's
-own `system_prompt` and nothing else. So the three ways a body reaches a prompt
+`agents.skills` or `context_policy.skills`: the system instructions it sends are
+the agent's own `system_prompt` and the request's context block, and nothing
+else. So the three ways a body reaches a prompt
 are described from the reference implementation they were measured on, and
 [where this page stands](#where-this-page-stands) says which is which.
 
@@ -109,6 +111,11 @@ rather than a metaphor:
 | it does **not** carry | the implementation | the body |
 | on demand you get | the tool's result | the fragment's text |
 | the model then | calls it | follows it |
+
+The last row is why a skill counts as a system instruction and a tool's result
+as a tool output, in the terms [agents](agents.html#what-the-model-receives-on-each-turn)
+uses, even when a skill arrives through a tool call: the model follows the one
+and weighs the other.
 
 So **attaching is cheap and it is lazy**. Every attached fragment costs one
 listing line in every prompt, whether or not it is used. The body arrives only
@@ -683,8 +690,8 @@ retrieval scores and the behaviour probe are all captured output from a live
 database and a live model, not illustrations.
 
 What the Agent Runtime does with those rows is the gap. The runtime in
-percolate-core @@core@@ builds a prompt from the agent's `system_prompt` and a
-context block, and reads neither `agents.skills` nor `context_policy.skills`.
+percolate-core @@core@@ builds the system instructions from the agent's
+`system_prompt` and a context block, and reads neither `agents.skills` nor `context_policy.skills`.
 The three paths in [what the prompt becomes](#what-the-prompt-becomes-and-who-decides)
 are built as reference implementations beside the specification: composed and
 matched expansion as one script, and the fetched path as another, which does

@@ -64,7 +64,7 @@ a broken install and is not.
 carries it</summary>
 
 An agent is a row, and a plan that named the row and stopped would have expanded
-nothing. So the whole system prompt is inline, along with the shape the agent
+nothing. So the agent's own system instructions are inline in full, along with the shape the agent
 must return, the servers it binds and the tools it is narrowed to on each — and
 one hop further, the agents it may delegate to, because that is also what it can
 do.

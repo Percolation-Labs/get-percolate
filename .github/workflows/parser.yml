@@ -163,6 +163,40 @@ jobs:
       # `target/` lives under the workspace because the container mounts it
       # there, which is what makes it cacheable at all -- the compile happens
       # inside a container, but its output lands on the runner's disk.
+      # THE PINS, READ FROM THE FILES THAT DECLARE THEM, once, for every leg.
+      #
+      # `pgrx=0.19.2` was written here as a literal, under a comment reading
+      # "one home for the pgrx pin, so the cache key and the install below
+      # cannot name different versions". It was one home for two of the four
+      # places that number lived: `dev/Dockerfile.pgrx-builder` installed
+      # cargo-pgrx at its own copy, and `extension/percolate_parser/Cargo.toml`
+      # -- the crate that has to match the tool or `cargo pgrx package` fails
+      # naming neither -- declared a third. The comment was true about its own
+      # two steps and the pin still had no single home. It has one now, and it
+      # is the crate's dependency line.
+      #
+      # The PG version stays read from the Dockerfile's FROM, which is the file
+      # that decides it: `19beta3` is the exact base the Linux legs run, and
+      # building the macOS server from anything else is the ABI mismatch this
+      # workflow's header is about. That is a different fact from the pg MAJOR
+      # the crate's default feature names, and both are read rather than typed.
+      #
+      # ON EVERY PLATFORM, not just macOS: the Linux leg passes PGRX_VERSION
+      # into the toolchain build, which now refuses without it.
+      - name: Read the pinned versions
+        id: pins
+        run: |
+          C=extension/percolate_parser/Cargo.toml
+          V=$(sed -n 's/^FROM postgres:\([0-9a-z.]*\)-.*/\1/p' dev/Dockerfile.pgrx-builder)
+          [ -n "$V" ] || { echo "::error::could not read the PG version from dev/Dockerfile.pgrx-builder" >&2; exit 1; }
+          M=$(sed -n 's/^default *= *\["pg\([0-9][0-9]*\)"\].*/\1/p' "$C")
+          X=$(sed -n 's/^pgrx *= *"=\{0,1\}\([0-9][0-9.]*\)".*/\1/p' "$C")
+          [ -n "$M" ] && [ -n "$X" ] || { echo "::error::could not read the pg major and the pgrx pin from $C" >&2; exit 1; }
+          echo "pg=$V"        >> "$GITHUB_OUTPUT"
+          echo "pgmajor=$M"   >> "$GITHUB_OUTPUT"
+          echo "pgrx=$X"      >> "$GITHUB_OUTPUT"
+          echo "base $V, pg$M, pgrx $X"
+
       - name: Cache the crate build
         if: runner.os == 'Linux'
         uses: actions/cache@v6
@@ -249,7 +283,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/pgrx-builder.tar
-          key: pgrx-image-${{ matrix.platform }}-${{ hashFiles('dev/Dockerfile.pgrx-builder') }}-${{ steps.base.outputs.digest }}
+          # Cargo.toml IS IN THE KEY because the pgrx pin moved into it and is
+          # passed into the build. Keyed on the Dockerfile alone, bumping pgrx
+          # in the crate would restore an image carrying the previous
+          # cargo-pgrx -- the same "cache hit on the wrong toolchain" the
+          # paragraphs above are about, and on the RELEASE path, where the .so
+          # this produces is the one that ships.
+          key: pgrx-image-${{ matrix.platform }}-${{ hashFiles('dev/Dockerfile.pgrx-builder', 'extension/percolate_parser/Cargo.toml') }}-${{ steps.base.outputs.digest }}
 
       - name: Build the parser in the image that ships the target server
         if: runner.os == 'Linux'
@@ -276,6 +316,7 @@ jobs:
             docker load -i /tmp/pgrx-builder.tar
           else
             docker build --platform ${{ matrix.docker }} \
+              --build-arg PGRX_VERSION=${{ steps.pins.outputs.pgrx }} \
               -f Dockerfile.pgrx-builder -t pgrx-builder .
             # Uncompressed on purpose: actions/cache zstds it on the way up, and
             # compressing twice spends a minute to save nothing.
@@ -283,9 +324,10 @@ jobs:
           fi
           docker run --rm --platform ${{ matrix.docker }} \
             -v "$GITHUB_WORKSPACE/extension/percolate_parser":/work \
-            -e PGRX_HOME=/work/.pgrx -w /work pgrx-builder bash -c '
-              cargo pgrx init --pg19 /usr/bin/pg_config >/dev/null 2>&1 || true
-              cargo pgrx package --features pg19 --no-default-features \
+            -e PGRX_HOME=/work/.pgrx -e PG=${{ steps.pins.outputs.pgmajor }} \
+            -w /work pgrx-builder bash -c '
+              cargo pgrx init "--pg$PG" /usr/bin/pg_config >/dev/null 2>&1 || true
+              cargo pgrx package --features "pg$PG" --no-default-features \
                                  --pg-config /usr/bin/pg_config'
           # The container writes as root; the cache action has to read it back.
           sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE/extension/percolate_parser"
@@ -311,16 +353,6 @@ jobs:
       # crate would have looked more thorough and reused nothing: the release
       # bumps Cargo.toml's version every time, so a key derived from it changes
       # every release by construction, and the cache would never hit.
-      - name: Read the pinned versions
-        if: runner.os == 'macOS'
-        id: pins
-        run: |
-          V=$(sed -n 's/^FROM postgres:\([0-9a-z.]*\)-.*/\1/p' dev/Dockerfile.pgrx-builder)
-          [ -n "$V" ] || { echo "::error::could not read the PG version from dev/Dockerfile.pgrx-builder" >&2; exit 1; }
-          echo "pg=$V" >> "$GITHUB_OUTPUT"
-          # One home for the pgrx pin, so the cache key and the install below
-          # cannot name different versions.
-          echo "pgrx=0.19.2" >> "$GITHUB_OUTPUT"
 
       - name: Cache the built server
         if: runner.os == 'macOS'
@@ -398,8 +430,9 @@ jobs:
         env:
           RUSTFLAGS: "-C link-arg=-Wl,-undefined,dynamic_lookup"
         run: |
-          cargo pgrx init --pg19 "$PG_CONFIG"
-          cargo pgrx package --features pg19 --no-default-features --pg-config "$PG_CONFIG"
+          cargo pgrx init "--pg${{ steps.pins.outputs.pgmajor }}" "$PG_CONFIG"
+          cargo pgrx package --features "pg${{ steps.pins.outputs.pgmajor }}" \
+                             --no-default-features --pg-config "$PG_CONFIG"
 
       - name: Collect
         working-directory: extension/percolate_parser

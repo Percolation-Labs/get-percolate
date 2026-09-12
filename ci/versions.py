@@ -128,6 +128,37 @@ def check(v: dict, pins: bool = True) -> list[str]:
             if got != want:
                 bad.append(f"{path}: says {got}, versions.toml says {want} ({why})")
 
+    # AND THE CI SCRIPTS, which are the third kind of file that cannot hold a
+    # placeholder: nothing substitutes into a shell script before it runs. They
+    # were not checked at all, and one of them was wrong the whole time --
+    # `ci/examples.sh` installed `percolate-core[sample,agent]>=0.1.7` while
+    # versions.toml required 0.1.8. That script exists to prove the reference
+    # pages work against the core the docs say to install, and it was proving it
+    # against an older one; a page using anything added since 0.1.7 would have
+    # gone green here and failed for a reader.
+    #
+    # GLOBBED, not listed, unlike the rules above. The rules are per-file
+    # because each names the exact shape of one line and a rule that stops
+    # matching has to be a stop rather than a pass. Here the question is the
+    # opposite -- "does any ci script name a version we own, and is it right" --
+    # so a new script has to be covered by default. A script naming no version
+    # is fine and says nothing.
+    #
+    # A pip floor is `core_min` (what the docs' own examples require) and an
+    # image tag is `core` (what is published). They are allowed to differ, and
+    # when they do it means a release is outstanding, which is a state this file
+    # already knows how to talk about.
+    for sh in sorted((ROOT / "ci").glob("*.sh")):
+        text = sh.read_text()
+        for got in set(re.findall(r"percolate-core\[[^]]*\] *>= *([0-9]+\.[0-9]+\.[0-9]+)", text)):
+            if got != v["core_min"]:
+                bad.append(f"ci/{sh.name}: installs percolate-core>={got}, versions.toml "
+                           f"requires {v['core_min']} (the docs' own examples need it)")
+        for got in set(re.findall(r"percolationlabs/percolate-core:([0-9]+\.[0-9]+\.[0-9]+)", text)):
+            if got != v["core"]:
+                bad.append(f"ci/{sh.name}: pulls percolate-core:{got}, versions.toml "
+                           f"publishes {v['core']}")
+
     # A literal anywhere in docs/src that equals a number we own should have been
     # a placeholder. Older versions are left alone on purpose -- "as of the 0.1.4
     # pin" is history, and history does not go stale.

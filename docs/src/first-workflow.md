@@ -181,7 +181,8 @@ passed in. You cannot work around it by passing the run id yourself either,
 since you do not have it until `start_workflow` returns.
 
 **The row set is a query.** `matrix.rows` takes the statement itself — or a
-registered function, if the deployment wants that operation blessed. `max_fanout`
+registered function, if the deployment wants that operation blessed.
+`max_fanout`
 is required for the same reason you would not run a query with no `LIMIT`
 against a result set you have not seen.
 
@@ -235,7 +236,7 @@ the `psql` session the same claim a bearer token carries over HTTP; making the
 administrator ([install](install.html#the-first-user-and-a-token)) does not do
 it for you, because a `psql` session carries no claims of its own. Being a
 superuser does not help either, because RLS on a view is evaluated as the
-view's owner — `api_viewer`, which is deliberately neither the table owner nor
+view's owner — `api_viewer`, which is neither the table owner nor
 a superuser. `workflow.runs` itself is not filtered, if you want to confirm the
 run exists before chasing identity.
 

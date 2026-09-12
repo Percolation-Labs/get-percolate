@@ -12,13 +12,14 @@ minute, and the last section says how.
 
 If you came looking for whole pipelines rather than single moves, this is the
 wrong page and [workflow recipes](recipes.html) is the right one. The two divide
-the work deliberately: this page answers *what does `GRAPH` return*, and that one
+the work: this page answers *what does `GRAPH` return*, and that one
 answers *how do I poll a source into a corpus an agent can be asked about*.
 
 ## The domain
 
 One fixture, reused by all ten — and by the [graph algorithms](graph.html)
-page, which asks a different class of question over the same nine edges. It is a port-operations company with two
+page, which asks a different class of question over the same nine edges. It is a
+port-operations company with two
 shipping lines in it: **Meridian Line**, which has a bulk subsidiary and three
 ships, and **Kestrel Shipping**, which has one. There are three ports belonging
 to neither, a chartering house both of them use, four inspection records, and
@@ -29,14 +30,14 @@ harbour fixture: 4 operators, 5 vessels, 3 ports, 4 inspections,
                  11 nodes, 9 edges, 5 chunks
 ```
 
-Two tenants matter more than the ships do. Almost every example below is the
+Two tenants matter more than the ships do. Every example below is the
 same query asked twice with a different claim, and the answers differ because
 row-level security is doing the work rather than a `where org_id =` somebody
 remembered to write.
 
 <details class="why" markdown="1">
 <summary>Why it works — five vessels but eleven nodes, and the missing one is
-deliberate</summary>
+a choice</summary>
 
 One of the ships is scrapped, and the registration that projects vessels into
 the graph carries `include_where => n.status <> 'scrapped'`. The row is still
@@ -104,8 +105,9 @@ same breath — they are different tables and the same kind of identity.
 
 Exact spelling returns nothing and `FUZZY` returns the ship plus the operator
 behind it at a lower score. If you know the shape of the names in your store you
-can skip the fuzz entirely by registering a short key, and nothing projects those
-for you deliberately: deciding that "dawn" means that ship is a judgement, not a
+can skip the fuzz entirely by registering a short key, and nothing projects
+those
+for you: deciding that "dawn" means that ship is a judgement, not a
 derivation, and a system that guessed would eventually guess wrong in a way
 nobody could see.
 
@@ -260,7 +262,8 @@ The nearest semantic hit shares not one word with "a boiler fault", which is
 exactly the case `TEXT` cannot reach. Meanwhile `TEXT` finds the rare token
 `PSC-441` that a vector will happily rank alongside a dozen near-synonyms.
 
-Fusion is what lets a page found by only one of the two still place. Rows with an
+Fusion is what lets a page found by only one of the two still place. Rows with
+an
 empty `lex` were never matched lexically at all and placed on their semantic
 rank alone.
 
@@ -294,14 +297,15 @@ where entity_type in ('vessel','operator') order by entity_type, summary;
 rollback;
 ```
 
-**The `begin` is load-bearing and its absence is silent.** `SET LOCAL` outside a
+**The `begin` carries the whole behaviour, and its absence reports nothing.**
+`SET LOCAL` outside a
 transaction warns — `SET LOCAL can only be used in transaction blocks` — and
 then does nothing, so the claims are never set and the query runs with whatever
 identity the connection already had. Paste these three lines into `psql` without
 it and you get a result rather than an error: the superuser's, which bypasses
 RLS entirely and shows both tenants' rows. That looks like the demonstration
 working. `rollback` rather than `commit` because nothing here writes; either
-ends the transaction and discards the settings with it, which is the whole point
+ends the transaction and discards the settings with it, which is the reason
 of `LOCAL`.
 
 <div class="evidence" markdown="1">
@@ -339,7 +343,7 @@ ports are there for the same reason. That tier is a real organisation — a
 well-known row with the same id in every deployment — rather than a null
 standing in for one. The distinction is the point: a NULL can only mean
 *unknown*, so "shared" and "nobody filled this in" would be the same value, and
-a policy cannot tell a deliberate choice from an omission. Without a shared tier
+a policy cannot tell a choice from an omission. Without a shared tier
 at all, every tenant would need a private copy of Rotterdam.
 
 The part worth checking by behaviour rather than by reading the policy is that a
@@ -765,7 +769,7 @@ succeeded, after a later step fails terminally.
 <summary>Why it works — two columns, because there are two questions</summary>
 
 The run ends `failed` with `compensation_state = compensated`, and those are
-separate columns deliberately. A saga that rolled back cleanly still did not do
+separate columns. A saga that rolled back cleanly still did not do
 what it was asked, and a run reporting `succeeded` because its cleanup worked is
 a run nobody investigates.
 
@@ -873,7 +877,7 @@ percolate sample load samples/harbour --as-email you@example.com
 Then paste any example above into `psql`. The ones that read tenanted rows —
 2, 3, 4 and the [graph algorithms](graph.html) page — need the claims wrapper
 from [scenario 4](#4-two-tenants-one-table) around them, or they answer as the
-superuser and quietly show you both tenants.
+superuser and show you both tenants, with nothing to say it did.
 
 <details class="why" markdown="1">
 <summary>Why it works — the loader is idempotent, so re-running it is the reset</summary>
@@ -889,7 +893,8 @@ you like.
 <a href="recipes.html">the same primitives assembled into pipelines</a></p>
 </details>
 
-If you want to go deeper on any one of these, [the P8QL grammar](grammar-p8ql.html)
+If you want to go deeper on any one of these, [the P8QL
+grammar](grammar-p8ql.html)
 and [the workflow grammar](grammar-workflow.html) are the references,
 [querying](query.html) covers the dialect as prose, and
 [uploading files](ingest.html) covers what happens between `POST /files` and a

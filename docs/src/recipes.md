@@ -5,8 +5,9 @@ we are trying to do, the document that does it, and the mechanism folded away
 underneath for when you want it.
 {: .lede }
 
-Everything here assumes you have read [the workflow grammar](grammar-workflow.html),
-which is where the vocabulary lives. These pages divide the work deliberately:
+Everything here assumes you have read [the workflow
+grammar](grammar-workflow.html),
+which is where the vocabulary lives. These pages divide the work:
 the grammar page answers *what does `matrix` accept*, and this one answers *what
 do I write to poll a source into a corpus an agent can be asked about*.
 
@@ -28,7 +29,8 @@ function first — recipe 1 does both.
 ### Keys are names, never values
 
 Nothing in this database holds a secret. A row that needs credentials holds the
-**name of an environment variable**, and the process making the call resolves it.
+**name of an environment variable**, and the process making the call resolves
+it.
 
 What we are trying to do here is point a step at a credential without putting
 the credential anywhere near the database.
@@ -58,7 +60,7 @@ key, a task stays replayable, and rotating a credential is a deployment change
 rather than an `UPDATE` across your task history.
 
 `{{env.X}}` is resolved **only by the worker**, and a `sql:` or `p8ql:` step
-cannot read it. That is deliberate rather than an omission — the database has no
+cannot read it. That is a choice rather than an omission — the database has no
 business knowing the deployment's environment, and the template resolver refuses
 the namespace by name rather than resolving it to null.
 
@@ -106,7 +108,8 @@ dimension cannot drift</summary>
 the registry row**, which is what stops the stored dimension and the distance
 operator from drifting away from what the model actually returns.
 
-`provider` is not a label. It joins to `aiq.embedding_providers`, which holds the
+`provider` is not a label. It joins to `aiq.embedding_providers`, which holds
+the
 request body's shape and the path to the vector in the response; `ollama` and
 `openai` ship as rows, and a gateway that differs from either overrides the row
 rather than forking anything.
@@ -192,7 +195,7 @@ select agentic.upsert_agent($j${
 <summary>Why it works — an omitted key means leave it alone, which is not the
 obvious implementation</summary>
 
-Both upserts follow that rule for every column, and it is worth stating because
+Both upserts follow that rule for every column, and it is stated here because
 the obvious version gets it wrong in a way that returns success.
 `{"name": "harbourmaster", "model": "…"}` is how anybody changes a model, and a
 naive `set x = excluded.x` takes the column *default* for every key you did not
@@ -201,7 +204,7 @@ send — leaving the agent existing, resolving by name, and able to do nothing.
 Two constraints shape how you register the machine ones. `category: extractor`
 requires `structured_output_schema`, because a declared shape is what makes N
 extractions combinable and what makes a bad answer retryable rather than
-silently wrong. And `audience` is an access decision rather than a tag:
+wrong with no error. And `audience` is an access decision rather than a tag:
 `agentic.agents` is sized for thousands of rows, one specialist per (source,
 doctype), and a picker showing a person a thousand extractors is broken.
 
@@ -223,7 +226,8 @@ select workflow.compiler_capabilities();
 select aiq.query('SCHEMA "workflow"');
 ```
 
-Both are covered in [the workflow grammar](grammar-workflow.html#getting-this-page-from-your-own-database),
+Both are covered in [the workflow
+grammar](grammar-workflow.html#getting-this-page-from-your-own-database),
 which is where the reasoning lives.
 
 ---
@@ -453,7 +457,8 @@ becomes a Parquet dataset rather than prose — skips the graph branch for free,
 because an empty row set releases the successor where a document-level step
 would have had to raise.
 
-The embed step is `work` rather than a matrix of `embed:` children because of the
+The embed step is `work` rather than a matrix of `embed:` children because of
+the
 payload cap: one 1536-dimension vector is about 31KB of JSON and a step's output
 caps at 64KB, so two vectors do not fit in one task output. Any design carrying
 corpus vectors through the engine is limited to batches of one.
@@ -503,7 +508,8 @@ is one you did not write</summary>
 
 `SEARCH` desugars into a hidden **predecessor**: an `http_call` keyed
 `retrieve__embed` that turns the question into a vector, plus the in-database
-search step that consumes it. Your id stays on the search, so `needs: [retrieve]`
+search step that consumes it. Your id stays on the search, so `needs:
+[retrieve]`
 and `{{steps.retrieve.result}}` mean what they look like and nothing downstream
 is rewired.
 
@@ -580,7 +586,8 @@ registration is a conflict to resolve rather than a coin flip at runtime. The
 `structured_output_schema` on the row is not optional for `category: extractor`,
 because an extractor without a declared shape is a model call with extra steps.
 
-The part to plan for is that **a matrix template cannot declare `output_schema`**.
+The part to plan for is that **a matrix template cannot declare
+`output_schema`**.
 The compiler accepts `queue`, `rate_key`, `rest`, `embed`, `agent`, `work`,
 `input`, `session` and `jsonpath` inside a template and not that — and
 `output_schema` is the field that parses a model's JSON-in-a-string answer into
@@ -592,7 +599,8 @@ That is not hypothetical: it is why `content.land_graph_windows` exists beside
 `aiq.land_graph_fanout` rather than instead of it. Budget one `jsonb` parse in
 every matrix fan-in over an agent until the parser closes it.
 
-`min_success: 0.9` is a **transport** floor — a 200 carrying an empty body counts
+`min_success: 0.9` is a **transport** floor — a 200 carrying an empty body
+counts
 as a success against it. The engine cannot know what a good extraction looks
 like, so the threshold answers *did enough calls come back* and the agent's
 declared shape answers the rest.
@@ -645,7 +653,7 @@ an id in the run input, and the natural key derives from the run, which the run
 could not see.
 
 `jsonpath: ''` captures the whole response rather than the assistant text. The
-default of `choices.0.message.content` is what almost every step wants, and
+default of `choices.0.message.content` is what most steps want, and
 overriding it is how you keep the envelope — a session id the runtime issued,
 token counts, tool traces — which is otherwise discarded before reaching
 `runs.context`.

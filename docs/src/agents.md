@@ -38,7 +38,8 @@ properties:
 required: [verdict, vessel]
 ```
 
-A `description` this short is deliberate. Anything in it that would be equally
+A `description` this short earns its length. Anything in it that would be
+equally
 true of a sibling agent belongs in a [skill](skills.html) — a fragment stored
 once and referenced by every agent that needs it — rather than copied into each
 prompt and left to drift.
@@ -101,12 +102,13 @@ constraint on an agent definition is that it holds no inline tool code — only
 references to external tools, which the next two sections cover.
 
 The convention comes from `p8k8`, the system this one replaces, and it is kept
-deliberately for what it rules out. A `prompt:` key makes the prompt a string in
+for what it rules out. A `prompt:` key makes the prompt a string in
 a config file. `description` makes it the docstring of a class, which means the
 description a human writes is the description the model receives, and every tool
 that already reads JSON Schema reads an agent for free.
 
-One thing was dropped from that lineage rather than inherited quietly. `p8k8`
+One thing was dropped from that lineage rather than inherited without comment.
+`p8k8`
 distinguished `structured_output: true` — properties are the output contract —
 from `false`, where properties are "thinking aides" that shape the model's
 reasoning without ever being returned. Here `properties` has exactly one
@@ -143,16 +145,18 @@ select agentic.upsert_agent($j${
 
 **This writes over the agent the sample loaded**, because `harbourmaster` is the
 name it ships — an upsert, so the fields you leave out (its skills, its output
-schema) survive and the ones you name are replaced. That is the point of the
-example and it is worth knowing before you run it against a database you just
+schema) survive and the ones you name are replaced. That is what the example
+shows of the
+example and it is worth checking before you run it against a database you just
 loaded.
 
-Two things are deliberately not in it. The model matches the sample's, which is
+Two things are absent from it. The model matches the sample's, which is
 `openai` because the sample already needs an OpenAI key to embed its corpus and
 a second provider is a second key to obtain. And there is no `tools` array: a
 binding names a server by name, the compose stack runs no tool server, and the
 sample registers none for that reason — so binding one here would write a row
-pointing at nothing. [Tools and MCP](#tools-are-external-and-they-are-rows) below
+pointing at nothing. [Tools and MCP](#tools-are-external-and-they-are-rows)
+below
 registers a server first and then binds it, which is the order that works.
 
 ```bash
@@ -235,7 +239,8 @@ Two things have to be true before this returns anything but an error, and
 neither is about the agent:
 
 - **`$TOKEN` is a JWT you sign**, and a fresh install has nobody to sign one
-  for. [Install § the first user, and a token](install.html#the-first-user-and-a-token)
+  for. [Install § the first user, and a
+  token](install.html#the-first-user-and-a-token)
   is the whole of it; without it this endpoint answers `401 a verified bearer
   token is required` before the stream opens.
 - **The runtime needs the key for the model the row names.** The published
@@ -312,7 +317,7 @@ on the way out</summary>
 `model` names an **agent**, not an LLM. That single reuse is what lets an
 off-the-shelf OpenAI-shaped client drive this runtime with nothing bespoke in
 it; the LLM actually called comes from the `agents` row. A client's own `tools`
-field is accepted by the shape and deliberately ignored, because an agent's tool
+field is accepted by the shape and ignored, because an agent's tool
 surface is whatever `tool_servers` its row points at, and honouring
 caller-supplied tools would put per-request tool binding straight back in.
 
@@ -325,7 +330,8 @@ option; older runtimes ignore fields they do not recognise. Using `auto` or
 omitting the field keeps the agent's configured behaviour.
 
 The thread id travels as a header rather than only a body field, and that is the
-load-bearing part: the inbound contract is the OpenAI chat shape, which has
+part that carries the weight: the inbound contract is the OpenAI chat shape,
+which has
 nowhere to put one, so a client using a stock SDK can only reach for a header.
 An unknown or unowned id fails with a status code *before* the stream opens,
 never as an event inside it — once the response has begun the status is already
@@ -411,7 +417,8 @@ a URL and its credentials.
 
 The key is `tools`, plural, and it takes a **list**. Writing `"tool": "query"`
 is accepted by the database, which stores the array as opaque JSON, and then
-silently dropped by the runtime — leaving the agent with no allowlist at all,
+dropped by the runtime with no message — leaving the agent with no allowlist at
+all,
 which means every tool that server exposes. It widens access and reports
 success, which is the worst shape a mistake can have.
 
@@ -424,9 +431,9 @@ than OpenAPI 3, and the base URL for calls is where the document was *fetched*
 from, not what the document claims — `host`/`basePath` and `servers` routinely
 lie behind a proxy, and preferring them trades a fact for a claim.
 
-There is no in-process tool registry, which is the deliberate break from the
+There is no in-process tool registry, which is the break from the
 system this replaces. A tool mapped by name in a Python dict is code you have to
-deploy in order to change; the whole point of a row is that changing it is an
+deploy in order to change; a row is a row precisely so that changing it is an
 `UPDATE`. `emits_citations` is a flag on the server rather than a naming
 convention, because whether responses are citable retrieval results is a
 property of the server: this collection's query server sets it, a ticketing API
@@ -555,7 +562,7 @@ conversation it came from, which is exactly what a summarizer needs. It fires
 whenever the agent has both a schema and an action: under pydantic-ai the output
 either validates or the run fails, so there is no third state to test for.
 
-`audience` is an access decision and is deliberately not derived from `tags`.
+`audience` is an access decision and is not derived from `tags`.
 Whether a human may pick an agent should not be something a typo can change, and
 once this table holds thousands of rows a picker showing a person a thousand
 machine extractors is broken. `category` is a closed list for the same reason:
@@ -635,7 +642,7 @@ thousand rows</summary>
 `category = 'extractor'` requires `structured_output_schema`, enforced by the
 schema. An extractor with no declared shape is a model call with extra steps,
 since the shape is what lets you combine N extractions and what makes a bad
-answer retryable rather than silently wrong.
+answer retryable rather than wrong with no sign of it.
 
 A unique index enforces one specialist per (source, doctype), so a second
 registration is a conflict to resolve rather than a coin flip at runtime.

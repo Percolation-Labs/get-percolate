@@ -177,6 +177,29 @@ services:
       # `credential_ref 'P8_API_KEY' is not set` until you mint one:
       #   percolate auth token --email you@example.com --orgs <your orgs>
       P8_API_KEY: ${P8_API_KEY:-}
+      # ...AND WHEN IT DOES NOT USE THAT KEY AT ALL. With a signing key mounted,
+      # an agent step is authenticated as the person whose run it belongs to --
+      # the worker asks the database for the verified owner and mints a
+      # five-minute token for them -- and P8_API_KEY above becomes the fallback
+      # for the case where there is no owner rather than the identity every
+      # scheduled run wears.
+      #
+      # Without this mount that fallback was the ONLY path: `uses_run_identity`
+      # is false when the variable is unset, so every scheduled agent run in
+      # this deployment acted as whatever single identity P8_API_KEY names and
+      # RLS applied that person's scope to the whole night's work, whoever
+      # scheduled it. (REM-96, OWASP ASI03.)
+      #
+      # A FILE, NOT A VALUE, and that is the whole design. A workflow can
+      # resolve `{{env.X}}` inside an http_call body, so a signing key in this
+      # service's environment would be a signing oracle for anybody who can
+      # author a workflow -- they could mint a token for any user by asking a
+      # template for it. `percolate_core/worker/agent_auth.py` reads the path.
+      P8_AGENT_SIGNING_KEY_FILE: /run/percolate/agent-signing-key
+    configs:
+      - source: agent_signing_key
+        target: /run/percolate/agent-signing-key
+        mode: 0400
 
   # A SECOND worker, because a worker polls exactly one queue and ingestion
   # does not run on `http`.
@@ -319,3 +342,25 @@ services:
 volumes:
   pgdata:
   miniodata:
+
+# The worker's copy of the signing key, as a file.
+#
+# THE SAME VALUE THE AGENT VERIFIES WITH, by construction rather than by two
+# people remembering: the interpolation below is character-for-character the one
+# on the agent service's `P8_JWT_SECRET`, default included. A token minted here
+# and rejected there would be the confusing version of this bug -- scheduled
+# runs failing with `401` and nothing saying the two halves disagree about a
+# secret.
+#
+# `configs` RATHER THAN `secrets`, and the reason is a compose limitation worth
+# stating so nobody "fixes" it. A compose secret takes its content from a host
+# file or from a named environment variable; neither can carry `${VAR:-default}`,
+# so a secret would make this empty whenever P8_JWT_SECRET is unset -- and an
+# empty key file is a terminal error in the worker, which would turn "you did
+# not set an optional variable" into "your scheduled runs stopped". A config is
+# the same thing on disk in the container: a file, mode 0400, not an
+# environment value. Being a file is the property that matters here, because an
+# environment value is template-readable and this one must not be.
+configs:
+  agent_signing_key:
+    content: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}

@@ -89,9 +89,34 @@ postgres:
   # every scheduled workflow, the stale-task reaper and every timer step
   # silently never fires.
   # cron.database_name is added by the template, from `database` above.
+  # pg_stat_statements and auto_explain are preloaded beside pg_cron, for the
+  # reasons the shipped compose file states at length. In short: the deferral
+  # in p8-subsystems meta/postgres-manifest.md:44 -- "enable when there's
+  # something to tune" -- is overturned by the fact that no statement in this
+  # deployment is timed at all (what exists measures the workload: completed_at,
+  # oldest_wait, and a plan-shape check on the claim path), and by
+  # 2026-09-04-resource-scoping.md:81-82, where two CORRECT RLS predicates
+  # differ 58x (360.574 ms against 6.205 ms over 52,000 rows on a development
+  # PG19) with nothing in the plan to say which you got. The graph-algorithms
+  # figures are NOT the argument and the compose file says why: that document
+  # is a research article over a synthetic fixture.
+  #
+  # Both are contrib, so no new dependency. pg_stat_statements needs a CREATE
+  # EXTENSION as well as the preload or the view does not exist; that statement
+  # is in the image's superuser step as of the change this ships with, so an
+  # older image under this chart collects into a view it has not got.
   extraArgs:
     - -c
-    - shared_preload_libraries=pg_cron
+    - shared_preload_libraries=pg_cron,pg_stat_statements,auto_explain
+    # 2s: a fifteenth of the 30s statement_timeout the image gives
+    # `authenticator`, which it describes as longer than any interactive query
+    # should need. So a plan in the log is a statement outside what this
+    # deployment already calls normal, and log_analyze stays off because
+    # instrumenting one means executing it again.
+    - -c
+    - auto_explain.log_min_duration=2s
+    - -c
+    - auto_explain.log_analyze=off
     # BOUNDS, EXPLICIT RATHER THAN PACKAGED. Nothing in this chart, the compose
     # file or the image set a limit of any kind before this. The per-role
     # timeouts live in the image's own bootstrap; these four have to be process

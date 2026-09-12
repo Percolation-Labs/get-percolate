@@ -153,6 +153,60 @@ receivers:
             value_column: d
             value_type: int
 
+      # --- what the auth system was asked to do, and how much was refused ---
+      # rbac.v_auth_activity counts rbac.auth_events by kind over the last 24
+      # hours. Nine functions write that table; nothing read it before this.
+      #
+      # AN OPERATOR VIEW, not a caller's read. auth_events carries RLS and is
+      # granted to `authenticated`, so a caller reading the table sees their
+      # OWN sign-ins -- which is the right answer to a different question.
+      # Credential stuffing is a fact about everybody else's rows, so the view
+      # is owner-privileged and granted to nobody; this receiver reaches it
+      # because P8_OTEL_DSN connects as the owner.
+      - sql: "select event_type, last_hour from rbac.v_auth_activity"
+        metrics:
+          - metric_name: percolate.auth.events
+            value_column: last_hour
+            attribute_columns: [event_type]
+            value_type: int
+
+      # THE ONE TO ALERT ON, and it is a separate query for the reason stated
+      # at the top of this file: a query that returns no rows produces no
+      # series. The gauge above is per event_type, so on a healthy stack
+      # `refresh_reuse_detected` is ABSENT -- and an alert cannot fire on an
+      # absent series, which is precisely the series you need to hear about.
+      # This one aggregates with no GROUP BY, so it returns exactly one row of
+      # zeros on a stack where nothing has happened, and the alert is a
+      # threshold on a number that is always there.
+      #
+      # THRESHOLD: reuse > 0. Not a number anybody had to measure -- the event
+      # is only written when a refresh token that was already rotated away is
+      # presented again, and rbac.refresh_session() responds by revoking every
+      # live session for that user. One occurrence is either a stolen token or
+      # a client racing itself, and both are worth a page: in either case
+      # somebody was just signed out of everything.
+      #
+      # `failed` and `ok` are not an alert. A failed-login count means nothing
+      # without the successes beside it -- a hundred failures in an hour is a
+      # botnet on a small deployment and a Monday morning on a large one. They
+      # are here so the ratio is drawable; pick the threshold from your own
+      # traffic, which is the requirement the reuse metric is shaped to avoid.
+      - sql: >-
+          select coalesce(sum(last_hour) filter (where event_type = 'refresh_reuse_detected'), 0) as reuse,
+                 coalesce(sum(last_hour) filter (where event_type = 'login_failed'), 0)          as failed,
+                 coalesce(sum(last_hour) filter (where event_type = 'login_success'), 0)         as ok
+            from rbac.v_auth_activity
+        metrics:
+          - metric_name: percolate.auth.refresh_reuse
+            value_column: reuse
+            value_type: int
+          - metric_name: percolate.auth.login_failed
+            value_column: failed
+            value_type: int
+          - metric_name: percolate.auth.login_success
+            value_column: ok
+            value_type: int
+
 processors:
   batch:
     timeout: 5s

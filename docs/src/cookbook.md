@@ -335,9 +335,9 @@ of `LOCAL`.
 <summary>Why it works — RLS reorders results, it does not only remove rows</summary>
 
 Nordvik appears in both because it belongs to the **shared tier**, and the three
-ports are there for the same reason. That tier is a real row — `org_id` is
-`rbac.shared_org_id()`, the same well-known id in every deployment — rather than
-a null standing in for one. The distinction is the point: a NULL can only mean
+ports are there for the same reason. That tier is a real organisation — a
+well-known row with the same id in every deployment — rather than a null
+standing in for one. The distinction is the point: a NULL can only mean
 *unknown*, so "shared" and "nobody filled this in" would be the same value, and
 a policy cannot tell a deliberate choice from an omission. Without a shared tier
 at all, every tenant would need a private copy of Rotterdam.

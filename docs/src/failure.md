@@ -96,7 +96,8 @@ looks like, so the threshold answers *did enough calls come back* and the
 declared shape answers the rest.
 
 In an evaluation the polarity flips. The fraction of documents an extractor
-cannot parse is the measurement you wanted, so an eval sets `continue_on: failed`
+cannot parse is the measurement you wanted, so an eval sets `continue_on:
+failed`
 with no floor at all.
 
 <p class="related"><strong>Related</strong>
@@ -127,7 +128,8 @@ requeues a task whose lease has gone stale — unclaimed, and behind a backoff.
 Two parts are less obvious than they look.
 
 **A reaped worker cannot publish its result.** If the original worker comes back
-and calls `complete_task`, the lease fence refuses it and the refusal shows up in
+and calls `complete_task`, the lease fence refuses it and the refusal shows up
+in
 `v_lease_violations` rather than disappearing. Without that, a slow worker and a
 dead one are indistinguishable right up until the "dead" one returns and
 overwrites the retry's answer with a stale one.
@@ -159,7 +161,7 @@ when a later step fails.
 ```
 
 <details class="why" markdown="1">
-<summary>Why it works — compensations are ordinary tasks, deliberately</summary>
+<summary>Why it works — compensations are ordinary tasks, by design</summary>
 
 `begin_compensation()` enqueues the compensating steps for completed tasks in
 reverse completion order. Because they are ordinary tasks they inherit retries,
@@ -194,7 +196,8 @@ refreshes it — so the failure keeps resetting the signal that is supposed to
 reveal it. That is worse than having no view, because somebody is watching it
 and drawing the wrong conclusion. `v_stuck_tasks` therefore pairs the two.
 
-The general rule is to pair staleness with progress. "Not moving" and "moving and
+The general rule is to pair staleness with progress. "Not moving" and "moving
+and
 getting nowhere" are different failures, and a monitor that only detects the
 first will report health during the second.
 

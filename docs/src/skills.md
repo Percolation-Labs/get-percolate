@@ -69,7 +69,7 @@ Because the listing is a budget, the table enforces one: `description` plus
 listing cap transcribed rather than invented. A cap enforced by the table is
 the only kind that holds — the alternative is truncation at render time, which
 is invisible, and a skill whose trigger sentence was cut in half is a skill the
-model quietly stops choosing.
+model stops choosing, with nothing to show that it has.
 
 `when_to_use` is separate from `description` because it answers a different
 question and because it is the sentence a semantic match should hit: a user's
@@ -116,7 +116,7 @@ when the turn calls for it. Attaching one more capability costs a line, not a
 page.
 
 What we are trying to do here is give an agent eleven procedures it may use,
-while its prompt carries the text of almost none of them.
+while its prompt carries the text of two.
 {: .goal }
 
 Eleven skills is the shape this is sized for. This block is about
@@ -127,11 +127,12 @@ The pins come after the binding, further down.
 
 Two things about `skills` and `context_policy.skills.always`, because they look
 alike and are not. **A pin is validated**: `pins skill(s) p8ql-graph-walk, ...
-which do not exist` rather than an agent quietly carrying a reference to
-nothing. **`always` is not** — the two names below do not exist yet, this is
-accepted, and each resolves to nothing the agent silently never receives, which
-is exactly what the refusal one field to the left exists to prevent. Worth
-knowing before you put something load-bearing in `always`.
+which do not exist` rather than an agent carrying a reference to
+nothing and saying so nowhere. **`always` is not** — the two names below do not
+exist yet, this is
+accepted, and each resolves to nothing the agent never receives and is never
+told about, which is exactly what the refusal one field to the left exists to
+prevent. Check that before you put something you depend on in `always`.
 
 <!-- run: sql -->
 ```sql
@@ -185,12 +186,13 @@ many fragments exist.
 In the fixture above a listing averages 218 characters against a body's 400,
 so the surface term grows about 1.8× more slowly. **That ratio is the whole
 game, and 1.8 is a floor rather than a typical figure** — these fragments are
-deliberately terse. A real procedure runs to two or five thousand characters
+terse for the example's sake. A real procedure runs to two or five thousand
+characters
 against the same ~220-character listing, which is 10× to 25×. The saving is
 proportional to how much you have to say.
 
 The one thing you pay unconditionally is the index: `N` listing lines, every
-turn. That is the honest cost of this shape, and it is why the index is a
+turn. That is the cost of this shape, and it is why the index is a
 decision rather than a freebie — [what the numbers say](#what-the-numbers-say)
 is where that decision is argued, and where the listing turns out to be doing
 most of the work.
@@ -207,7 +209,8 @@ What we are trying to do here is add one fragment to an agent without knowing,
 or overwriting, the rest of the list it already carries.
 {: .goal }
 
-The skill written above declares `requires_tools: ["harbour-query"]`, and attaching a
+The skill written above declares `requires_tools: ["harbour-query"]`, and
+attaching a
 skill to an agent that does not bind the server it names is **refused**:
 
 ```
@@ -249,7 +252,7 @@ read-modify-write cannot</summary>
 
 Without this, adding one fragment means reading `agents.skills`, appending, and
 sending the whole array back. Two clients doing that at once both read the same
-array and the second write silently discards the first — no error, no conflict,
+array and the second write discards the first — no error, no conflict,
 and an agent missing an instruction somebody watched themselves add.
 
 <div class="evidence" markdown="1">
@@ -336,7 +339,8 @@ of dozens.
 against the listings of the attached surface, and expands what clears
 `min_score` under the `max_chars` budget. `scope` widens that ranking beyond
 what the agent attached, which is discovery rather than capability — a
-different claim, so a different key. No round trip and no tool call — the model never
+different claim, so a different key. No round trip and no tool call — the model
+never
 has to know skills exist. When the budget is reached the remaining matches fall
 back to their index lines and the run records which ones, because a silent
 truncation is the failure the listing cap exists to prevent one level up.
@@ -347,7 +351,7 @@ by how large the population is:
 `load_skill(name)` is **one tool** covering the attached surface. The index has
 already named those fragments, so the model does not need to search for them —
 it needs a way to ask, and one tool with one argument is that. Keeping it to one
-is deliberate: every tool an agent is offered costs its name, description and
+has a reason: every tool an agent is offered costs its name, description and
 schema in every prompt, and a design that answers "how do we expose this?" with
 "another tool" has usually not asked the question yet.
 
@@ -356,7 +360,8 @@ could never list — a thousand rows will not fit in a prompt as a thousand
 listing lines. Those become **deferred tools**: one per fragment, hidden from
 the model entirely, surfaced by a search when a request calls for one. The
 reference implementation builds this with
-[pydantic-ai's `defer_loading()`](https://pydantic.dev/docs/ai/tools-toolsets/tools-advanced/),
+[pydantic-ai's
+`defer_loading()`](https://pydantic.dev/docs/ai/tools-toolsets/tools-advanced/),
 used as-is, and it is the same trade this page has been making all along —
 a listing is cheap, a body is not — in the framework's own vocabulary. An agent
 that permits no discovery carries none of it.
@@ -373,7 +378,7 @@ body out of the database.
 
 `sticky` is why instructions do not churn. Matching per turn against the latest
 message, on its own, means a fragment expanded on turn three is gone on turn
-four when the subject moves — so a model told to cite its sources quietly stops
+four when the subject moves — so a model told to cite its sources stops
 being told, and nothing reports it. With stickiness the set is a union within a
 branch: later matches are added, never swapped in, so instructions are
 monotonic and the accumulation is bounded by `max_chars` rather than by the
@@ -401,7 +406,7 @@ tool surface  1 (load_skill) + 10 deferred (hidden until searched)
 </div>
 
 <details class="why" markdown="1">
-<summary>Why it works — and the limit worth knowing before you rely on it</summary>
+<summary>Why it works — and the limit to check before you rely on it</summary>
 
 The second call in that trace is the one to look at. `extraction-cost-cascade`
 was never attached to the agent, never appeared in its index, and was never in
@@ -454,8 +459,11 @@ select s.name, round((r->>'score')::numeric, 3) as score
 </div>
 
 That is the lexical half, which needs no model. The semantic half is the same
-join over `aiq.semantic_in('skills', :'query_vector', 'text-embedding-3-small', 5)`,
-with the vector set as in [the P8QL grammar](grammar-p8ql.html#the-three-search-modes-and-why-there-are-three) — and at
+join over `aiq.semantic_in('skills', :'query_vector', 'text-embedding-3-small',
+5)`,
+with the vector set as in [the P8QL
+grammar](grammar-p8ql.html#the-three-search-modes-and-why-there-are-three) — and
+at
 @@core@@ it returns no rows, because nothing shipped embeds a skill's listing
 yet. The embedding space is registered for skills; filling it is the reference
 implementation's job today.
@@ -481,7 +489,7 @@ rounded away.
 
 The text that gets embedded is a generated column, so the text a matcher
 indexes and the text a reader sees cannot drift apart. That turned out to have
-a consequence worth knowing: a generated column may not reference another
+a consequence: a generated column may not reference another
 generated column, so the full-text vector is generated from the base columns
 directly rather than from the generated listing.
 
@@ -517,7 +525,8 @@ select agentic.apply_plugin($j${
 the manifest is removed — that is what makes a plugin removable, and it is why
 the name above is `harbour-extras` rather than `harbour`. Applying a manifest
 under the sample's own name would delete the skill the sample ships and rewrite
-its agent, silently, on a database the install guide has just told you to load.
+its agent, reporting neither, on a database the install guide has just told you
+to load.
 Measured: `harbour-house-style` gone, `harbourmaster`'s skills replaced, the
 plugin row left reading version 0.2.0. Use a name of your own unless you mean to
 replace the whole plugin.
@@ -554,7 +563,7 @@ The half that matters is the prune. Without it, an agent dropped from the
 document stays installed, still resolvable by name, still runnable, and nothing
 on disk describes it any more. So a row carrying this plugin's name and absent
 from this manifest is removed, and the removals come back in the result rather
-than happening quietly. That makes an absent section loud on purpose:
+than going unreported. That makes an absent section loud:
 `{"name": "harbour"}` declares no agents and therefore removes every agent
 `harbour` installed, which is what makes uninstall expressible without a second
 function.
@@ -611,7 +620,7 @@ design, which is what sets the defaults: `index` is `bound` and `top_k` is 2
 rather than 3. **Index everything, expand few.**
 
 The index is also the one cost that grows with the surface — one line per
-attached fragment, every turn — and it is worth knowing where that turns.
+attached fragment, every turn — and it is worth measuring where that turns.
 Listing the unexpanded fragments beats expanding all of them exactly when a
 body is longer than its own listing. A fragment terser than its own description
 should be always-on rather than lazy: cheaper to have than to advertise.
@@ -630,7 +639,7 @@ resolution"* — would have scored none of that.
 ## Why a row rather than a file
 
 Everything on this page exists in the standard already. What changes when the
-substrate is a database rather than a directory is worth stating plainly,
+substrate is a database rather than a directory is stated here,
 because it is the only reason to have done it differently.
 
 <details class="why" markdown="1">
@@ -685,7 +694,8 @@ database and a live model, not illustrations.
 What the Agent Runtime does with those rows is the gap. The runtime in
 percolate-core @@core@@ builds a prompt from the agent's `system_prompt` and a
 context block, and reads neither `agents.skills` nor `context_policy.skills`.
-The three paths in [what the prompt becomes](#what-the-prompt-becomes-and-who-decides)
+The three paths in [what the prompt
+becomes](#what-the-prompt-becomes-and-who-decides)
 are built as reference implementations beside the specification: composed and
 matched expansion as one script, and the fetched path as another, which does
 use pydantic-ai's `defer_loading()` for the fragments an agent may reach but not

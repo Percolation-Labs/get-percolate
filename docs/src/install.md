@@ -41,7 +41,7 @@ those are one image under three commands, so a real deployment usually runs
 fewer — often just a worker, since `sql` and `p8ql` steps need no process at
 all — or many more, a pool per queue. The one pairing not to collapse is the two
 workers: `--queue` takes a single queue, so merging them means choosing which of
-outbound calls and ingestion silently stops happening.
+outbound calls and ingestion stops happening, with nothing to say so.
 
 The db image is **pinned to a version**, so `docker compose up -d` gives every
 reader the same database rather than whatever their machine last pulled.
@@ -52,7 +52,7 @@ Updating therefore means changing the tag, not pulling a moving one:
 docker compose up -d
 ```
 
-That is the deliberate half of a trade. A floating `:19` makes "works on my
+That is the chosen half of a trade. A floating `:19` makes "works on my
 machine" literally true and unfalsifiable: a stale local copy serves an older
 extension while every file in the repository says otherwise, and the bug report
 it produces is about a defect that is already fixed. `ci/versions.py` enforces
@@ -140,7 +140,8 @@ files carry no such record.
 to read</summary>
 
 Two images and nothing to compile. The bootstrap is baked into the image, so the
-database installs itself the first time it starts — there is no init directory to
+database installs itself the first time it starts — there is no init directory
+to
 fetch alongside the compose file and no ordering for you to get right.
 
 `missing` is what to look at rather than a version string. The compiled parser
@@ -202,8 +203,10 @@ generate</summary>
 
 The chart is an OCI artefact, so there is no chart repository, no `index.yaml`
 and no DNS involved, and each of those is a thing that can break on its own.
-`helm repo add percolate https://percolation-labs.github.io/get-percolate/charts`
-works too if you prefer a classic repo, and Flux and Argo can both point straight
+`helm repo add percolate
+https://percolation-labs.github.io/get-percolate/charts`
+works too if you prefer a classic repo, and Flux and Argo can both point
+straight
 at `charts/percolate` in git with nothing published at all.
 
 The four passwords are required and the chart will not generate them for you,
@@ -251,14 +254,17 @@ different kinds of thing</summary>
 | `percolate` | the whole system — schemas, tables, functions, RLS | pure SQL, one file, the same on every platform |
 | `percolate_parser` | the P8QL and YAML compilers | a Rust `.so`, prebuilt per platform |
 
-A shared library is compiled against one ABI, so there is no portable form of the
+A shared library is compiled against one ABI, so there is no portable form of
+the
 parser and we build it per platform instead. `install.sh` reads your
 `pg_config` — the only thing that knows where this particular Postgres keeps its
 extensions — checks the major version, and puts both files where they belong.
 
 We publish parser builds for `linux/amd64`, `linux/arm64` and `macos/arm64`. On
-anything else the script installs the SQL extension, tells you that `define_yaml`
-and `p8ql:` steps will not resolve until the parser is built, and exits non-zero,
+anything else the script installs the SQL extension, tells you that
+`define_yaml`
+and `p8ql:` steps will not resolve until the parser is built, and exits
+non-zero,
 so a half install does not look like a successful one.
 
 `bootstrap.sql` has two halves. As the superuser it creates the cluster roles
@@ -301,9 +307,10 @@ than as a superuser. The compose image and the Helm chart do all of this
 themselves.
 
 <details class="why" markdown="1">
-<summary>Why it works — and what silently does not happen without it</summary>
+<summary>Why it works — and what does not happen without it, unreported</summary>
 
-`pg_cron` runs as a background worker, so there is no `CREATE EXTENSION` that can
+`pg_cron` runs as a background worker, so there is no `CREATE EXTENSION` that
+can
 add it after startup. Without it, scheduled workflows never fire, the stale-task
 reaper never runs so a crashed worker's tasks are never recovered, and every
 `timer` step waits forever. None of those produce an error; they produce a
@@ -327,7 +334,7 @@ job active.
 ## The first user, and a token
 
 A fresh install has **no users, no roles and no permissions** — those tables are
-empty on purpose, because the alternative is a default administrator with a
+empty, because the alternative is a default administrator with a
 known password. Nothing over HTTP works until you create one: PostgREST answers
 `permission denied for function upsert_agent` with a 401, and the agent runtime
 answers `a verified bearer token is required`.
@@ -423,7 +430,7 @@ to `web_anon` or `authenticated`, so it does not exist over PostgREST; like the
 It is also why the SQL on the [agents](agents.html) page works from `psql`
 before any of this. `agentic.may_author` permits the call when
 `rbac.current_user_id()` is null and the session is a privileged local one —
-the migration path, deliberately — so `psql` is authoring as the database owner,
+the migration path — so `psql` is authoring as the database owner,
 not as a user. The moment the same call arrives over HTTP there is a JWT and
 therefore a user, and the permission is checked.
 
@@ -441,7 +448,7 @@ anonymous caller sees instead</a></p>
 
 ## The sample, which nothing loads for you
 
-A fresh install is **empty**, and almost every worked example in these pages
+A fresh install is **empty**, and every worked example in these pages
 reads data. There is a sample for that, and loading it is a step you take
 rather than something a container did while you were not looking.
 
@@ -522,7 +529,8 @@ everything else, and `LOOKUP`, `FUZZY`, `GRAPH` and `TEXT` all work without it
 the key, the documents are registered and their embeddings failed; a second
 load uploads them again and those copies fail to parse, so remove the first
 ones before loading again — the statement is in
-[the sample's README](https://github.com/Percolation-Labs/get-percolate/blob/main/samples/harbour/README.md#loading-it-twice).
+[the sample's
+README](https://github.com/Percolation-Labs/get-percolate/blob/main/samples/harbour/README.md#loading-it-twice).
 
 <details class="why" markdown="1">
 <summary>Why it works — a directory of the documents you would have written
@@ -539,13 +547,13 @@ workflow documents and `documents/` is markdown. Reading it teaches the
 formats; a `.sql` dump would have hidden all of them behind four hundred
 INSERTs.
 
-**The vectors are deliberately not in the files.** An earlier version of this
+**The vectors are not in the files.** An earlier version of this
 fixture shipped literal four-dimension vectors so it would load with nothing
 running. It reproduced beautifully and taught the wrong thing: a reader who
 copied the pattern had a corpus no model had ever seen and rankings that meant
 nothing. Here the documents are embedded by the same pipeline yours will be, so
 what you search is what a model produced — and the sample costs one embedding
-call per document, which is the honest price of retrieval rather than an
+call per document, which is the price of retrieval rather than an
 inconvenience.
 
 Nothing loads on first boot for the same reason. Rows that appear because a

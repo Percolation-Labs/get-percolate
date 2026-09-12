@@ -137,7 +137,7 @@ say so:
                     as tenant <a> -> 200, the bytes
 ```
 
-The wrong tenant and the missing file are deliberately indistinguishable: a
+The wrong tenant and the missing file are indistinguishable, by design: a
 404 that meant "exists, not yours" would confirm the resource id.
 
 `embed` retrying is what a keyless install looks like: parsing and chunking need
@@ -149,7 +149,8 @@ from [install](install.html#the-first-user-and-a-token).
 ## What we do with each format
 
 The family comes from the content type and falls back to the extension. We never
-take `application/octet-stream` as a family, since that is what an uploader sends
+take `application/octet-stream` as a family, since that is what an uploader
+sends
 when it does not know.
 
 | Format | What reads it |
@@ -376,11 +377,13 @@ which means changing what it looks for is an update rather than an edit to every
 pipeline that uses it. `aiq.install_structure_null()` writes the default one: a
 system prompt asking for what the document names and how those things connect,
 and a JSON Schema whose relation field is an enum built from
-`aiq.graph_vocabulary`. The vocabulary is closed, so an extractor cannot invent a
+`aiq.graph_vocabulary`. The vocabulary is closed, so an extractor cannot invent
+a
 relation the graph then has to carry forever.
 
 The five uploaded files produced about 90 soft nodes and 70 extracted edges over
-13 relations. Those counts move between runs, since a model is doing the reading.
+13 relations. Those counts move between runs, since a model is doing the
+reading.
 What does not move is the provenance above.
 
 <p class="related"><strong>Related</strong>
@@ -393,7 +396,8 @@ fan-in parses a string</a></p>
 <details class="why" markdown="1">
 <summary>Why it works — two things to know before you turn it on</summary>
 
-**It costs a completion per window**, where the embedding branch costs a fraction
+**It costs a completion per window**, where the embedding branch costs a
+fraction
 of a cent per document, and that is why the flag defaults to off. On five
 documents it was a few cents; on a corpus it is the line item to watch.
 
@@ -412,7 +416,8 @@ which also tells you when the vocabulary is too small for your corpus.
 Nothing resolves a soft node yet. Extraction lands names, so `Ravensworth` and
 `Ravensworth Precision` are two nodes until something decides they are one, and
 `aiq.promote_soft_node` is the function that would do it and is called by
-nothing. The graph answers *what did the documents name, and how did they connect
+nothing. The graph answers *what did the documents name, and how did they
+connect
 it* rather than *what is out there*.
 
 <p class="related"><strong>Related</strong>
@@ -439,9 +444,11 @@ Three of these exist because the alternative is a pipeline that reports success.
 
 **Uploading a file whose title matches one already there fails to ingest.** A
 resource projects into the node registry under `coalesce(title, uri, id)` and
-those keys are unique, so v2 of `report.pdf` raises inside the projection and the
+those keys are unique, so v2 of `report.pdf` raises inside the projection and
+the
 parse step fails for a reason that has nothing to do with parsing. This is the
-most ordinary thing a user does. The fix is a decision about identity rather than
+most ordinary thing a user does. The fix is a decision about identity rather
+than
 about ingestion — either the projection tolerates a taken name, or document keys
 stop being titles — and until it is made, give the second upload a different
 title.
@@ -462,7 +469,8 @@ The rest of the gaps:
   no faster than the per-chunk shape it replaced.
 
 Five formats — markdown, PDF, DOCX, WAV and CSV — were uploaded through a live
-stack with both indexes on, and four questions were answered afterwards from four
+stack with both indexes on, and four questions were answered afterwards from
+four
 different formats, with the CSV answered by SQL over Parquet rather than by
 retrieval. Everything above is that run: the chunk counts, the one request for
 eight chunks, the edges above and the relation the model invented.

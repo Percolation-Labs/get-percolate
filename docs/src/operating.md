@@ -58,7 +58,8 @@ table — a task that vanished during backoff would make the autoscaler
 under-provision exactly while work was pending.
 
 `minReplicas: 0` is safe here: nothing ready and nothing running, no pod. It
-depends on the reaper's clock ([pg_cron](install.html#pg_cron-if-you-want-schedules)),
+depends on the reaper's clock
+([pg_cron](install.html#pg_cron-if-you-want-schedules)),
 because a task left `running` by a pod that died counts until
 `reap_stale_tasks()` returns it to `ready`.
 
@@ -136,7 +137,8 @@ during the second.
 
 The views above answer *what is stuck*. They cannot answer *why this one answer
 took eleven seconds*, because that time is spread across a model call, four tool
-calls and two delegated sub-agents, and the rows record each of those separately.
+calls and two delegated sub-agents, and the rows record each of those
+separately.
 A trace is the shape that puts them back together.
 
 The agent runtime speaks OpenTelemetry, and it is **off unless you point it
@@ -154,7 +156,8 @@ export OTEL_SERVICE_NAME=percolate-agent-runtime
 Install the exporter with the extra: `pip install 'percolate-core[agent,otel]'`.
 
 What arrives is mostly not ours. pydantic-ai emits the
-[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+[GenAI semantic
+conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 for every model request and tool call — `gen_ai.request.model`,
 `gen_ai.operation.name`, token counts, `gen_ai.conversation.id`. Percolate adds
 one span around the turn carrying the ids that join a trace to a row:
@@ -188,7 +191,7 @@ The shape above is a real capture, not a sketch: it is where the 775ms went.
 **Prompts and completions are not exported by default.** `include_content` puts
 message bodies in span attributes, which walks them straight out of the
 database's RLS and into whatever you pointed OTLP at. `P8_OTEL_CONTENT=1` opens
-that deliberately, for a debugging session, on a backend you trust.
+that as a considered choice, for a debugging session, on a backend you trust.
 
 ### Turning it on
 
@@ -214,7 +217,7 @@ reads the views below as metrics, exporting OTLP to whatever `P8_OTLP_BACKEND`
 names. Nothing in its config mentions SigNoz — point it at Grafana, Datadog,
 Honeycomb or a collector you already run and none of the queries change.
 
-SigNoz itself is deliberately **not** vendored here. It is seven services, five
+SigNoz itself is **not** vendored here. It is seven services, five
 ClickHouse config files and a startup download; copying that in would mean this
 repository owning their upgrade path. `signoz.sh` fetches their own compose at a
 pinned ref and runs it unmodified.
@@ -226,10 +229,10 @@ pinned ref and runs it unmodified.
 SigNoz's collector cannot register and *refuses every OTLP connection*. The
 backend logs `cannot create agent without orgId`; the sender sees `Connection
 reset by peer`, and a plain `curl` at the ingest port fails identically — so it
-reads as a network fault on your side rather than a setup step on theirs. The
+looks like a network fault on your side rather than a setup step on theirs. The
 script POSTs the registration, and fails loudly rather than shrugging, because
 the first version of it reported "already set up" for a password the policy had
-rejected and left the whole thing silently broken.
+rejected and left the whole thing broken with nothing to show it.
 
 That policy: 12+ characters, with an uppercase, a lowercase, a digit and a
 symbol. A rejection arrives as a bare `400`.
@@ -307,8 +310,10 @@ strconv.Atoi: parsing "19beta3 (Debian 19~beta3-1": invalid syntax
 ```
 
 Nothing is wrong with your configuration — the receiver cannot read the version
-string. `sqlquery` is unaffected because it runs only the SQL you gave it, and it
-reports percolate's own state rather than the server's internal statistics, which
+string. `sqlquery` is unaffected because it runs only the SQL you gave it, and
+it
+reports percolate's own state rather than the server's internal statistics,
+which
 is what you wanted from a percolate dashboard anyway. Revisit at a stable 19.
 
 ## Work nobody can claim
@@ -485,13 +490,17 @@ and the graph. Two things are not covered by it.
 <summary>Why it works — and where the reconciliation has to happen outside</summary>
 
 **Object storage.** Artefacts and uploaded files are pointers in `content.files`
-and the bytes are in your bucket. `content.check_drift()` reports the half of the
-reconciliation the database can see — *no resource points at this file* — and the
-other half is a bucket listing compared against it, which nothing here can do for
+and the bytes are in your bucket. `content.check_drift()` reports the half of
+the
+reconciliation the database can see — *no resource points at this file* — and
+the
+other half is a bucket listing compared against it, which nothing here can do
+for
 you.
 
 **Secrets.** `credential_ref` is a name resolved from the worker's environment.
-That is exactly what makes a dump safe to hand around, and also why restoring one
+That is exactly what makes a dump safe to hand around, and also why restoring
+one
 into an environment without those names gives you tasks that fail at dispatch
 rather than tasks that work.
 
@@ -523,9 +532,10 @@ psql -U postgres -d percolate_restored -f data.sql
 <details class="why" markdown="1">
 <summary>Why the extension has to go in first, and what a restore does not carry</summary>
 
-**Superuser is refused on purpose.** A superuser bypasses row-level security
+**Superuser is refused.** A superuser bypasses row-level security
 unconditionally, so an extension installed by one would leave every
-owner-privileged view returning all rows to every caller. `bootstrap.sql` creates
+owner-privileged view returning all rows to every caller. `bootstrap.sql`
+creates
 the roles and installs as `app_owner`, which is the same path a first install
 takes — so a restored database is a normal one, not a special case.
 

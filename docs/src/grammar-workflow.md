@@ -1,7 +1,8 @@
 # The workflow grammar
 
 A workflow is a YAML document with a name and a list of steps, and each step
-carries exactly one action. This page is the whole vocabulary at version @@extension@@ —
+carries exactly one action. This page is the whole vocabulary at version
+@@extension@@ —
 every key the compiler accepts, what each one compiles to, and who executes the
 result.
 {: .lede }
@@ -26,9 +27,10 @@ steps:
     <exactly one action, from the table below>
 ```
 
-Unknown keys are refused by name rather than ignored, which is `deny_unknown_fields`
+Unknown keys are refused by name rather than ignored, which is
+`deny_unknown_fields`
 doing its job and is why a typo in a step key is a compile error rather than a
-silently missing feature.
+missing feature that reports nothing.
 
 ## The nine actions
 
@@ -99,7 +101,7 @@ straight out of `workflow.tasks.output` rather than having to be recomputed.
 One thing to know lives here, and it is the ninth P8QL mode. A `p8ql:` step
 holding *plain SQL* executes, and inside a step the invoker is the **engine
 owner** — which owns every table and is not subject to their row-level
-security. So such a step reads across tenants. It is a deliberate beta trade and
+security. So such a step reads across tenants. It is a beta trade and
 `percolate.sql_policy = 'registered'` refuses it from @@extension_min@@ onward;
 [the cookbook](cookbook.html#6-a-workflow-with-nothing-running) has the whole of
 it.
@@ -227,7 +229,8 @@ select workflow.register_step_function(
 
 The registry stopped being a gate and kept the jobs it was always better at. A
 registered function carries its own `timeout_ms`, and its description is the
-same text a bound tool takes into a model's context — so `workflow.step_functions`
+same text a bound tool takes into a model's context — so
+`workflow.step_functions`
 is the answer to *what can a workflow cause to run* for the operations you chose
 to bless. Under `sql_policy = 'registered'` it is also the whole surface.
 
@@ -293,7 +296,7 @@ not need an opinion.
 `credential_ref` is a **name**, resolved by the worker from its own environment.
 A dump of `workflow.tasks` therefore never contains a secret and a task stays
 inspectable and replayable. `{{env.X}}` works the same way and is resolved
-**only by the worker** — a `sql:` or `p8ql:` step cannot read it, deliberately,
+**only by the worker** — a `sql:` or `p8ql:` step cannot read it,
 because the database has no business knowing the deployment's environment.
 
 `mode: async` returns immediately and lets the callee call `complete_task` when
@@ -328,7 +331,8 @@ stays on the search, so `needs: [retrieve]` and `{{steps.retrieve.result}}` mean
 what they look like and nothing downstream is rewired — the embed is a hidden
 *predecessor*, not a replacement.
 
-You never write the URL. It comes from `aiq.embedding_models`, and `USING <model>`
+You never write the URL. It comes from `aiq.embedding_models`, and `USING
+<model>`
 is written into the query if it was not there and refused if it disagrees with
 the embed step's model. A vector from one space ranked against another is not an
 error at runtime, only a meaningless number, so it is made a compile error
@@ -399,7 +403,8 @@ retrying cannot help, and here the same prompt genuinely can conform next time.
 It is a shape check and not JSON Schema. Types including `integer`, `required`,
 `properties`, `enum`, `items` and `additionalProperties: false` are supported;
 `$ref`, `allOf`/`anyOf`/`oneOf`, `pattern`, `format` and numeric bounds are not,
-and are named here rather than silently ignored. Declaring `output_schema` on a
+and are named here rather than ignored without a word. Declaring `output_schema`
+on a
 `sql` or `matrix` step is refused, because the check is for output this engine
 did not produce.
 
@@ -436,7 +441,8 @@ nothing outside the database deciding how many.
 <summary>Why it works — the children are inserted by the statement that completes
 the parent</summary>
 
-There is no window in which `extract` is `succeeded` and the children do not exist
+There is no window in which `extract` is `succeeded` and the children do not
+exist
 yet. A controller-based fan-out has that window, and a controller that dies
 inside it strands the fan-out with nothing to resume from.
 
@@ -460,9 +466,10 @@ is the matrix task and `workflow.matrix_outputs(task_id)` pairs every child with
 its row, status and output. Five hundred extractions are for aggregating inside
 your own function, not for passing through a step argument that caps at 64KB.
 
-One sharp edge worth knowing before you rely on it: a matrix *template* cannot
+One sharp edge to check before you rely on it: a matrix *template* cannot
 declare `output_schema`. The compiler accepts `queue`, `rate_key`, `rest`,
-`embed`, `agent`, `work`, `input`, `session` and `jsonpath` inside a template and
+`embed`, `agent`, `work`, `input`, `session` and `jsonpath` inside a template
+and
 not that, so a fan-out child lands the model's answer as a JSON string and your
 fan-in parses it.
 
@@ -558,7 +565,8 @@ The failure was in this collection's own headline example. A step passing
 `'SEARCH "{{run.question}}" FROM chunks LIMIT 3'` is not a whole-string
 reference, so the substitution happened nowhere, the lexical half searched for
 the literal text `{{run.question}}`, every lexical rank came back null, and the
-fusion quietly degraded to semantic-only. It returned rows. It looked like it
+fusion degraded to semantic-only, reporting nothing. It returned rows. It looked
+like it
 worked.
 
 Typing `{{run.id}}` when you meant `{{run.$id}}` raises with the spelling you

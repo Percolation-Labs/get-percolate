@@ -231,7 +231,12 @@ jobs:
         # Outside the build step, because it has to happen on a cache hit too.
         run: echo "PG_CONFIG=$HOME/pg/bin/pg_config" >> "$GITHUB_ENV"
 
-      - uses: dtolnay/rust-toolchain@stable
+      # PINNED BY COMMIT. `@stable` is a BRANCH, so this step installed
+      # whatever that branch pointed at on the morning of the build -- the one
+      # ref in these workflows that can change under a rerun of an old commit.
+      # The toolchain it selects is still Rust stable; what is pinned is the
+      # action. Dependabot raises the bump (.github/dependabot.yml).
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87   # stable
         if: runner.os == 'macOS'
 
       - name: Cache cargo-pgrx and the crate registry

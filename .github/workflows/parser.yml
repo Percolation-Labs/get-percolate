@@ -59,7 +59,7 @@ jobs:
     # Architecture-independent, so it is built once and not in the matrix.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
@@ -78,7 +78,7 @@ jobs:
         # to drift. build-sql.py also refuses to build a spec file that defines
         # the same function twice, which is a real thing that happened.
         run: python3 extension/percolate/build-sql.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sql
           path: |
@@ -97,7 +97,7 @@ jobs:
           - {os: macos-14,         platform: macos-arm64, docker: ''}
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
@@ -132,7 +132,7 @@ jobs:
       # inside a container, but its output lands on the runner's disk.
       - name: Cache the pgrx builder image and the crate build
         if: runner.os == 'Linux'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             extension/percolate_parser/target
@@ -208,7 +208,7 @@ jobs:
       - name: Cache the built server
         if: runner.os == 'macOS'
         id: pgcache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/pg
           key: pg-src-${{ runner.os }}-${{ steps.pins.outputs.pg }}
@@ -241,7 +241,7 @@ jobs:
 
       - name: Cache cargo-pgrx and the crate registry
         if: runner.os == 'macOS'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/cargo-pgrx
@@ -297,7 +297,7 @@ jobs:
             -exec cp {} out/ \;
           ls -la out/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: parser-${{ matrix.platform }}
           path: extension/percolate_parser/out/*
@@ -307,12 +307,12 @@ jobs:
     runs-on: ubuntu-latest
     if: inputs.version != ''
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: {path: assets}
       # bootstrap.sql goes out WITH the release. install.sh asks the release
       # for it first and falls back to main, so a release without it handed a
       # pinned VERSION= install whatever bootstrap.sql main had that day.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: {path: repo, sparse-checkout: bootstrap.sql, sparse-checkout-cone-mode: false}
       - name: Flatten and check the manifest
         env: {V: "${{ inputs.version }}"}
@@ -337,7 +337,7 @@ jobs:
             [ "$have" = "$V" ] || {
               echo "::error::$c.control says $have, releasing $V" >&2; exit 1; }
           done
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ inputs.version }}
           name: Extension v${{ inputs.version }}
@@ -403,8 +403,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: "3.12"}   # tomllib is stdlib from 3.11
 
       - name: Point the docs at ${{ inputs.version }}

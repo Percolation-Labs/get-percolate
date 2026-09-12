@@ -73,7 +73,7 @@ postgres:
     # Pinned, like the compose file, and for its reason: a bare "19" moves
     # under an existing install and IfNotPresent keeps whatever each node last
     # pulled. ci/versions.py holds it to versions.toml's extension.
-    tag: "19-0.1.6"
+    tag: "19-0.2.0"
     pullPolicy: IfNotPresent
   user: p8
   database: percolate

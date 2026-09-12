@@ -38,12 +38,72 @@ services:
     # must name the database the jobs run in, and it can only be one; leaving
     # it at the default ('postgres') is the usual reason a correctly created
     # schedule never fires.
+    #
+    # pg_stat_statements AND auto_explain are preloaded beside it, and the
+    # deferral they overturn is written down rather than quietly dropped.
+    # p8-subsystems meta/postgres-manifest.md:44 held pg_stat_statements back
+    # until "there's something to tune, not ahead of time". What overturns it:
+    #
+    #   * NO STATEMENT IN THIS DEPLOYMENT IS TIMED. The signals that exist
+    #     are about the workload, not about SQL: tasks stamp completed_at,
+    #     v_backlog reports how long the oldest has waited, and
+    #     workflow.check_hot_paths() asks whether the claim path is
+    #     index-backed at depth -- a question about the PLAN's shape, not
+    #     about how long anything took. So "the database got slower" has no
+    #     number attached to it and a regression arrives as a support ticket.
+    #     That is a fact about the tree rather than a projection, and it is
+    #     the argument.
+    #   * TWO CORRECT PREDICATES CAN DIFFER BY 58x AND THE PLAN SAYS NOTHING.
+    #     p8-subsystems meta/postmortems/2026-09-04-resource-scoping.md:81-82:
+    #     360.574 ms against 6.205 ms for the same RLS read, measured over
+    #     52,000 rows in one session on a development PG19. Both predicates
+    #     were right; one was hoistable. Without a timing signal the slow one
+    #     ships and nobody knows for a release.
+    #
+    # WHAT IS DELIBERATELY NOT CITED HERE, because an earlier draft of this
+    # comment did cite it: the figures in p8-subsystems
+    # specs/ai-query-layer/graph-algorithms.md -- the 4,527 ms depth-3 p95 and
+    # the concurrency table. That document is a research article. Its own
+    # header says every figure comes from dev/scale/graph/, a heavy-tailed
+    # synthetic fixture, one backend, no RLS filtering, and its status line
+    # describes ten proposed algorithms against seven shipped. Those numbers
+    # are evidence about a harness, not about a running system, and reading
+    # them as production latency is the error #139 exists to record. A number
+    # is not evidence until you know what it is a number OF.
+    #
+    # Both modules are contrib and already in the base image, so no new
+    # dependency. pg_stat_statements needs a second half the preload does not
+    # give it: the VIEW exists only in a database that ran CREATE EXTENSION,
+    # and preloading without it buys the collection overhead and `relation
+    # "pg_stat_statements" does not exist`. That statement is in the image's
+    # superuser step (p8-subsystems dev/image-init/00-superuser.sql) as of the
+    # change this file ships with -- so an image built BEFORE it, pointed at
+    # this compose file, collects into a view its database has not got.
+    # auto_explain needs no extension; it only writes to the log.
     command:
       - postgres
       - -c
-      - shared_preload_libraries=pg_cron
+      - shared_preload_libraries=pg_cron,pg_stat_statements,auto_explain
       - -c
       - cron.database_name=percolate
+      # 2s, and the number is the point rather than the setting. It is derived
+      # from a bound this estate already declares rather than from a
+      # measurement: the image gives `authenticator` -- the role every REST
+      # caller arrives on -- a 30s statement_timeout, described there as
+      # "longer than any interactive query should need". 2s is a fifteenth of
+      # that, so a plan reaching the log is a statement well outside what the
+      # deployment already calls normal, and still an order of magnitude short
+      # of being killed. Lower it and the log becomes the thing nobody reads;
+      # raise it and the only statements you see are the ones about to die
+      # anyway.
+      #
+      # log_analyze=off because ANALYZE means EXECUTING the plan to instrument
+      # it, on a statement already established as slow. The estimated plan
+      # names the wrong node; the actual one costs a second run to confirm it.
+      - -c
+      - auto_explain.log_min_duration=2s
+      - -c
+      - auto_explain.log_analyze=off
       # BOUNDS, EXPLICIT RATHER THAN PACKAGED. Nothing in this file, the chart
       # or the image set a single limit before this: no statement_timeout, no
       # max_connections, no work_mem. A query from an agent could run until

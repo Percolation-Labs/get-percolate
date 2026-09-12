@@ -116,6 +116,7 @@ missing-bucket failure in full</a> ·
 | `workflow.encoding_drift()` | a producer returning double-encoded JSON |
 | `content.check_drift()` | files no resource points at; resources never chunked |
 | `workflow.compiler_capabilities()` | the installed parser versus the SQL schema |
+| `rbac.v_auth_activity` | sign-ins, resets and role grants by kind over the last day — **and refresh-token reuse, which is theft** |
 
 <details class="why" markdown="1">
 <summary>Why it works — the first one has a lesson worth generalising</summary>
@@ -266,10 +267,40 @@ tables: there is no second definition of backlog to drift from the first.
 | `percolate.db.connections_in_use`, `.connection_headroom` | `workflow.v_capacity` |
 | `percolate.agentic.runs` | `agentic.runs`, by status |
 | `percolate.agentic.max_delegation_depth` | how deep trees actually go |
+| `percolate.auth.events` | `rbac.v_auth_activity`, per event type |
+| `percolate.auth.refresh_reuse` | `v_auth_activity` — **the other one to alert on**, at any value above zero |
+| `percolate.auth.login_failed`, `.login_success` | the pair, because a failure count alone means nothing |
 
 Depth alone is ambiguous — a deep queue being drained quickly is healthy. How
 long the oldest item has waited is not, which is why `oldest_wait_seconds` is
 the alerting signal rather than `claimable`.
+
+`refresh_reuse` is the other alert, and it is the easier one to set because it
+needs no baseline: the event is written only when a refresh token that was
+already rotated away is presented a second time, and the database's response is
+to revoke every live session that user has. **Any value above zero** means
+somebody was just signed out of everything — a stolen token, or a client racing
+itself, and you want to know which. Alert on `> 0`.
+
+`login_failed` is *not* an alert, and that is a choice rather than an omission. A hundred failures in an hour is
+a botnet on a ten-person deployment and a Monday morning on a ten-thousand-person
+one, so the threshold is yours and the number is only readable next to
+`login_success`. It ships as a dashboard pair.
+
+Both come from `rbac.v_auth_activity`, which is an **operator** view: it counts
+every tenant's events, so it is owner-privileged and granted to no caller. The
+`rbac.auth_events` table underneath it is granted to `authenticated` and carries
+RLS, which gives a signed-in person their own sign-in history — the right answer
+to a different question. Credential stuffing is a fact about everybody else's
+rows.
+
+One shape here is worth copying. `percolate.auth.events` is per event type, so
+on a healthy stack there is no `refresh_reuse_detected` series at all — and an
+alert cannot fire on a series that is absent, which is exactly the series you
+need. `percolate.auth.refresh_reuse` is therefore a second query that aggregates
+with no `GROUP BY`: one row of zeros always, and a threshold on a number that is
+always there. Any metric you add whose interesting value is *rare* wants the
+same treatment.
 
 Adding one is a query and a name:
 

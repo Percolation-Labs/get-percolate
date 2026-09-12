@@ -68,6 +68,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: ${{ vars.SPECS_REPO || 'Percolation-Labs/p8-subsystems' }}
+          # The same pair `parser.yml` uses, and for its reason: the specs repo
+          # is private, so the default job token cannot read it and the checkout
+          # fails with a bare `Not Found` naming the REST endpoint rather than
+          # the repository. Measured on the first run of this step.
+          token: ${{ secrets.SOURCE_TOKEN }}
           path: .specs
           sparse-checkout: meta/skills/docs-writing
 

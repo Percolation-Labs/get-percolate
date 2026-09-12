@@ -4,8 +4,8 @@ The views and audits below are how you inspect runs and queues, investigate
 failures and size your worker pools, from SQL or over PostgREST on any install.
 {: .lede }
 
-A browser workbench covers the same ground — [Using the UI](ui.html) — but it
-is not in a published release yet, so nothing on this page depends on it.
+A browser workbench covers the same ground — [Using the UI](ui.html) — and
+nothing on this page depends on it: everything here is SQL and PostgREST.
 
 ## Scaling on queue depth
 
@@ -139,12 +139,12 @@ took eleven seconds*, because that time is spread across a model call, four tool
 calls and two delegated sub-agents, and the rows record each of those separately.
 A trace is the shape that puts them back together.
 
-The agent runtime speaks OpenTelemetry **from the next `percolate-core`
-release**: the published image has no telemetry module and no `otel` extra, so
-on it the spans below never appear, while the collector's metrics
-half — the views above, read as metrics — works today. From that release it
-is **off unless you point it somewhere** — set the endpoint and it starts,
-unset and it costs nothing:
+The agent runtime speaks OpenTelemetry, and it is **off unless you point it
+somewhere** — set the endpoint and it starts, unset and it costs nothing. It
+needs the extra: `percolate-core[otel]` carries the SDK and the OTLP exporter,
+and a runtime installed without it exports nothing rather than failing. The
+collector's metrics half — the views above, read as metrics — needs no extra
+and works on any install:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318

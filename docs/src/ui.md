@@ -6,17 +6,25 @@ data sources, queries, agents and plugin capabilities. Packages carry those
 definitions so you can reuse a complete job in another workspace.
 {: .lede }
 
-**The workbench is not in a published release yet.** `percolate-core`
-@@core@@ on PyPI has no `ui` command and no `[ui]` extra, and its source
-repository is not public, so the steps below cannot be followed from a
-published install today. This page describes the workbench as it was exercised
-in September 2026, ahead of the release that ships it; the API source editor,
-AI authoring helpers and session recovery also need database and runtime
-changes that arrive with it. The
+**The workbench ships in `percolate-core` @@core@@, and you start it
+yourself.** Install the extra and run the server:
+
+```bash
+pip install 'percolate-core[ui]'
+percolate ui
+```
+
+The static files are package data, so the wheel carries them; the extra is
+`fastapi` and `uvicorn`, which is what serves them. The
 [Compose installation](install.html#docker-compose) starts the backend
-services but does not start a UI server. Everything the workbench shows is
-also reachable over PostgREST and SQL, which [Operating it](operating.html)
-uses.
+services and **does not** start a UI server — that is the one step this page
+asks of you. Everything the workbench shows is also reachable over PostgREST
+and SQL, which [Operating it](operating.html) uses, so nothing here is the only
+route to anything.
+
+Two things on this page are still ahead of the release: the API source editor
+and AI authoring helpers, and session recovery, which need database and runtime
+changes that have not landed. Each is marked where it appears.
 
 ## Open a workspace
 

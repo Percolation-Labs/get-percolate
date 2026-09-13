@@ -54,7 +54,13 @@ case "$os:$arch" in
   *)                          PLATFORM="" ;;
 esac
 
-if [ "$VERSION" = latest ]; then
+# ASSETS_URL replaces the release as the place the files come from. It exists
+# for one caller: a release rehearsal installing a candidate nobody has
+# published (ci/ownpg.sh under rehearse.yml, `ASSETS_URL=file:///tmp/assets`,
+# which curl reads like any other URL).
+if [ -n "${ASSETS_URL:-}" ]; then
+  BASE=$ASSETS_URL
+elif [ "$VERSION" = latest ]; then
   BASE="https://github.com/$REPO/releases/latest/download"
 else
   BASE="https://github.com/$REPO/releases/download/$VERSION"
@@ -109,7 +115,10 @@ api_fetch() {
     curl -fsSL "$1" -o "$2" 2>/dev/null
   fi
 }
-if [ "$VERSION" = latest ]; then
+if [ -n "${ASSETS_URL:-}" ]; then
+  # The rehearsal stages the same asset list the API would return.
+  API="$ASSETS_URL/release.json"
+elif [ "$VERSION" = latest ]; then
   API="https://api.github.com/repos/$REPO/releases/latest"
 else
   API="https://api.github.com/repos/$REPO/releases/tags/$VERSION"

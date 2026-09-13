@@ -73,6 +73,26 @@ on:
           pg_cron, the base image, or the parser release.
         type: boolean
         default: true
+      # A THIRD CALLER, rehearse.yml, and the reason it calls this rather than
+      # copying it: a rehearsal that builds the image some other way rehearses
+      # something other than the release. Off by default, so the release
+      # (parser.yml) and the rebuild (images.yml) are unchanged byte for byte.
+      #
+      # On, it differs in exactly what a candidate needs: the tree is bumped to
+      # `version` the way p8-subsystems' release.yml bumps it, the build is
+      # linux/amd64 only (the one platform a runner can start, and the
+      # portability gate is push-only anyway), and the image and the
+      # release-shaped assets leave as run artifacts instead of a registry.
+      # Refused together with `push`.
+      rehearse:
+        type: boolean
+        default: false
+      # A build-only parser.yml run (empty version) whose parser-linux-*
+      # artifacts replace the release download: the rehearsal's path when the
+      # parser source moved since the published release. Rehearsal only.
+      parser_run:
+        type: string
+        default: ''
     secrets:
       SOURCE_TOKEN:      {required: true}
       DOCKERHUB_USERNAME: {required: false}
@@ -82,11 +102,52 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: A rehearsal publishes nothing
+        if: (inputs.rehearse && inputs.push) || (inputs.parser_run != '' && !inputs.rehearse)
+        run: |
+          echo "::error::rehearse cannot be combined with push, and parser_run is rehearsal-only" >&2
+          exit 1
+
       - uses: actions/checkout@v7
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
+
+      - name: Rehearsal only -- bump the tree to the candidate, as release.yml would
+        # The same script p8-subsystems' release.yml runs, so the candidate
+        # carries the same five files the release commits -- including the
+        # upgrade scripts, which build-sql.py names from the tags, and which is
+        # why the tags are fetched first: this checkout is shallow and tagless.
+        if: inputs.rehearse
+        env: {V: "${{ inputs.version }}"}
+        run: |
+          set -euo pipefail
+          have=$(sed -n "s/^default_version = '\(.*\)'/\1/p" extension/percolate/percolate.control)
+          if [ "$have" = "$V" ]; then echo "tree is already at $V"; exit 0; fi
+          part=$(python3 - "$have" "$V" <<'EOF'
+          import sys
+          a, b = [int(x) for x in sys.argv[1].split(".")], sys.argv[2]
+          for part, n in (("patch", (a[0], a[1], a[2] + 1)), ("minor", (a[0], a[1] + 1, 0)),
+                          ("major", (a[0] + 1, 0, 0))):
+              if ".".join(map(str, n)) == b:
+                  print(part)
+          EOF
+          )
+          [ -n "$part" ] || {
+            echo "::error::candidate $V is not one bump from the tree's $have -- release.yml could not produce it" >&2
+            exit 1; }
+          git fetch --quiet --depth=1 origin 'refs/tags/v*:refs/tags/v*'
+          python3 .github/scripts/bump_extension_version.py "$part"
+
+      - name: Rehearsal only -- take the compiled parser from a build-only run
+        if: inputs.parser_run != ''
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ inputs.parser_run }}
+          github-token: ${{ github.token }}
+          pattern: parser-linux-*
+          path: parser-run
 
       - name: Fetch the parser for both Linux architectures
         # From the release, rather than rebuilt here: the .so in the image and
@@ -108,10 +169,22 @@ jobs:
         id: parser
         env:
           PARSER_RELEASE: ${{ inputs.parser_release }}
+          PARSER_RUN: ${{ inputs.parser_run }}
+          REHEARSE: ${{ inputs.rehearse }}
+          V: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           repo=Percolation-Labs/get-percolate
+          mkdir -p dev/dist
+          if [ -n "$PARSER_RUN" ]; then
+            tag="parser.yml run $PARSER_RUN"
+            for a in amd64 arm64; do
+              cp "parser-run/parser-linux-$a/percolate_parser-linux-$a.so" "dev/dist/percolate_parser-$a.so"
+            done
+            cp parser-run/parser-linux-amd64/percolate_parser.control dev/dist/
+            cp parser-run/parser-linux-amd64/percolate_parser--*.sql dev/dist/
+          else
           # `latest` IS RESOLVED BEFORE ANYTHING COMPARES IT. It is a moving
           # name: recording it on the image and then comparing it against the
           # next run's `latest` compares a string to itself and proves exactly
@@ -130,16 +203,34 @@ jobs:
           echo "parser release: $PARSER_RELEASE -> $tag"
           BASE="https://github.com/$repo/releases/download/$tag"
 
-          mkdir -p dev/dist
           for a in amd64 arm64; do
             curl -fsSL -o "dev/dist/percolate_parser-$a.so" "$BASE/percolate_parser-linux-$a.so"
           done
           curl -fsSL -o dev/dist/percolate_parser.control "$BASE/percolate_parser.control"
-          # Named by the version rather than hardcoded: the release asset is
-          # percolate_parser--<version>.sql, and pinning 0.1.0 here is what
-          # made the old install path a silent 404 after the first bump.
-          curl -fsSL -o "dev/dist/percolate_parser--${{ inputs.version }}.sql" \
-            "$BASE/percolate_parser--${{ inputs.version }}.sql"
+          # Named by the version the CONTROL FILE declares rather than
+          # hardcoded: the release asset is percolate_parser--<version>.sql, and
+          # pinning 0.1.0 here is what made the old install path a silent 404
+          # after the first bump.
+          q=$(sed -n "s/^default_version = '\(.*\)'/\1/p" dev/dist/percolate_parser.control)
+          curl -fsSL -o "dev/dist/percolate_parser--$q.sql" "$BASE/percolate_parser--$q.sql"
+          fi
+
+          # The parser files name the version they were built at, and for a
+          # release that is this image's version or the image is a lie. A
+          # rehearsal is the one legitimate exception: it reuses a published
+          # parser (or compiles an unbumped tree) for a number not yet released,
+          # so the control file and the script NAME are restamped -- the .so
+          # bytes, which are what the digests below and the fast path compare,
+          # are untouched.
+          q=$(sed -n "s/^default_version = '\(.*\)'/\1/p" dev/dist/percolate_parser.control)
+          if [ "$q" != "$V" ]; then
+            [ "$REHEARSE" = true ] || {
+              echo "::error::$tag carries percolate_parser $q; this image is $V" >&2
+              exit 1; }
+            echo "::notice::rehearsal: percolate_parser $q from $tag restamped as $V (the .so bytes are unchanged)"
+            sed -i "s/^default_version = '[^']*'/default_version = '$V'/" dev/dist/percolate_parser.control
+            mv "dev/dist/percolate_parser--$q.sql" "dev/dist/percolate_parser--$V.sql"
+          fi
 
           # The digests are of the BYTES THAT GO INTO THE IMAGE, taken here
           # rather than read back out of it, because these same files are what
@@ -346,7 +437,11 @@ jobs:
         with:
           context: dev
           file: dev/Dockerfile.pg19
-          platforms: linux/amd64,linux/arm64
+          # A rehearsal builds the one platform its runner can start, into a
+          # tarball the test jobs load. A multi-platform build cannot be loaded
+          # into a daemon, and the portability gate below is push-only.
+          platforms: ${{ inputs.rehearse && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          outputs: ${{ inputs.rehearse && format('type=docker,dest={0}/percolate-postgres.tar', runner.temp) || '' }}
           push: ${{ inputs.push }}
           # THE REASON A RELEASE TOOK EIGHT MINUTES. Without a cache an
           # ephemeral runner recompiles pgvector and pg_cron from source for
@@ -386,6 +481,39 @@ jobs:
           # opens the door and then inspects the visitor is a report.
           tags: |
             percolationlabs/percolate-postgres:19-${{ inputs.version }}
+
+      # WHAT A RELEASE WOULD HAVE ATTACHED, under the names parser.yml's release
+      # job checks for, so install.sh can install the candidate the way it
+      # installs a release. Artifacts of this run, kept a day, never a release.
+      - name: Rehearsal only -- stage the candidate as release assets
+        if: inputs.rehearse
+        env: {V: "${{ inputs.version }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-assets
+          cp dev/dist/percolate.control "dev/dist/percolate--$V.sql" \
+             dev/dist/percolate_parser.control "dev/dist/percolate_parser--$V.sql" candidate-assets/
+          for up in dev/dist/percolate--*--"$V".sql; do [ -e "$up" ] && cp "$up" candidate-assets/; done
+          for a in amd64 arm64; do
+            cp "dev/dist/percolate_parser-$a.so" "candidate-assets/percolate_parser-linux-$a.so"
+          done
+          # The asset list install.sh reads from the releases API, in its shape.
+          ls candidate-assets | jq -R '{name: .}' | jq -s '{tag_name: "candidate", assets: .}' \
+            > candidate-assets/release.json
+          ls -la candidate-assets
+      - uses: actions/upload-artifact@v7
+        if: inputs.rehearse
+        with:
+          name: candidate-postgres-image
+          path: ${{ runner.temp }}/percolate-postgres.tar
+          compression-level: 1
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        if: inputs.rehearse
+        with:
+          name: candidate-extension-assets
+          path: candidate-assets/
+          retention-days: 1
 
       - name: Confirm both architectures are in the manifest
         if: inputs.push

@@ -744,12 +744,24 @@ compiler fills in</summary>
 
 It compiles to `POST {{env.P8_AGENT_URL}}/v1/chat/completions` on the `http`
 queue with `credential_ref: P8_API_KEY` — the same completions endpoint a stock
-OpenAI client calls, read back from `choices.0.message.content`. So the worker
-that runs it needs both: `P8_AGENT_URL`, which the compose file and the chart
-set, and `P8_API_KEY`, a Percolate token signed for a user, which neither ships
-because a default would be a token everybody knows. Until it is set every agent
-step fails on `credential_ref 'P8_API_KEY' is not set`. The call is synchronous, so the worker holds the
-connection for the length of the turn.
+OpenAI client calls, read back from `choices.0.message.content`. The call is
+synchronous, so the worker holds the connection for the length of the turn.
+
+The worker needs `P8_AGENT_URL`, which the compose file and the chart set, and
+no token of yours. It asks the database who owns the run and signs a
+five-minute token for that person with the key file `P8_AGENT_SIGNING_KEY_FILE`
+names; both deployments mount it from the JWT secret the runtime verifies with.
+So the agent answers as the person who started the run, and a run with no owner,
+started from a psql prompt with no claims, fails at once with `Agent task has
+no verified run owner`. Start it over REST with a token instead.
+
+`credential_ref: P8_API_KEY` is how the worker recognises the step, not a
+variable it reads. It reads `P8_API_KEY` only when it signs nothing: a worker
+started without `P8_AGENT_SIGNING_KEY_FILE`, or a `rest:` step naming that
+credential whose url is not `{{env.P8_AGENT_URL}}/v1/chat/completions` or
+`{{env.P8_AGENT_URL}}/internal/run` written that way. Even then it sends the key
+only to an origin `P8_CREDENTIAL_ORIGINS` binds to `P8_API_KEY`, and the
+shipped default binds none.
 
 `session_group` asks the engine for a session id that is stable for the life of
 the run and bound to `{{run.$session}}`. Steps naming the same group share a

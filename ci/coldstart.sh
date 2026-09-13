@@ -246,12 +246,12 @@ grep -q '^  plugin harbour' "$WORK/sample.log" || {
 [ "$(psql_ -tAc "select count(*) from agentic.agents where name = 'harbourmaster'")" = "1" ] || \
     fail "sample load reported success and agentic.agents has no harbourmaster"
 
-say "agents.md: delegation registers, syncs, and the runtime sends the gateway the caller's token"
+say "agents.md: delegation registers, syncs, and the runtime trusts its own /mcp with the caller's token"
 # THE PAGE'S OWN BLOCKS, run for real rather than inside examples.sh's rolled-back
 # transaction, because the sync reads the rows through the running runtime.
 # Everything a reader does before the first delegated turn is checked, since
 # none of it needs a provider key: the registration, a catalogue that holds what
-# `researcher` is bound to, and the gateway's origin on the list the runtime
+# `researcher` is bound to, and the registered origin on the list the runtime
 # trusts with a caller's token. The page registered `http://agent:8080/mcp`,
 # which answers 404, and never said to sync or to set P8_TOOL_AUTH_ORIGINS; all
 # three failed only at the turn, and the third failed as a model retrying a

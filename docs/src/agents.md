@@ -455,10 +455,8 @@ What we are trying to do here is let a researcher agent hand work to an analyst,
 without either of them knowing anything the other does not.
 {: .goal }
 
-The runtime's agents are served as MCP tools by `percolate agent gateway`, which
-the compose file runs as the `gateway` service on port 8765. `agent serve` on
-8080 does not serve MCP, so a server registered at `http://agent:8080/mcp`
-answers 404 on the first call.
+The runtime serves its own agents as MCP tools at `/mcp`, on the port that
+serves `/chat`, so the tool server's address is the `agent` service itself.
 
 <!-- run: sql -->
 ```sql
@@ -468,7 +466,7 @@ select agentic.upsert_agent($j${
 }$j$::jsonb);
 
 select agentic.upsert_tool_server($j${
-  "name": "p8-agents", "kind": "mcp", "url": "http://gateway:8765/mcp",
+  "name": "p8-agents", "kind": "mcp", "url": "http://agent:8080/mcp",
   "serves_agents": true
 }$j$::jsonb);
 
@@ -480,8 +478,9 @@ select agentic.upsert_agent($j${
 
 A registered server has no tool list until it is synced, and until then a turn
 for `researcher` fails with `tool server 'p8-agents' has no discovered tools`.
-The runtime does the sync, because it is the process that can reach `gateway` by
-its compose name. Each agent is one tool, so sync again after adding an agent:
+The runtime does the sync, over the address it calls during a turn, which is a
+compose name only it can resolve. Each agent is one tool, so sync again after
+adding an agent:
 
 <!-- run: shell -->
 ```bash
@@ -497,10 +496,10 @@ curl -s -X POST http://localhost:8080/tools/p8-agents/sync \
 ```
 </div>
 
-The gateway runs a delegated turn as the person who asked the researcher, so it
-needs that person's token, and the runtime sends a caller's token only to the
-origins in `P8_TOOL_AUTH_ORIGINS`. The compose file sets it to
-`http://gateway:8765` on the `agent` service; the chart's value is
+A delegated turn runs as the person who asked the researcher, so the call needs
+that person's token, and the runtime sends a caller's token only to the origins
+in `P8_TOOL_AUTH_ORIGINS`, its own included. The compose file sets it to
+`http://agent:8080` on the `agent` service; the chart's value is
 `agent.toolAuthOrigins`. A tool server whose origin is not on the list gets
 neither the token nor the `X-P8-*` identity headers, and the gateway refuses a
 call without them: `a verified caller is required`. Entries are exact
@@ -516,8 +515,9 @@ legal way to say "agent A may delegate to agent B". A hardcoded
 broken the rule everything else rests on. The resolution keeps it intact — the
 runtime exposes its own agents as an MCP server, one tool per agent, so
 delegation becomes an ordinary `tool_servers` reference. The gateway is the same
-image started with a second command, and it serves the MCP tools and the
-scheduled-run trigger, nothing else.
+deployed runtime rather than a second service: `agent serve` answers MCP at
+`/mcp`, and `percolate agent gateway` serves the same tools on their own for a
+deployment that wants delegation on separate replicas.
 
 The token goes only to listed origins because it is the caller's identity. A
 registered third party that received it could act as that person, and one that

@@ -194,10 +194,10 @@ agent:
   env: []
   # Tool servers that receive the caller's bearer token and X-P8-* identity
   # headers; every other registered server receives neither. An MCP server that
-  # acts as the caller -- the agent gateway (`percolate agent gateway`) for
-  # delegation -- refuses a call without it: `a verified caller is required`.
-  # Explicit scheme://host[:port] origins, no wildcard, as the tool_servers row
-  # names them (e.g. http://percolate-gateway.percolate.svc.cluster.local:8765).
+  # acts as the caller -- the runtime's own /mcp, for delegation -- refuses a
+  # call without it: `a verified caller is required`. Explicit
+  # scheme://host[:port] origins, no wildcard, as the tool_servers row names
+  # them (e.g. http://<release>-percolate-agent.<namespace>.svc.cluster.local:8080).
   # Rendered as P8_TOOL_AUTH_ORIGINS on the runtime. Empty sends the token nowhere.
   toolAuthOrigins: []
   resources:

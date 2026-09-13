@@ -60,6 +60,49 @@ HARBOUR_READER = "e0000000-0000-0000-0000-00000000000a"
 TENANT_A_CLAIMS = ('{"sub":"%s","role":"authenticated","orgs":["%s"]}'
                    % (HARBOUR_READER, ORG_A))
 
+# EVERY SETTING A TENANT BLOCK CHANGES, IN ONE PLACE, because switching in and
+# switching out are two lists that drift. `reset role` restores the role and
+# leaves every other `set local` standing, and the page is one transaction, so a
+# setting that is set here and not reset runs every owner block after it as the
+# tenant. That happened: the claims were set and only the role was reset, and
+# cookbook.md's upload at line 384 failed `not authorized to upload content`
+# three tenant blocks later, reported as the page's failure. `enter`, `leave`
+# and the guard are all generated from this tuple, so a third setting added here
+# is reset and checked without anybody remembering to.
+TENANT_A = (("role", "authenticated"), ("request.jwt.claims", TENANT_A_CLAIMS))
+
+
+def enter(settings) -> str:
+    """`set local` for each setting. SET LOCAL, not select set_config(): a
+    select emits a row, which would count as output when a block's own answer
+    is being weighed for emptiness."""
+    return "".join(f"set local role {v};\n" if k == "role" else f"set local {k} = '{v}';\n"
+                   for k, v in settings)
+
+
+def leave(settings) -> str:
+    """Reset each setting, then refuse to go on if any of them survived.
+
+    NOT A SAVEPOINT rolled back after the block, which would reset everything at
+    once: it would also undo what a tenant block wrote, and a later owner block
+    on the same page may read it.
+
+    The guard is a DO block, so it emits no row either. Its message names the
+    settings it checked, so a failure says which one leaked.
+    """
+    names = [k for k, _ in settings]
+    checks = " or ".join(
+        "current_user <> session_user" if k == "role"
+        else f"coalesce(current_setting('{k}', true), '') <> ''"
+        for k in names)
+    return ("".join(f"reset {k};\n" for k in names)
+            + "do $$ begin\n"
+            + f"  if {checks} then\n"
+            + "    raise exception 'the examples runner left a tenant block''s settings "
+              f"in force for the blocks after it (checked: {', '.join(names)})';\n"
+            + "  end if;\n"
+            + "end $$;\n")
+
 
 def wrap(kind: str, context: str | None, body: str) -> str:
     """One block, ready to run inside the page's transaction.
@@ -81,31 +124,9 @@ def wrap(kind: str, context: str | None, body: str) -> str:
         # samples/harbour/tenants.sql ships a member of both tenants for exactly
         # this, and the documented preamble on graph.md and cookbook.md names
         # the same subject, so the harness and the reader are in one seat.
-        # SET LOCAL, not select set_config(): a select emits a row, which would
-        # count as output when a block's own answer is being weighed for emptiness.
-        #
-        # BOTH ARE RESET, because `reset role` restores the role and leaves the
-        # claims. It reset only the role, and the page is one transaction, so
-        # every owner block after a tenant block ran carrying tenant A's claims:
-        # `rbac.is_operator()` false, `rbac.current_user_id()` the reader. On
-        # cookbook.md that was `not authorized to upload content` at line 384,
-        # three tenant blocks after the page's first -- reported as the page's
-        # failure when the harness had changed who was asking. The DO block
-        # refuses to carry on if a later edit drops either reset again; it emits
-        # no row, for the same reason as SET LOCAL above.
-        return (
-            "set local role authenticated;\n"
-            f"set local request.jwt.claims = '{TENANT_A_CLAIMS}';\n"
-            + body + "\n"
-            "reset role;\n"
-            "reset request.jwt.claims;\n"
-            "do $$ begin\n"
-            "  if current_user <> session_user\n"
-            "     or coalesce(current_setting('request.jwt.claims', true), '') <> '' then\n"
-            "    raise exception 'the examples runner left a tenant identity set after an as:tenant-a block';\n"
-            "  end if;\n"
-            "end $$;\n"
-        )
+        # Everything it switches, and why switching back is generated rather
+        # than written, is at TENANT_A.
+        return enter(TENANT_A) + body + "\n" + leave(TENANT_A)
     raise SystemExit(f"unknown run context 'as:{context}' -- "
                      f"this runner knows: tenant-a")
 
@@ -193,9 +214,8 @@ def returns_empty(dsn: str, body: str) -> tuple[bool, str]:
     `rows` array is []. Anything else -- a scalar, a JSON object with no `rows`
     key, one or more table rows -- is a non-empty answer.
     """
-    script = ("begin;\nset local role authenticated;\n"
-              f"set local request.jwt.claims = '{TENANT_A_CLAIMS}';\n"
-              + body + "\nrollback;\n")
+    # Its own transaction, rolled back, so nothing here needs `leave`.
+    script = "begin;\n" + enter(TENANT_A) + body + "\nrollback;\n"
     r = subprocess.run(["psql", dsn, "-tAq", "-v", "ON_ERROR_STOP=1"],
                        input=script, capture_output=True, text=True)
     lines = [l for l in r.stdout.splitlines() if l.strip()]

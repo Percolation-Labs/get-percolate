@@ -152,12 +152,11 @@ loaded.
 
 Two things are absent from it. The model matches the sample's, which is
 `openai` because the sample already needs an OpenAI key to embed its corpus and
-a second provider is a second key to obtain. And there is no `tools` array: a
-binding names a server by name, the compose stack runs no tool server, and the
-sample registers none for that reason — so binding one here would write a row
-pointing at nothing. [Tools and MCP](#tools-are-external-and-they-are-rows)
-below
-registers a server first and then binds it, which is the order that works.
+a second provider is a second key to obtain. And there is no `tools` array, so
+the binding the sample made survives: `harbourmaster` stays bound to
+`harbour-query`, the query tool server the compose stack runs as `query-mcp`.
+[Tools and MCP](#tools-are-external-and-they-are-rows) below registers that
+server and binds it, which is the order that works.
 
 ```bash
 curl -s http://localhost:3000/rpc/upsert_agent \
@@ -291,9 +290,9 @@ data: {"type":"RUN_FINISHED","status":"succeeded"}
 ```
 </div>
 
-Two differences from that capture on a stock compose stack. It was taken with
-the query server bound, and the sample binds no tool server, so your stream has
-no `TOOL_CALL` events and the answer comes from the prompt alone. And in the
+Two differences from that capture on a stock compose stack. The sample binds
+`harbourmaster` to the query server, so your stream has a `TOOL_CALL` pair for
+each query it makes, and the answer names what the rows said. And in the
 published image an agent with an output schema — the sample's `harbourmaster`
 is one — streams no text at all: the events arrive and the answer does not.
 `"stream": false` returns it, as the completion's `choices[0].message.content`;
@@ -386,10 +385,25 @@ code.
 ```sql
 select agentic.upsert_tool_server($j${
   "name": "harbour-query", "kind": "mcp", "url": "http://query-mcp:8090",
-  "emits_citations": true,
-  "cached_tools": [{"name": "query"}, {"name": "schema"}]
+  "emits_citations": true
 }$j$::jsonb);
 ```
+
+`query-mcp` is `percolate query mcp`, which the compose file runs: one tool,
+`query`, whose description is the p8ql grammar read from the database. The row
+has no tool list until the runtime fetches one, and `percolate sample load` asks
+it to. After registering a server yourself, sync it the same way:
+
+<!-- run: shell -->
+```bash
+curl -s -X POST http://localhost:8080/tools/harbour-query/sync \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The server forwards the caller's token to PostgREST, so its origin,
+`http://query-mcp:8090`, is on the `agent` service's `P8_TOOL_AUTH_ORIGINS`
+beside the runtime's own. Without it PostgREST answers as nobody, and every query
+is refused.
 
 An agent then names that server, and optionally narrows which of its tools it
 may use:

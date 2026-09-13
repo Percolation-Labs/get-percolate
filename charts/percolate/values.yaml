@@ -204,6 +204,17 @@ agent:
     requests: {cpu: 200m, memory: 512Mi}
     limits: {memory: 2Gi}
 
+# The query tool server, `percolate query mcp`: one MCP tool over the p8ql
+# dialect, forwarding each call's token to PostgREST. The sample's agent is bound
+# to it; register it as http://<release>-query-mcp:8090, the origin this chart
+# adds to the runtime's P8_TOOL_AUTH_ORIGINS when enabled.
+queryMcp:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+
 # ---------------------------------------------------------------------------
 # Worker pools. A LIST, not a single deployment, because `queue` is the only
 # signal both claim_task and an autoscaler see: one pool per queue is how a

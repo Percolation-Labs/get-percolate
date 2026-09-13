@@ -6,6 +6,7 @@
 {{- if .Values.postgrest.enabled }}{{ $svcs = append $svcs (dict "name" "postgrest" "port" 3000 "cfg" .Values.postgrest) }}{{ end }}
 {{- if .Values.content.enabled }}{{ $svcs = append $svcs (dict "name" "content" "port" 8081 "cfg" .Values.content "cmd" (list "content" "serve")) }}{{ end }}
 {{- if .Values.agent.enabled }}{{ $svcs = append $svcs (dict "name" "agent" "port" 8080 "cfg" .Values.agent "cmd" (list "agent" "serve")) }}{{ end }}
+{{- if .Values.queryMcp.enabled }}{{ $svcs = append $svcs (dict "name" "query-mcp" "port" 8090 "cfg" .Values.queryMcp "cmd" (list "query" "mcp" "--port" "8090" "--postgrest" (printf "http://%s-postgrest:3000" (include "percolate.fullname" .)))) }}{{ end }}
 {{- range $s := $svcs }}
 {{- $root := $ }}
 ---
@@ -81,6 +82,11 @@ spec:
           image: {{ include "percolate.image" $root | quote }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           args: {{- toYaml $s.cmd | nindent 12 }}
+          {{- if eq $s.name "query-mcp" }}
+          # No database password and no signing secret: the query server holds
+          # no credential, and each call carries the caller's own token.
+          env: []
+          {{- else }}
           env:
             - name: P8_AUTHENTICATOR_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: authenticator-password}}
@@ -108,9 +114,13 @@ spec:
             # GEMINI_API_KEY and the rest -- because the model is a column and
             # the image carries every provider; see values.yaml agent.env.
             {{- with $root.Values.agent.env }}{{- toYaml . | nindent 12 }}{{- end }}
-            {{- with $root.Values.agent.toolAuthOrigins }}
-            # values.yaml agent.toolAuthOrigins: the tool servers trusted with
-            # the caller's token.
+            {{- $origins := $root.Values.agent.toolAuthOrigins | default list }}
+            {{- if $root.Values.queryMcp.enabled }}
+            {{- $origins = append $origins (printf "http://%s-query-mcp:8090" (include "percolate.fullname" $root)) }}
+            {{- end }}
+            {{- with $origins }}
+            # values.yaml agent.toolAuthOrigins, and the query server when
+            # queryMcp.enabled: the tool servers trusted with the caller's token.
             - name: P8_TOOL_AUTH_ORIGINS
               value: {{ join "," . | quote }}
             {{- end }}
@@ -122,6 +132,7 @@ spec:
               value: {{ join "," . | quote }}
             {{- end }}
             {{- include "percolate.commonEnv" $root | nindent 12 }}
+          {{- end }}
           {{- end }}
           {{- if eq $s.name "postgrest" }}
           ports: [{containerPort: {{ $s.port }}, name: http}, {containerPort: 3001, name: admin}]

@@ -14,6 +14,12 @@
 # The working tree's install.sh and bootstrap.sql are the ones under test; the
 # release assets install.sh downloads are the published ones.
 #
+# AND AN UPGRADE, because install.sh fetched only percolate--<v>.sql for a
+# release: every published release carried percolate--<old>--<v>.sql, none of
+# them reached the sharedir, and `alter extension percolate update` on an
+# existing database had no script to run. So the release before the latest is
+# installed first, into a database of its own, and updated in place at the end.
+#
 #     ci/ownpg.sh
 #     PG_IMAGE=postgres:19beta3-bookworm ci/ownpg.sh
 set -euo pipefail
@@ -21,6 +27,7 @@ cd "$(dirname "$0")/.."
 ROOT=$PWD
 NAME=p8ownpg-$$
 PG_IMAGE=${PG_IMAGE:-postgres:19beta3-bookworm}
+REPO=${REPO:-Percolation-Labs/get-percolate}
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 
 say()  { printf '\n=== %s\n' "$*"; }
@@ -33,10 +40,38 @@ docker run -d --name "$NAME" -e POSTGRES_PASSWORD=pw "$PG_IMAGE" >/dev/null
 for _ in $(seq 1 30); do in_pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 in_pg bash -c 'apt-get update -qq && apt-get install -y -qq postgresql-19-pgvector postgresql-19-cron curl openssl' >/dev/null
 
-say "install.sh (the working tree's)"
+AUTH_PW=$(openssl rand -hex 24); WORKER_PW=$(openssl rand -hex 24)
 docker cp "$ROOT/install.sh" "$NAME:/tmp/install.sh"
-in_pg bash -c 'cd /tmp && sh install.sh' | tail -3
 docker cp "$ROOT/bootstrap.sql" "$NAME:/tmp/bootstrap.sql"
+
+# The previous version is read from the latest release's own upgrade scripts --
+# the newest <old> in percolate--<old>--<new>.sql -- so this names no version and
+# upgrades from exactly the release the latest one says it can upgrade from.
+say "the release before the latest, into a database of its own"
+auth=(); [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
+PREV=$(curl -fsSL ${auth[@]+"${auth[@]}"} "https://api.github.com/repos/$REPO/releases/latest" \
+         | grep -o '"percolate--[0-9][0-9.]*--[0-9][0-9.]*\.sql"' \
+         | sed 's/^"percolate--\([0-9.]*\)--.*/\1/' | sort -V | tail -1)
+[ -n "$PREV" ] || fail "the latest release carries no percolate--<old>--<new>.sql upgrade script"
+echo "    v$PREV"
+in_pg env GITHUB_TOKEN="${GITHUB_TOKEN:-}" VERSION="v$PREV" \
+    bash -c 'mkdir -p /tmp/prev && cd /tmp/prev && sh /tmp/install.sh' | tail -1
+in_pg psql -U postgres -qc "create database olddb"
+in_pg psql -U postgres -d olddb -v ON_ERROR_STOP=1 \
+    -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" -f /tmp/prev/bootstrap.sql >/dev/null 2>&1 \
+    || fail "the v$PREV bootstrap into olddb exited non-zero"
+[ "$(in_pg psql -U postgres -d olddb -tAc "select extversion from pg_extension where extname = 'percolate'")" = "$PREV" ] \
+    || fail "olddb does not have percolate $PREV"
+
+say "install.sh (the working tree's), over it"
+out=$(in_pg env GITHUB_TOKEN="${GITHUB_TOKEN:-}" bash -c 'cd /tmp && sh install.sh' 2>&1) \
+    || { echo "$out" >&2; fail "install.sh exited non-zero"; }
+grep '^    ' <<<"$out" | head -3
+PV=$(in_pg psql -U postgres -tAc "select default_version from pg_available_extensions where name = 'percolate'")
+in_pg test -f "/usr/share/postgresql/19/extension/percolate--$PREV--$PV.sql" \
+    || fail "install.sh did not install percolate--$PREV--$PV.sql"
+grep -q "alter extension percolate update" <<<"$out" \
+    || fail "a second install.sh run did not say an existing database needs alter extension percolate update"
 
 say "pg_cron on, the way install.md says"
 in_pg psql -U postgres -qc "create database appdb" \
@@ -47,7 +82,6 @@ docker restart "$NAME" >/dev/null
 for _ in $(seq 1 30); do in_pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 
 say "bootstrap.sql, three times"
-AUTH_PW=$(openssl rand -hex 24); WORKER_PW=$(openssl rand -hex 24)
 for i in 1 2 3; do
     out=$(in_pg psql -U postgres -d appdb -v ON_ERROR_STOP=1 \
             -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" -f /tmp/bootstrap.sql 2>&1) \
@@ -120,5 +154,18 @@ steps:
 run=$(psql_ -tAc "select workflow.start_workflow('hello', '{}'::jsonb)")
 status=$(psql_ -tAc "select status from workflow.runs where id = '$run'")
 [ "$status" = "succeeded" ] || fail "the hello workflow ended '$status'"
+
+# bootstrap.sql first, as install.sh's second run says: 0.2.0 refuses to update
+# a database whose set_config is still PUBLIC's.
+say "olddb, updated in place from $PREV to $PV"
+in_pg psql -U postgres -d olddb -v ON_ERROR_STOP=1 \
+    -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" -f /tmp/bootstrap.sql >/dev/null 2>&1 \
+    || fail "bootstrap.sql against olddb exited non-zero"
+in_pg psql -U postgres -d olddb -v ON_ERROR_STOP=1 -q \
+    -c "set role app_owner" -c "alter extension percolate update" \
+    || fail "alter extension percolate update failed on olddb"
+got=$(in_pg psql -U postgres -d olddb -tAc "select extversion from pg_extension where extname = 'percolate'")
+[ "$got" = "$PV" ] || fail "olddb is at percolate $got after the update, not $PV"
+echo "    percolate $got"
 
 printf '\nOWN-POSTGRES PATH OK\n'

@@ -93,10 +93,55 @@ PV=$(control_version "$TMP/percolate.control")
 say "    version $PV"
 fetch "$BASE/percolate--$PV.sql" "$TMP/percolate--$PV.sql"
 
+# THE UPGRADE SCRIPTS, every one the release carries. This fetched only the
+# install script, so `alter extension percolate update` on a database made from
+# an earlier release had nothing on disk to run, while the release had shipped
+# `percolate--<old>--$PV.sql` for each version before it. Which versions those
+# are is a fact about the release, not about this script, so it is read from the
+# release's asset list rather than written here. The API is asked only for that
+# list; the files come from the same download URL as everything else.
+# GITHUB_TOKEN is used when it is set, because the API allows 60 unauthenticated
+# requests an hour per address and a CI runner shares its address.
+api_fetch() {
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$1" -o "$2" 2>/dev/null
+  else
+    curl -fsSL "$1" -o "$2" 2>/dev/null
+  fi
+}
+if [ "$VERSION" = latest ]; then
+  API="https://api.github.com/repos/$REPO/releases/latest"
+else
+  API="https://api.github.com/repos/$REPO/releases/tags/$VERSION"
+fi
+PV_RE=$(printf '%s' "$PV" | sed 's/\./\\./g')
+UPGRADES=""
+if api_fetch "$API" "$TMP/release.json"; then
+  UPGRADES=$(grep -o "\"percolate--[0-9][0-9.]*--$PV_RE\\.sql\"" "$TMP/release.json" \
+               | tr -d '"' | sort -u)
+  for f in $UPGRADES; do fetch "$BASE/$f" "$TMP/$f"; done
+  [ -z "$UPGRADES" ] || say "    upgrade scripts from $(printf '%s\n' $UPGRADES \
+      | sed "s/^percolate--\(.*\)--$PV_RE\.sql$/\1/" | tr '\n' ' ')"
+else
+  say "!! Could not list this release's assets at $API, so no upgrade scripts are"
+  say "   installed. A new database is unaffected. One made from an earlier release"
+  say "   cannot run \`alter extension percolate update\` until this runs again, or"
+  say "   until percolate--<its version>--$PV.sql from the release is in $SHAREDIR."
+fi
+
+# Read before the install overwrites it: what this directory held last time, so
+# a second run can say that a database made from that version is not updated by
+# copying files.
+PRIOR=""
+[ -f "$SHAREDIR/percolate.control" ] && PRIOR=$(control_version "$SHAREDIR/percolate.control")
+
 # install(1) rather than cp, so a non-writable sharedir fails HERE with a
 # readable message instead of half-copying and leaving a control file pointing
-# at a script that is not there.
-install -m 644 "$TMP/percolate.control" "$TMP/percolate--$PV.sql" "$SHAREDIR/" \
+# at a script that is not there. The upgrade scripts go in the same call, so a
+# control file never lands without them.
+# shellcheck disable=SC2086  # UPGRADES is a list of file names with no spaces
+install -m 644 "$TMP/percolate.control" "$TMP/percolate--$PV.sql" \
+    $(for f in $UPGRADES; do printf '%s\n' "$TMP/$f"; done) "$SHAREDIR/" \
   || die "cannot write to $SHAREDIR -- rerun with sudo (on Debian and Ubuntu the
   directory belongs to root, not to the postgres user)"
 
@@ -166,6 +211,16 @@ fi
 say ""
 say "Installed. The files are in place; the database does not have them yet."
 say ""
+if [ -n "$PRIOR" ]; then
+  say "This directory already held percolate $PRIOR. A database that has the"
+  say "extension keeps the version it was created at: new files change nothing in"
+  say "it. Run ./bootstrap.sql again (below), then update it as app_owner --"
+  say "as a superuser, the new tables would get an owner that bypasses their"
+  say "row-level security:"
+  say ""
+  say "  psql -d yourdb -c 'set role app_owner' -c 'alter extension percolate update'"
+  say ""
+fi
 say "Run ./bootstrap.sql (downloaded here) as a SUPERUSER, against the database"
 say "that will hold it:"
 say ""

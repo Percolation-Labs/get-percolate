@@ -98,6 +98,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install into a plain Postgres 19
+        # install.sh lists a release's upgrade scripts through the GitHub API,
+        # which allows 60 unauthenticated requests an hour per address, and a
+        # hosted runner shares its address.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: ci/ownpg.sh
 
   # TWO FILES DO THE SUPERUSER STEP, and a fix made to one missed the other:

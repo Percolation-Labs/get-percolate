@@ -607,6 +607,23 @@ genuinely unsettled. `summarizer_agent_id` names which agent summarizes the
 windowed-out history — a nullable self-reference, so "who summarizes" is data
 too.
 
+`summarize_after_messages` is when the summary fires. Once a session holds that
+many messages, or a turn fills three quarters of a model's declared context
+window, the runtime starts the `summarize_session_window` workflow. Set it per
+agent, as the statement above does. An agent that leaves it out takes
+`P8_SUMMARIZE_AFTER_MESSAGES` from the runtime's environment, 40 when unset, and
+`P8_SUMMARIZE_AT_CONTEXT_FRACTION`, 0.75, moves the other trigger. The compose
+file passes neither to the `agent` service, so add them under its
+`environment:`; the chart takes them in `agent.env`.
+
+**A stock install has no summary workflow.** Neither the extension nor this
+repository installs `summarize_session_window`, or the `summarizer` agent it
+calls (`P8_DEFAULT_SUMMARIZER`). Turns still succeed. Past the threshold the
+oldest messages leave the window unsummarized and nothing fills the summary
+slot, and the runtime says so when it starts, with a warning that begins
+`sessions will not be summarized: no workflow definition
+'summarize_session_window'`.
+
 The window is scoped to the **branch**, not the session. A session-scoped window
 hands a delegated sub-agent the parent's rows, including the `tool_call` row
 representing its own invocation, which is both wrong and confusing to the model.

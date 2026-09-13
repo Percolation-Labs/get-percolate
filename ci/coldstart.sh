@@ -61,8 +61,27 @@ docker compose -f "$ROOT/compose/docker-compose.yml" -p percolate down -v >/dev/
 # container onto the volume the previous image already initialised. Gating an
 # unpublished build means it has to be there for the first start, not the
 # second.
+#
+# EVERY SERVICE, AS THE WORKING TREE NAMES IT, not only `db` and not only when
+# IMAGE is set. The page curls MAIN's compose file and starts it; the working
+# tree's copy replaces it only after that first `up` (below). So a change that
+# moved `percolate-postgres:19-<v>` in compose/docker-compose.yml was graded on
+# a volume main's image had already initialised -- its extension, not the
+# change's -- and a release rehearsal (rehearse.yml, which points every image at
+# a local candidate) ran the published percolate-core for its first minute.
+overrides=$(awk '
+    /^[^[:space:]#]/ { top = $1 }
+    top == "services:" && /^  [A-Za-z0-9._-]+:[[:space:]]*$/ { svc = $1; sub(/:$/, "", svc) }
+    top == "services:" && /^    image:/ { print svc, $2 }' "$ROOT/compose/docker-compose.yml")
+[ -n "$overrides" ] || fail "no service images found in compose/docker-compose.yml -- the file changed shape"
+{
+    echo "services:"
+    while read -r svc img; do
+        [ "$svc" = db ] && [ -n "${IMAGE:-}" ] && img=$IMAGE
+        printf '  %s:\n    image: %s\n' "$svc" "$img"
+    done <<<"$overrides"
+} > docker-compose.override.yml
 if [ -n "${IMAGE:-}" ]; then
-    printf 'services:\n  db:\n    image: %s\n' "$IMAGE" > docker-compose.override.yml
     echo "(db image overridden: $IMAGE)"
 fi
 

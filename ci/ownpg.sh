@@ -46,10 +46,21 @@ docker cp "$ROOT/install.sh" "$NAME:/tmp/install.sh"
 # The previous version is read from the latest release's own upgrade scripts --
 # the newest <old> in percolate--<old>--<new>.sql -- so this names no version and
 # upgrades from exactly the release the latest one says it can upgrade from.
+#
+# ASSETS=<dir> puts a CANDIDATE where the latest release stands (rehearse.yml):
+# its release-shaped files and release.json asset list are what install.sh reads,
+# and the release before it is the one it says it upgrades from -- the published
+# latest, which is exactly the database a reader would be updating.
 say "the release before the latest, into a database of its own"
 auth=(); [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
-PREV=$(curl -fsSL ${auth[@]+"${auth[@]}"} "https://api.github.com/repos/$REPO/releases/latest" \
-         | grep -o '"percolate--[0-9][0-9.]*--[0-9][0-9.]*\.sql"' \
+if [ -n "${ASSETS:-}" ]; then
+    echo "    (the latest is the candidate in $ASSETS, not a published release)"
+    docker cp "$ASSETS" "$NAME:/tmp/assets"
+    listing=$(cat "$ASSETS/release.json")
+else
+    listing=$(curl -fsSL ${auth[@]+"${auth[@]}"} "https://api.github.com/repos/$REPO/releases/latest")
+fi
+PREV=$(grep -o '"percolate--[0-9][0-9.]*--[0-9][0-9.]*\.sql"' <<<"$listing" \
          | sed 's/^"percolate--\([0-9.]*\)--.*/\1/' | sort -V | tail -1)
 [ -n "$PREV" ] || fail "the latest release carries no percolate--<old>--<new>.sql upgrade script"
 echo "    v$PREV"
@@ -63,7 +74,8 @@ in_pg psql -U postgres -d olddb -v ON_ERROR_STOP=1 \
     || fail "olddb does not have percolate $PREV"
 
 say "install.sh (the working tree's), over it"
-out=$(in_pg env GITHUB_TOKEN="${GITHUB_TOKEN:-}" bash -c 'cd /tmp && sh install.sh' 2>&1) \
+out=$(in_pg env GITHUB_TOKEN="${GITHUB_TOKEN:-}" ASSETS_URL="${ASSETS:+file:///tmp/assets}" \
+        bash -c 'cd /tmp && sh install.sh' 2>&1) \
     || { echo "$out" >&2; fail "install.sh exited non-zero"; }
 grep '^    ' <<<"$out" | head -3
 PV=$(in_pg psql -U postgres -tAc "select default_version from pg_available_extensions where name = 'percolate'")

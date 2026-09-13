@@ -203,9 +203,30 @@ def check(v: dict, pins: bool = True) -> list[str]:
     return bad
 
 
+def release_outstanding(v: dict) -> list[tuple[str, str, str]]:
+    """(name, required, published) for each key whose [requires] EXCEEDS [published].
+
+    EXCEEDS, compared as numbers. This was `!=`, here and in ci/coldstart.sh,
+    and versions.toml defines the state as `requires` being ahead -- so a
+    `requires` BEHIND `published`, which is the ordinary state once a release
+    ships (core 0.1.8 required, 0.1.10 published), was reported as "a release is
+    outstanding" and coldstart.sh excused a missing percolate_build() on a pair
+    that should have had one. Compared as strings it would be wrong the other
+    way: "0.1.10" < "0.1.8".
+    """
+    def num(s: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in s.split("."))
+    return [(n, v[f"{k}_min"], v[k])
+            for n, k in (("percolate-core", "core"), ("the extension", "extension"))
+            if num(v[f"{k}_min"]) > num(v[k])]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--outstanding", action="store_true",
+                    help="print yes if a [requires] version exceeds its "
+                         "[published] one, else no -- ci/coldstart.sh asks this")
     ap.add_argument("--set", metavar="KEY=VALUE",
                     help="published.extension, published.core, published.chart "
                          "or requires.core -- bare key means published")
@@ -216,6 +237,10 @@ def main() -> int:
                          "before the release rather than by the docs deploy "
                          "after it. Repeatable.")
     a = ap.parse_args()
+
+    if a.outstanding:
+        print("yes" if release_outstanding(load()) else "no")
+        return 0
 
     if a.set:
         key, _, value = a.set.partition("=")
@@ -323,9 +348,7 @@ def main() -> int:
     # the documentation describes something a reader cannot install yet, which
     # is a state worth naming out loud rather than leaving for coldstart.sh to
     # discover as a bare `function does not exist`.
-    outstanding = [(n, v[f"{k}_min"], v[k])
-                   for n, k in (("percolate-core", "core"), ("the extension", "extension"))
-                   if v[f"{k}_min"] != v[k]]
+    outstanding = release_outstanding(v)
     if outstanding:
         print()
         for name, req, pub in outstanding:

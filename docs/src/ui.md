@@ -41,6 +41,7 @@ From an updated `percolate-core` checkout, install the UI extra in a Python
 3.11 or later environment and start the server. These example addresses use
 the Compose host ports; change them to the addresses your browser can reach.
 
+<!-- run: shell -->
 ```bash
 python -m pip install -e '.[ui]'
 export P8_UI_REST_URL=http://localhost:3000

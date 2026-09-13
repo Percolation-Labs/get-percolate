@@ -234,21 +234,12 @@ which is where the reasoning lives.
 
 ## 1. Bring a source in
 
-Every deployment starts here, and this is the recipe furthest from finished. A
-**channel** is where content comes from: `file_upload` covers a person dragging
+Every deployment starts here. A **channel** is where content comes from: `file_upload` covers a person dragging
 a PDF in, and `http_pull` covers a source you go and get.
 
 What we are trying to do here is poll an external feed on the hour and turn what
 comes back into resources the rest of the system can answer questions about.
 {: .goal }
-
-<!-- run: sql -->
-```sql
-insert into content.channels (name, kind, config, poll_interval)
-values ('harbour-notices', 'http_pull',
-        '{"url": "https://example.org/notices.json"}'::jsonb,
-        interval '1 hour');
-```
 
 ### Registering a function, and when it is worth it
 
@@ -322,10 +313,12 @@ error, and the `sql:` key</a></p>
 ### The poll, on a clock
 
 What we are trying to do here is fetch the feed from where the last poll
-stopped, land it, and do that at seventeen minutes past every hour.
+stopped, land it, and do that every hour.
 {: .goal }
 
-```yaml
+<!-- run: sql -->
+```sql
+select workflow.define_yaml($$
 name: harbour_notices_poll
 steps:
   - id: cursor
@@ -341,17 +334,36 @@ steps:
   - id: land
     needs: [fetch]
     sql: {function: land_notices, args: ['{{steps.fetch.result}}']}
+$$);
 ```
 
+The channel is what puts it on a clock. `poll_interval` is how often, and
+`config.ingest_workflow` names the workflow each poll runs, which is why the
+workflow is defined before the channel that names it:
+
+<!-- run: sql -->
 ```sql
-select workflow.schedule_workflow(
-    p_name     => 'harbour-notices-hourly',
-    p_workflow => 'harbour_notices_poll',
-    p_cron     => '17 * * * *',
-    p_overlap  => 'skip');
+insert into content.channels (name, kind, config, poll_interval, visibility)
+values ('harbour-notices', 'http_pull',
+        '{"url": "https://example.org/notices.json",
+          "ingest_workflow": "harbour_notices_poll"}'::jsonb,
+        interval '1 hour', 'public');
 
-select cron.schedule('workflow-tick', '* * * * *', $$select workflow.tick()$$);
+select s.name, s.workflow_name, s.cron_expr, s.overlap_policy
+  from workflow.schedules s
+  join content.channels c on s.input->>'channel_id' = c.id::text
+ where c.name = 'harbour-notices';
 ```
+
+<div class="evidence" markdown="1">
+<div class="label">the schedule the insert made</div>
+
+```
+                   name                   |    workflow_name     | cron_expr | overlap_policy
+------------------------------------------+----------------------+-----------+----------------
+ channel_01a0997b90407d7392487ffa7d2e720d | harbour_notices_poll | 0 * * * * | skip
+```
+</div>
 
 <details class="why" markdown="1">
 <summary>Why it works — `external_id` is the idempotency key, and it is the whole
@@ -370,16 +382,27 @@ with nothing in object storage, because a scraped JSON record has no file and
 `resources.file_id` is nullable to say so. Uploaded documents take the other
 path, which is recipe 2.
 
+**Nobody writes the schedule.** Any write to a channel's `enabled`,
+`poll_interval` or `config` rewrites the schedule named `channel_<id>`, and
+disabling or deleting the channel removes it, so the channel and its clock
+cannot disagree. Two channels are refused at the insert rather than failing once
+a minute afterwards: one with a cadence and no workflow (`channel
+"harbour-notices" has a poll cadence but names no workflow to run`), and one
+whose cadence cron cannot fire evenly. `7 minutes` would fire at :56 and again
+at :00, so it is refused with the cadences that work.
+
 Two things about the schedule are easier to know than to discover. The fire is
 idempotent through the engine's own machinery rather than a second mechanism —
 the external id is the schedule name and the minute, so a retried transaction
-returns the existing run. And a schedule's `input` is a **constant**, with no
-templating in it, which is exactly why the cursor above is a step reading the
-database rather than a value on the schedule.
+returns the existing run. And the schedule's `input` is the channel's id and
+nothing else, with no templating in it, which is exactly why the cursor above is
+a step reading the database rather than a value on the schedule.
 
-`overlap => 'skip'` is what stops a poll that runs long from stacking up behind
-itself, and one `pg_cron` job covers every schedule you have, because a schedule
-is a row.
+The derived schedule skips a fire while the previous poll is still running,
+which is what stops a slow poll from stacking up behind itself, and one
+`pg_cron` job covers every schedule you have, because a schedule is a row. The
+channel is `'public'` because a row written from a `psql` prompt has no owner,
+and the table refuses a private channel nobody owns: nobody could read it.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-workflow.html#templates-and-the-one-rule-that-bites">why the
@@ -387,11 +410,6 @@ URL interpolates and the argument does not</a> ·
 <a href="ingest.html">what happens to a resource after this</a> ·
 <a href="install.html#pg_cron-if-you-want-schedules">setting up `pg_cron`</a></p>
 </details>
-
-> **What is missing.** `channels.poll_interval` is read by nothing, so the
-> channel row above is documentation until the poller exists. Everything else in
-> this recipe is built, and `workflow.schedules` with `overlap_policy` is the
-> half of the pull-source design that shipped.
 
 ## 2. Make what lands answerable
 
@@ -407,10 +425,18 @@ select content.install_ingest_workflow(
            p_graph_index => true,
            p_graph_model => 'gpt-4o-mini');
 
-update content.channels
-   set config = config || '{"ingest_workflow": "ingest_file"}'::jsonb
- where name = 'harbour-notices';
+select name, kind, config->>'ingest_workflow' as ingest_workflow
+  from content.channels
+ where name in ('uploads', 'harbour-notices');
 ```
+
+`config.ingest_workflow` names what runs for a channel, and the two kinds run it
+at different times. On `uploads`, the channel `POST /files` lands in, it is
+`ingest_file`, started once for each file. On `harbour-notices` it stays
+`harbour_notices_poll`, started by the channel's clock: pointed at
+`ingest_file`, it would start the pipeline every hour with a channel id where
+the pipeline expects a resource. A polled record starts no workflow of its own;
+`land_notices` records its chunks directly.
 
 <div class="evidence" markdown="1">
 <div class="label">install_ingest_workflow returns</div>

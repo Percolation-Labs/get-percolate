@@ -42,7 +42,6 @@ in_pg bash -c 'apt-get update -qq && apt-get install -y -qq postgresql-19-pgvect
 
 AUTH_PW=$(openssl rand -hex 24); WORKER_PW=$(openssl rand -hex 24)
 docker cp "$ROOT/install.sh" "$NAME:/tmp/install.sh"
-docker cp "$ROOT/bootstrap.sql" "$NAME:/tmp/bootstrap.sql"
 
 # The previous version is read from the latest release's own upgrade scripts --
 # the newest <old> in percolate--<old>--<new>.sql -- so this names no version and
@@ -72,6 +71,10 @@ in_pg test -f "/usr/share/postgresql/19/extension/percolate--$PREV--$PV.sql" \
     || fail "install.sh did not install percolate--$PREV--$PV.sql"
 grep -q "alter extension percolate update" <<<"$out" \
     || fail "a second install.sh run did not say an existing database needs alter extension percolate update"
+# AFTER install.sh, which downloads the release's bootstrap.sql into /tmp: copied
+# before it, the working tree's file was overwritten and every step below tested
+# the published one.
+docker cp "$ROOT/bootstrap.sql" "$NAME:/tmp/bootstrap.sql"
 
 say "pg_cron on, the way install.md says"
 in_pg psql -U postgres -qc "create database appdb" \

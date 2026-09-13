@@ -288,6 +288,16 @@ objectStorage:
     region: us-east-1
   bucket: p8-content
 
+# Browser origins allowed to call the Agent Runtime and the Content Server
+# directly -- the address a browser uses for `percolate ui serve`, such as
+# https://workbench.example.com. Empty sends no CORS headers, so a workbench
+# served from another origin is refused. Explicit scheme://host[:port] entries
+# only: both services refuse a wildcard or a path at startup, and neither
+# allows credentials. Rendered as P8_CORS_ORIGINS on the runtime and
+# P8_CONTENT_CORS_ORIGINS on content, the name each one reads.
+cors:
+  origins: []
+
 ingress:
   enabled: false
   className: ""

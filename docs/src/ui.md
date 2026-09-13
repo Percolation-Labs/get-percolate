@@ -7,29 +7,21 @@ definitions so you can reuse a complete job in another workspace.
 {: .lede }
 
 **The workbench ships in `percolate-core` @@core@@, and you start it
-yourself.** Install the extra and run the server:
-
-```bash
-pip install 'percolate-core[ui]'
-percolate ui
-```
-
-The static files are package data, so the wheel carries them; the extra is
-`fastapi` and `uvicorn`, which is what serves them. The
+yourself.** The static files are package data, so the wheel carries them; the
+`[ui]` extra is `fastapi` and `uvicorn`, which is what serves them. The
 [Compose installation](install.html#docker-compose) starts the backend
-services and **does not** start a UI server — that is the one step this page
-asks of you. Everything the workbench shows is also reachable over PostgREST
-and SQL, which [Operating it](operating.html) uses, so nothing here is the only
-route to anything.
-
-Two things on this page are still ahead of the release: the API source editor
-and AI authoring helpers, and session recovery, which need database and runtime
-changes that have not landed. Each is marked where it appears.
+services and **does not** start a UI server. Starting one, under
+[Open a workspace](#open-a-workspace), is the one step this page asks of you.
+Everything the workbench shows is also reachable over PostgREST and SQL, which
+[Operating it](operating.html) uses, so nothing here is the only route to
+anything.
 
 ## Open a workspace
 
 If your operator has supplied a workbench URL, open it and choose **Sign in**.
-Use **Sign in with token** with an access token issued for that deployment.
+Use **Sign in with token** with an access token issued for that deployment;
+on the Compose installation, `percolate auth token` issues one, as
+[the install guide](install.html#the-first-user-and-a-token) shows.
 The workbench does not provide a password login or create an account for you.
 An enabled local development workspace also offers **Continue to workspace**.
 
@@ -37,13 +29,18 @@ What we are trying to do here is connect a locally served UI to an existing
 Percolate deployment.
 {: .goal }
 
-From an updated `percolate-core` checkout, install the UI extra in a Python
-3.11 or later environment and start the server. These example addresses use
-the Compose host ports; change them to the addresses your browser can reach.
+On the machine running the Compose installation, install the CLI with the UI
+extra and start the server. It needs Python 3.11 or newer, and it goes in a
+virtualenv because a bare `pip install` stops at
+`externally-managed-environment` on Homebrew's Python and on current Debian and
+Ubuntu. If [the install guide](install.html#the-first-user-and-a-token) already
+created `~/.percolate`, this adds the extra to it. The addresses are the
+Compose host ports; change them to the addresses your browser can reach.
 
 <!-- run: shell -->
 ```bash
-python -m pip install -e '.[ui]'
+python3 -m venv ~/.percolate && . ~/.percolate/bin/activate   # 3.11 or newer
+pip install 'percolate-core[ui]>=@@core_min@@'
 export P8_UI_REST_URL=http://localhost:3000
 export P8_UI_CORE_URL=http://localhost:8080
 export P8_UI_CONTENT_URL=http://localhost:8081
@@ -67,10 +64,15 @@ Agent Runtime for agent turns and the Content Server for file bytes. Those
 services must share the deployment's database and JWT identity configuration.
 Database grants and row policies still govern access.
 
-For separate browser origins, configure CORS on the backends. The updated
-standalone Agent Runtime and Content Server accept
-`P8_CORS_ORIGINS=http://localhost:8082` in their own environments; PostgREST or
-your reverse proxy also needs to allow the UI origin. A same-origin proxy is
+The page is on a different origin from each of those services, so each has to
+allow it, and the two Percolate services read different variables. The Agent
+Runtime reads `P8_CORS_ORIGINS` and the Content Server reads
+`P8_CONTENT_CORS_ORIGINS`. The Compose file sets both to
+`http://localhost:8082,http://127.0.0.1:8082`. To serve the UI from another
+origin, set both in `.env` and run `docker compose up -d` again. Each value is a
+comma-separated list of `scheme://host:port` origins; a wildcard or a path
+stops the service at startup. On the Helm chart, set `cors.origins`. PostgREST
+as Compose runs it accepts requests from any origin. A same-origin proxy is
 another deployment option. Container service names such as `agent` are not
 browser addresses.
 
@@ -224,9 +226,10 @@ tool evidence. Configure the agent's model, instructions and tools in
 **Agents**, then add an agent step where your workflow needs that reasoning.
 
 AI suggestions require a reachable Agent Runtime, a configured provider and
-the `percolate_help` agent with its guide and read-only query tool. In a source
-checkout, the operator can provision that helper using `dev/ui_assistant.py`
-with a caller token and a model configured in the deployment. A suggestion
+the `percolate_help` agent with its guide and read-only query tool. No
+published command creates that agent: the script that does,
+`dev/ui_assistant.py`, is in the percolate-core source repository, which is not
+public. A suggestion
 produces a draft for review; applying it to an editor does not execute a query,
 pull an API or start a workflow.
 

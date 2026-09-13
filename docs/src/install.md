@@ -245,6 +245,18 @@ as a superuser the extension refuses to load, and as anyone else the roles it
 needs do not exist yet — which is what `bootstrap.sql` sequences. It is safe to
 run again.
 
+Updating is the same two commands again, then one statement. `install.sh`
+installs the release's `percolate--<old>--<new>.sql` scripts beside the new
+version and says so when it finds an earlier one, and `bootstrap.sql` makes the
+grants a newer extension refuses to update without. A database that already has
+the extension keeps its version until it is updated, as `app_owner` for the
+reason [the compose update](#docker-compose) gives:
+
+```sql
+set role app_owner;
+alter extension percolate update;
+```
+
 <details class="why" markdown="1">
 <summary>Why it works — two extensions that ship differently, because they are
 different kinds of thing</summary>

@@ -303,7 +303,10 @@ release. The question names a Meridian vessel because the token from
 a Kestrel vessel is invisible to it.
 
 Continuing the conversation is echoing back the session id you were handed, and
-watching one you did not start is a second endpoint:
+watching it from another client is a second endpoint. That endpoint answers
+`404` to a caller who cannot read the session, the same answer as for an id
+that does not exist, so holding somebody else's session id is not enough to
+listen to it:
 
 ```bash
 curl -N http://localhost:8080/chat -H "X-P8-Session-Id: 8f2c…" …

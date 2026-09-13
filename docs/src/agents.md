@@ -291,16 +291,15 @@ data: {"type":"RUN_FINISHED","status":"succeeded"}
 ```
 </div>
 
-Two differences from that capture on a stock compose stack. It was taken with
+One difference from that capture on a stock compose stack: it was taken with
 the query server bound, and the sample binds no tool server, so your stream has
-no `TOOL_CALL` events and the answer comes from the prompt alone. And in the
-published image an agent with an output schema — the sample's `harbourmaster`
-is one — streams no text at all: the events arrive and the answer does not.
-`"stream": false` returns it, as the completion's `choices[0].message.content`;
-the streamed form is fixed in `percolate-core`'s source and ships with its next
-release. The question names a Meridian vessel because the token from
-[install](install.html#the-first-user-and-a-token) carries Meridian's org, and
-a Kestrel vessel is invisible to it.
+no `TOOL_CALL` events and the answer comes from the prompt alone. An agent with
+an output schema, which the sample's `harbourmaster` is, streams its answer as
+`TEXT_MESSAGE_CONTENT` deltas carrying the JSON its `properties` describe, and
+`"stream": false` returns the same JSON as the completion's
+`choices[0].message.content`. The question names a Meridian vessel because the
+token from [install](install.html#the-first-user-and-a-token) carries Meridian's
+org, and a Kestrel vessel is invisible to it.
 
 Continuing the conversation is echoing back the session id you were handed, and
 watching it from another client is a second endpoint. That endpoint answers

@@ -259,6 +259,16 @@ services:
     configs:
       - source: agent_signing_key
         target: /run/percolate/agent-signing-key
+        # OWNED BY THE IMAGE'S USER. A config is mounted root:root unless it
+        # says otherwise, and percolate-core's image runs as uid 10001 (its
+        # Dockerfile: `useradd --uid 10001 percolate`, then `USER percolate`).
+        # At 0400 and root:root the worker could not read its own key, so every
+        # `agent:` step and every scheduled run failed at once with `The agent
+        # signing key file cannot be read`. The chart does not need this: its
+        # pods set fsGroup 10001, and the kubelet mounts a secret file as
+        # root:10001 0440.
+        uid: "10001"
+        gid: "10001"
         mode: 0400
 
   # A SECOND worker, because a worker polls exactly one queue and ingestion
@@ -356,6 +366,16 @@ services:
       # only the unset one on the path that fails.
       P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
+      # THE LOGIN THAT COMPLETES A SCHEDULED RUN'S TASK. A scheduled step posts
+      # to `{{env.P8_AGENT_URL}}/internal/run`, which is this service. It accepts
+      # the run and, when the run ends, calls workflow.complete_task or
+      # fail_task itself. Both are granted to `worker`, and P8_DSN above logs
+      # in as `authenticator`, which cannot become `worker`. That is on purpose:
+      # every PostgREST request arrives on that login. So this service also gets
+      # the workers' own login, which it uses for those two calls and nothing
+      # else. Without it /internal/run answers 503. Before percolate-core 0.1.12
+      # the run ended `failed`, and its step waited out the whole wait_ms.
+      P8_WORKER_DSN: postgres://worker:${P8_WORKER_PASSWORD:-workerpass}@db:5432/percolate
       # THE PROVIDER'S OWN VARIABLE, not LLM_API_KEY, and one line per provider
       # because `model` is a COLUMN. The image carries every provider
       # pydantic-ai can drive, so which of these matters is decided by an

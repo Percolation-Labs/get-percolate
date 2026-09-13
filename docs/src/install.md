@@ -86,7 +86,7 @@ own:
 
 ```bash
 docker compose exec db psql -U p8 -d percolate -c "select * from workflow.compiler_capabilities()"
-# or, with a local client:
+# or, with a local client -- p8:p8 unless .env sets POSTGRES_USER or POSTGRES_PASSWORD:
 psql postgres://p8:p8@localhost:5432/percolate -c "select * from workflow.compiler_capabilities()"
 ```
 
@@ -376,11 +376,35 @@ the extension for this reason — prose that repeats it can drift away from it.
 
 Then sign a JWT with the same secret the stack was given — `P8_JWT_SECRET`,
 which the compose file defaults to
-`change-me-a-long-random-string-at-least-32-chars`. The CLI installed in
-[the next section](#the-sample-which-nothing-loads-for-you) does it, with the
-tenant claim the sample's data needs:
+`change-me-a-long-random-string-at-least-32-chars`. A CLI does it, with the
+tenant claim the sample's data needs.
+
+`percolate` is the CLI from `percolate-core`, and nothing you have run so far
+installed it — the compose stack runs that image, it does not put the command on
+your PATH. It needs **Python 3.11 or newer**; on a Mac the system `python3` is
+older than that and `pip` will report the package as simply not existing rather
+than as unsupported.
+
+The extras are not optional decoration: `sample` is the YAML reader and `agent`
+is what turns `plugin.yaml`'s agents — which are JSON Schema documents, not
+prompt strings — into rows. Without them the load refuses before it writes
+anything, which is the right behaviour and still a stop.
+
+It goes in a virtualenv, because a bare `pip install` stops at
+`externally-managed-environment` on Homebrew's Python and on current Debian and
+Ubuntu:
+
+<!-- run: pip -->
+```bash
+python3 -m venv ~/.percolate && . ~/.percolate/bin/activate   # 3.11 or newer
+pip install 'percolate-core[sample,agent]>=@@core_min@@'
+```
+
+`--email` looks the user up in the database, so the CLI needs the owner's DSN
+as well as the secret:
 
 ```bash
+export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
 export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
 TOKEN=$(percolate auth token --email me@example.com \
           --orgs d0000000-0000-0000-0000-00000000000a)
@@ -468,26 +492,9 @@ What we are trying to do here is get the domain the rest of this documentation
 queries, and be able to tell it apart from our own data afterwards.
 {: .goal }
 
-`percolate` is the CLI from `percolate-core`, and nothing you have run so far
-installed it — the compose stack runs that image, it does not put the command on
-your PATH. It needs **Python 3.11 or newer**; on a Mac the system `python3` is
-older than that and `pip` will report the package as simply not existing rather
-than as unsupported.
-
-The extras are not optional decoration: `sample` is the YAML reader and `agent`
-is what turns `plugin.yaml`'s agents — which are JSON Schema documents, not
-prompt strings — into rows. Without them the load refuses before it writes
-anything, which is the right behaviour and still a stop.
-
-It goes in a virtualenv, because a bare `pip install` stops at
-`externally-managed-environment` on Homebrew's Python and on current Debian and
-Ubuntu:
-
-<!-- run: pip -->
-```bash
-python3 -m venv ~/.percolate && . ~/.percolate/bin/activate   # 3.11 or newer
-pip install 'percolate-core[sample,agent]>=@@core_min@@'
-```
+The sample needs the `percolate` CLI, installed [with the
+token](#the-first-user-and-a-token); `. ~/.percolate/bin/activate` puts it back on
+your PATH in a new shell.
 
 `samples/harbour` is a path **inside this repository**, so it needs to be on
 disk — a compose install has only the one file you curled. The DSN has to be
@@ -497,7 +504,7 @@ its own error if you forget:
 ```bash
 git clone https://github.com/Percolation-Labs/get-percolate
 cd get-percolate
-export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
+export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
 export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
 export LLM_API_KEY=sk-...          # the key in your .env
 percolate sample load samples/harbour --as-email me@example.com

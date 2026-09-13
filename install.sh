@@ -40,7 +40,7 @@ PG_MAJOR=$("$PG_CONFIG" --version | sed -n 's/^PostgreSQL \([0-9][0-9]*\).*/\1/p
   its ABI, so there is no fallback to an earlier major.
   A PG19 installed elsewhere:  PG_CONFIG=/path/to/19/bin/pg_config sh install.sh
   No PG19 at all:              the compose install carries everything,
-                               https://github.com/$REPO#1-docker-compose--the-whole-stack-two-images"
+                               https://github.com/$REPO#docker-compose"
 
 SHAREDIR=$("$PG_CONFIG" --sharedir)/extension
 PKGLIBDIR=$("$PG_CONFIG" --pkglibdir)
@@ -72,7 +72,7 @@ fetch() {
     || die "could not download $1
   Check https://github.com/$REPO/releases for a published release. If you are
   running ahead of one, the Docker image carries the same extensions: the
-  compose install at https://github.com/$REPO#1-docker-compose--the-whole-stack-two-images"
+  compose install at https://github.com/$REPO#docker-compose"
 }
 
 # ---------------------------------------------------------------- percolate

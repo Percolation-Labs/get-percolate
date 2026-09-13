@@ -23,9 +23,9 @@ steps:
       properties: {verdict: {type: string, enum: [SAFETY, FINANCE, OTHER]}}
 ```
 
-`define_yaml` compiles this to rows, `start_workflow` runs it, and `retrieve`
-completes inside the database — `SEARCH` embeds the query and ranks it against
-pgvector, no model call from outside.
+`define_yaml` compiles this to rows and `start_workflow` runs it. The database
+makes no model calls, so `SEARCH` compiles to two tasks: a worker embeds the
+query, and the ranking against pgvector runs inside the database.
 
 **Docs: <https://percolation-labs.github.io/get-percolate>**
 

@@ -192,6 +192,14 @@ agent:
   #     - name: ANTHROPIC_API_KEY
   #       valueFrom: {secretKeyRef: {name: my-keys, key: anthropic}}
   env: []
+  # Tool servers that receive the caller's bearer token and X-P8-* identity
+  # headers; every other registered server receives neither. An MCP server that
+  # acts as the caller -- the runtime's own /mcp, for delegation -- refuses a
+  # call without it: `a verified caller is required`. Explicit
+  # scheme://host[:port] origins, no wildcard, as the tool_servers row names
+  # them (e.g. http://<release>-percolate-agent.<namespace>.svc.cluster.local:8080).
+  # Rendered as P8_TOOL_AUTH_ORIGINS on the runtime. Empty sends the token nowhere.
+  toolAuthOrigins: []
   resources:
     requests: {cpu: 200m, memory: 512Mi}
     limits: {memory: 2Gi}

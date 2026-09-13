@@ -748,9 +748,7 @@ OpenAI client calls, read back from `choices.0.message.content`. So the worker
 that runs it needs both: `P8_AGENT_URL`, which the compose file and the chart
 set, and `P8_API_KEY`, a Percolate token signed for a user, which neither ships
 because a default would be a token everybody knows. Until it is set every agent
-step fails on `credential_ref 'P8_API_KEY' is not set`; the
-[README](https://github.com/Percolation-Labs/get-percolate#agent-steps-need-a-token-of-their-own)
-has the two commands. The call is synchronous, so the worker holds the
+step fails on `credential_ref 'P8_API_KEY' is not set`. The call is synchronous, so the worker holds the
 connection for the length of the turn.
 
 `session_group` asks the engine for a session id that is stable for the life of

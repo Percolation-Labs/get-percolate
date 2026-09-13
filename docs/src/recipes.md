@@ -699,9 +699,7 @@ actually held rather than from what the model says it used.
 
 > **What is missing.** The Agent Runtime runs as the compose `agent` service,
 > but an `agent:` step reaches it only once the http worker has a `P8_API_KEY`
-> — a token signed for a user, which the compose file leaves empty (the
-> [README](https://github.com/Percolation-Labs/get-percolate#agent-steps-need-a-token-of-their-own)
-> has the two commands). No agents are seeded beyond the sample's. Treat the
+> — a token signed for a user, which the compose file leaves empty. No agents are seeded beyond the sample's. Treat the
 > streaming and delegation behaviour as specified and reviewed rather than
 > measured.
 

@@ -101,13 +101,11 @@ psql_() { docker compose exec -T db psql -U p8 -d percolate -v ON_ERROR_STOP=1 "
 # whichever assertion happened to touch it first.
 say "is the documentation ahead of what is published?"
 "$PY_BIN" "$ROOT/ci/versions.py" --check | sed -n '/^note:/,$p' | sed 's/^/    /'
-AHEAD=$("$PY_BIN" - "$ROOT/versions.toml" <<'EOF'
-import sys, tomllib
-v = tomllib.load(open(sys.argv[1], "rb"))
-p, r = v["published"], v["requires"]
-print("yes" if any(r.get(k, p[k]) != p[k] for k in ("core", "extension")) else "no")
-EOF
-)
+# Asked of versions.py rather than computed here. This was a second copy of the
+# comparison, and both copies used `!=` where versions.toml says "exceeds", so a
+# requires BEHIND published read as a release outstanding and the excuse below
+# fired on a pair that should have had percolate_build().
+AHEAD=$("$PY_BIN" "$ROOT/ci/versions.py" --outstanding) || fail "ci/versions.py --outstanding failed"
 
 say "what is under test"
 psql_ -c "select * from percolate_build()" || {

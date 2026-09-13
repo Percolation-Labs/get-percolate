@@ -66,7 +66,19 @@ def substitute(text: str) -> str:
 
 
 def blocks(text):
-    """Yield (kind, body) for each marked fence, in document order."""
+    """Yield (kind, context, allow_empty, body) for each marked fence, in order."""
+    for _, kind, context, allow_empty, body in blocks_at(text):
+        yield kind, context, allow_empty, body
+
+
+def blocks_at(text):
+    """blocks(), with the 1-based line of each block's opening fence first.
+
+    The line is what a failure report names. A block counted from zero among the
+    marked ones is a number a reader has to recount against the page, and
+    `recipes.md block 4` was misread as the fourth block by two people in one
+    afternoon when it was the fifth.
+    """
     lines = text.splitlines()
     i = 0
     while i < len(lines):
@@ -91,7 +103,7 @@ def blocks(text):
             j += 1
         if j >= len(lines):
             raise SystemExit(f"line {i+1}: unterminated fenced block")
-        yield kind, context, allow_empty, "\n".join(body)
+        yield i + 2, kind, context, allow_empty, "\n".join(body)
         i = j + 1
 
 

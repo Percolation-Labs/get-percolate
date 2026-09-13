@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -40,7 +41,7 @@ _spec = importlib.util.spec_from_file_location(
     "extract_runnable", HERE / "extract-runnable.py")
 _er = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_er)
-blocks_with_context, substitute = _er.blocks, _er.substitute
+blocks_at, substitute = _er.blocks_at, _er.substitute
 
 SRC = HERE.parent / "docs" / "src"
 # The harbour fixture's Meridian org, a fixed literal in samples/harbour/schema.sql.
@@ -92,37 +93,78 @@ def wrap(kind: str, context: str | None, body: str) -> str:
                      f"this runner knows: tenant-a")
 
 
+# `psql:<stdin>:57: ERROR:  new row for relation ...` -- the line psql reports is
+# a line of the SCRIPT this runner built, which is how an error is traced back
+# to the block that raised it.
+PSQL_ERROR = re.compile(r"^psql:<stdin>:(\d+): (?:ERROR|FATAL|PANIC):\s+(.*)$")
+
+
+def stopped_by(stderr: str, spans: list[tuple[int, int, str]]) -> tuple[str, str]:
+    """(label of the block that stopped the page, the error that stopped it).
+
+    THE LAST ERROR, NOT THE FIRST LINE. This reported stderr's first line, and
+    under ON_ERROR_STOP the error that stops psql is the last thing it writes:
+    anything a block printed earlier comes first. On CI, recipes.md failed as
+    `NOTICE: relation "emb_text_embedding_3_small" already exists, skipping`, a
+    notice from an earlier statement, and the error behind it went unreported.
+
+    The block is found from the script line psql names rather than from the last
+    `### block` echo seen on stdout, so the label and the error come from the
+    same line of output and cannot describe two different blocks.
+    """
+    lines = [l for l in stderr.splitlines() if l.strip()]
+    for line in reversed(lines):
+        m = PSQL_ERROR.match(line)
+        if not m:
+            continue
+        n = int(m.group(1))
+        where = next((label for first, last, label in spans if first <= n <= last),
+                     f"script line {n}, outside every block")
+        return where, m.group(2)
+    return "an unknown block", (lines[-1] if lines else "(no stderr)")
+
+
 def run_page(dsn: str, page: pathlib.Path) -> tuple[bool, str]:
     text = substitute(page.read_text())
-    marked = [(k, c, e, b) for k, c, e, b in blocks_with_context(text) if k == "sql"]
+    marked = [(ln, k, c, e, b) for ln, k, c, e, b in blocks_at(text) if k == "sql"]
     if not marked:
         return True, "no marked sql blocks"
     # The whole page in one transaction, rolled back at the end: a page's writes
     # do not leak into the next page's clean slate, and no block may carry its
     # own `begin`/`rollback` (that would close this one early) -- such a block is
     # left unmarked instead.
-    script = "\\set ON_ERROR_STOP on\nbegin;\n"
-    for i, (k, c, e, b) in enumerate(marked):
-        script += f"\\echo '### block {i} (as:{c or 'owner'})'\n"
-        script += wrap(k, c, b)
-    script += "rollback;\n"
-    r = subprocess.run(["psql", dsn, "-q"], input=script,
+    #
+    # Blocks are numbered from 1 and named by the line of their fence, so a
+    # report reads `block 5, recipes.md:245` and a reader opens the page there.
+    script = ["\\set ON_ERROR_STOP on", "begin;"]
+    spans: list[tuple[int, int, str]] = []
+    labels = []
+    for n, (ln, k, c, e, b) in enumerate(marked, 1):
+        label = f"block {n}, {page.name}:{ln} (as:{c or 'owner'})"
+        labels.append(label)
+        script.append(f"\\echo '### {label}'")
+        first = len(script) + 1
+        script.extend(wrap(k, c, b).splitlines())
+        spans.append((first, len(script), label))
+    script.append("rollback;")
+    # `-f -`, not a bare pipe: psql puts `psql:<stdin>:N:` in front of a message
+    # only when it is reading a file, and `-` names stdin as one. Without it the
+    # error carries no line, and nothing ties it to a block.
+    r = subprocess.run(["psql", dsn, "-q", "-f", "-"], input="\n".join(script) + "\n",
                        capture_output=True, text=True)
     if r.returncode != 0:
-        stops = [l for l in r.stdout.splitlines() if l.startswith("### block")]
-        where = stops[-1] if stops else "before first block"
-        err = (r.stderr.strip().splitlines() or ["(no stderr)"])[0]
+        where, err = stopped_by(r.stderr, spans)
         return False, f"stopped at {where}: {err}"
     # A tenant read that shows rows must not come back empty -- that is the
     # `acme` failure, a query against a fixture nobody loaded, which errors
     # nowhere. `aiq.query` always returns its one envelope even when it matched
     # nothing, so an empty `rows` array inside counts as empty too.
-    for i, (k, c, e, b) in enumerate(marked):
+    for label, (ln, k, c, e, b) in zip(labels, marked):
         if c != "tenant-a" or e:
             continue
         empty, detail = returns_empty(dsn, b)
         if empty:
-            return False, (f"block {i} returned no rows ({detail}) -- if that is "
+            return False, (f"{label} returned no rows ({detail}) -- if that is "
                            f"correct, mark it `as:tenant-a rows:0`")
     return True, f"{len(marked)} blocks ran"
 

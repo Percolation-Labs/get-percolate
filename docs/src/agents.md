@@ -455,10 +455,20 @@ What we are trying to do here is let a researcher agent hand work to an analyst,
 without either of them knowing anything the other does not.
 {: .goal }
 
+The runtime's agents are served as MCP tools by `percolate agent gateway`, which
+the compose file runs as the `gateway` service on port 8765. `agent serve` on
+8080 does not serve MCP, so a server registered at `http://agent:8080/mcp`
+answers 404 on the first call.
+
 <!-- run: sql -->
 ```sql
+select agentic.upsert_agent($j${
+  "name": "analyst",
+  "system_prompt": "Answer the question you are handed in two sentences."
+}$j$::jsonb);
+
 select agentic.upsert_tool_server($j${
-  "name": "p8-agents", "kind": "mcp", "url": "http://agent:8080/mcp",
+  "name": "p8-agents", "kind": "mcp", "url": "http://gateway:8765/mcp",
   "serves_agents": true
 }$j$::jsonb);
 
@@ -467,6 +477,34 @@ select agentic.upsert_agent($j${
   "tools": [{"server": "p8-agents", "tools": ["agent__analyst"]}]
 }$j$::jsonb);
 ```
+
+A registered server has no tool list until it is synced, and until then a turn
+for `researcher` fails with `tool server 'p8-agents' has no discovered tools`.
+The runtime does the sync, because it is the process that can reach `gateway` by
+its compose name. Each agent is one tool, so sync again after adding an agent:
+
+<!-- run: shell -->
+```bash
+curl -s -X POST http://localhost:8080/tools/p8-agents/sync \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the catalogue the runtime stored</div>
+
+```
+{"name":"p8-agents","tools":["agent__analyst","agent__harbourmaster","agent__researcher"]}
+```
+</div>
+
+The gateway runs a delegated turn as the person who asked the researcher, so it
+needs that person's token, and the runtime sends a caller's token only to the
+origins in `P8_TOOL_AUTH_ORIGINS`. The compose file sets it to
+`http://gateway:8765` on the `agent` service; the chart's value is
+`agent.toolAuthOrigins`. A tool server whose origin is not on the list gets
+neither the token nor the `X-P8-*` identity headers, and the gateway refuses a
+call without them: `a verified caller is required`. Entries are exact
+`scheme://host:port` origins, comma-separated, with no wildcard.
 
 <details class="why" markdown="1">
 <summary>Why it works — the runtime serves its own agents as an MCP server, so
@@ -478,7 +516,15 @@ legal way to say "agent A may delegate to agent B". A hardcoded
 broken the rule everything else rests on. The resolution keeps it intact — the
 runtime exposes its own agents as an MCP server, one tool per agent, so
 delegation becomes an ordinary `tool_servers` reference. The gateway is the same
-deployed process, not a second service.
+image started with a second command, and it serves the MCP tools and the
+scheduled-run trigger, nothing else.
+
+The token goes only to listed origins because it is the caller's identity. A
+registered third party that received it could act as that person, and one that
+received only the `X-P8-*` headers could still read who they are and which
+session they are in, so both follow the one list. The gateway is first-party
+and needs both: it cannot run a turn as nobody, and it refuses rather than pick
+an identity.
 
 That makes the per-server allowlist do double duty: `tools: ["agent__analyst"]`
 is how you narrow *which* agents a researcher may delegate to, using the same

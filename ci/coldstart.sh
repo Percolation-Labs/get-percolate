@@ -358,4 +358,118 @@ if [ ${#problems[@]} -gt 0 ]; then
     fail "ui.md: a reader following the page does not get a working workbench (${#problems[@]} problem(s) above)"
 fi
 
+say "agents.md: an agent step and a scheduled run naming a missing agent fail at once, and say so"
+# WHAT THIS PROVES WITH NO PROVIDER KEY: every hop an agent call takes before a
+# model is involved. The worker reads its signing key, asks the database who
+# owns the run, and signs a token for them. It sends that token to P8_AGENT_URL.
+# The Agent Runtime verifies the token and looks the agent up. Naming an agent
+# that does not exist makes the runtime the one that refuses, so the refusal is
+# evidence that every hop before it worked. The scheduled run also proves the
+# runtime can fail its task itself (fail_task, as `worker`), and that is the
+# only way such a step ends before its wait_ms, fifteen minutes by default.
+#
+# ASSERTED ON THE REASON, NOT ONLY THE STATUS. Both shipped failures were fast
+# and terminal as well. A worker that cannot read its key fails the step at once
+# ("The agent signing key file cannot be read"), and so does one whose runtime
+# has no /internal/run (HTTP 404, Not Found). A check on `failed` alone passes
+# on both.
+#
+# IN THIS SCRIPT, NOT READ FROM A PAGE. agents.md's step names agents a reader
+# has to create first (classifier, researcher), and no page documents the
+# scheduled step: its `rest:` shape is p8-subsystems'
+# specs/workflow-engine/README.md, and the extension's summarize_session_window
+# row uses it.
+#
+# Started AS THE ADMIN, with their claims, because the worker signs for the
+# run's owner and refuses a run that has none.
+MISSING_AGENT=coldstart-no-such-agent
+psql_ -q >/dev/null <<EOF
+select workflow.define_yaml(\$\$
+name: coldstart_agent_step
+steps:
+  - id: ask_missing_agent
+    agent: $MISSING_AGENT
+    input: 'Say anything.'
+\$\$);
+select workflow.define_yaml(\$\$
+name: coldstart_scheduled_run
+steps:
+  - id: dispatch_missing_agent
+    queue: http
+    rest:
+      url: '{{env.P8_AGENT_URL}}/internal/run'
+      method: POST
+      credential_ref: P8_API_KEY
+      mode: async
+      body:
+        workflow_task_id: '{{task.id}}'
+        input: {agent: $MISSING_AGENT, prompt: 'Say anything.'}
+\$\$);
+EOF
+start_as_admin() {   # <definition> -> the run id
+    psql_ -qtA <<EOF | tail -1
+begin;
+select set_config('request.jwt.claims', json_build_object('sub',
+    (select id from rbac.users where email = 'me@example.com'))::text, true) \gset
+set local role authenticated;
+select workflow.start_workflow('$1', '{}'::jsonb);
+commit;
+EOF
+}
+task_col() { psql_ -tAc "select $3 from workflow.tasks where run_id = '$1' and step_key = '$2'"; }
+# Polls for up to 30s, then reports what the step became: STATUS, ATTEMPTS,
+# ERROR and SECS.
+step_outcome() {     # <run id> <step key> <epoch the run started>
+    while :; do
+        STATUS=$(task_col "$1" "$2" status)
+        SECS=$(( $(date +%s) - $3 ))
+        case "$STATUS" in failed|succeeded|cancelled) break ;; esac
+        [ "$SECS" -ge 30 ] && break
+        sleep 1
+    done
+    ATTEMPTS=$(task_col "$1" "$2" attempts)
+    ERROR=$(task_col "$1" "$2" "coalesce(error::text, '')")
+    echo "    $2: ${STATUS:-no task} after ${SECS}s, ${ATTEMPTS:-?} attempt(s)"
+    echo "    error: ${ERROR:-none}"
+}
+agent_problems=()
+
+since=$(date -u +%Y-%m-%dT%H:%M:%SZ); t0=$(date +%s)
+run=$(start_as_admin coldstart_agent_step)
+step_outcome "$run" ask_missing_agent "$t0"
+{ [ "$STATUS" = failed ] && [ "$ATTEMPTS" = 1 ] && [ "$SECS" -le 30 ]; } \
+    || agent_problems+=("agent step: wanted failed on attempt 1 within 30s, got ${STATUS:-no task} on attempt ${ATTEMPTS:-?} after ${SECS}s")
+case "$ERROR" in
+    *"HTTP 404"*"not visible to you"*) ;;
+    *) agent_problems+=("agent step: the failure was not the Agent Runtime refusing the agent") ;;
+esac
+
+t0=$(date +%s)
+run=$(start_as_admin coldstart_scheduled_run)
+step_outcome "$run" dispatch_missing_agent "$t0"
+{ [ "$STATUS" = failed ] && [ "$ATTEMPTS" = 1 ] && [ "$SECS" -le 30 ]; } \
+    || agent_problems+=("scheduled run: wanted failed on attempt 1 within 30s, got ${STATUS:-no task} on attempt ${ATTEMPTS:-?} after ${SECS}s")
+# Written by the runtime's own fail_task (percolate_core/agentic/gateway.py,
+# _fail_task): the exception's name first, and `terminal`. A worker-side failure
+# has neither.
+verdict=$(task_col "$run" dispatch_missing_agent "(error->>'error') || ' | terminal=' || coalesce(error->>'terminal', 'unset')")
+case "$verdict" in
+    "AgentNotFound: "*"$MISSING_AGENT"*" | terminal=true") ;;
+    *) agent_problems+=("scheduled run: the failure was not the runtime's own terminal fail_task (got: ${verdict:-nothing})") ;;
+esac
+# EXACTLY ONE REQUEST: one claim of the step, and one accepted dispatch, in the
+# worker's own log. `attempts` above counts claims; the log counts requests.
+sleep 2
+wlog=$(docker compose logs --no-log-prefix --since "$since" worker 2>&1 || true)
+claims=$(grep -c "dispatch_missing_agent (http_call)" <<<"$wlog" || true)
+sent=$(grep -c "dispatched (HTTP 202)" <<<"$wlog" || true)
+echo "    worker log: $claims claim(s) of the step, $sent accepted dispatch(es)"
+[ "$claims" = 1 ] && [ "$sent" = 1 ] \
+    || agent_problems+=("scheduled run: wanted exactly one request, the worker log shows $claims claim(s) and $sent accepted dispatch(es)")
+
+if [ ${#agent_problems[@]} -gt 0 ]; then
+    printf '    %s\n' "${agent_problems[@]}" >&2
+    fail "an agent call on a fresh install does not reach the runtime and come back (${#agent_problems[@]} problem(s) above)"
+fi
+
 printf '\nCOLD START OK\n'

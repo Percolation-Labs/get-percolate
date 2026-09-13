@@ -269,6 +269,30 @@ find the function content.query`. That reads like the function was never
 installed. It is there; you asked the wrong schema for it. Reads use
 `Accept-Profile` and writes and RPC use `Content-Profile`.
 
+**`SEARCH` and `SEMANTIC` need the vector as well.** `/rpc/query` is
+`aiq.query(p_query, p_embedding)`, and the database makes no model calls, so a
+vector mode sent with `p_query` alone answers `400` with `SEARCH fuses lexical
+and semantic ranks, so it needs p_embedding`. Embed the text with the model the
+corpus was embedded with, and send the array as `p_embedding`, a JSON string, as
+the workbench does:
+
+```bash
+VEC=$(curl -s https://api.openai.com/v1/embeddings \
+  -H "Authorization: Bearer $LLM_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"model": "text-embedding-3-small", "input": "PSC-441 boiler"}' \
+  | jq -c '.data[0].embedding')
+
+curl -X POST http://localhost:3000/rpc/query \
+  -H 'Content-Type: application/json' \
+  -H 'Content-Profile: aiq' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "$(jq -n --arg q 'SEARCH "PSC-441 boiler" FROM chunks LIMIT 3' --arg v "$VEC" \
+        '{p_query: $q, p_embedding: $v}')"
+```
+
+`TEXT "PSC-441" FROM chunks` is the lexical half on its own, and needs no
+vector over REST or anywhere else.
+
 <details class="why" markdown="1">
 <summary>Why it works — and why an empty result is usually correct</summary>
 

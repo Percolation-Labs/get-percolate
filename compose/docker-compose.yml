@@ -138,6 +138,9 @@ services:
       # .env; override both for anything reachable by anyone else.
       P8_AUTHENTICATOR_PASSWORD: ${P8_AUTHENTICATOR_PASSWORD:-authpass}
       P8_WORKER_PASSWORD: ${P8_WORKER_PASSWORD:-workerpass}
+      # Optional, no default: only an application that provisions its own
+      # users needs app_provisioner, and unset it is never created.
+      P8_APP_PROVISIONER_PASSWORD: ${P8_APP_PROVISIONER_PASSWORD:-}
     ports: ["${P8_PG_PORT:-5432}:5432"]
     # MOUNTED AT /var/lib/postgresql, NOT .../data, and on 18+ that is the
     # difference between a stack that starts and one that restart-loops.

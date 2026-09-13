@@ -162,7 +162,7 @@ The errors, in the order they will cost you something:
 |---|---|
 | `space_model_split` | a query ranks a corpus in a space that corpus has no vectors in — returns rows, not an error |
 | `unknown_rate_key` | the throttle has no row, so `claim_task` skips the task **forever**, reporting nothing |
-| `unknown_agent` | the runtime 404s every call; the step burns its retries on a name that was never going to resolve |
+| `unknown_agent` | the runtime answers every call with a 404, so the step fails terminally on its first attempt — at run time, when this check could have said so before the run started |
 | `unknown_source` · `unknown_model` | the query returns zero rows, or has nowhere to rank |
 | `unregistered_server` | the agent runs with a smaller toolset than its definition claims, and answers anyway |
 | `unknown_relation` | a statement names a table nobody can see — a warning, because the extraction is a heuristic over SQL |

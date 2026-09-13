@@ -279,6 +279,7 @@ the database.
       credential_ref: OPS_TOKEN
       timeout_ms: 30000
       mode: async
+      wait_ms: 600000
       jsonpath: data.id
       body: {summary: '{{steps.brief.result}}'}
 ```
@@ -289,7 +290,7 @@ these are keys and not a schema</summary>
 
 The compiler copies the mapping under `rest:` into `workflow.tasks.input`
 verbatim, which is why `url`, `method`, `body`, `headers`, `timeout_ms`,
-`jsonpath`, `mode` and `credential_ref` are all available without the grammar
+`jsonpath`, `mode`, `wait_ms` and `credential_ref` are all available without the grammar
 enumerating them: the worker's handler is what reads them, and the compiler does
 not need an opinion.
 
@@ -299,12 +300,28 @@ inspectable and replayable. `{{env.X}}` works the same way and is resolved
 **only by the worker** — a `sql:` or `p8ql:` step cannot read it,
 because the database has no business knowing the deployment's environment.
 
-`mode: async` returns immediately and lets the callee call `complete_task` when
-it finishes. That is the seam a long-running call uses, and it is what an
-`agent:` step compiles to.
+`mode: async` sends the request and then **holds the task** until the callee
+calls `complete_task` or `fail_task`. While it holds, the worker heartbeats the
+lease and writes nothing; when the callee finishes, the worker lets go. `wait_ms`
+bounds the hold, and is 15 minutes when omitted. Past it the worker fails the
+task **terminally**, because a retry would send a second request to a callee
+that may still be working. A `wait_ms` that is not a positive whole number of
+milliseconds is refused before anything is sent.
+
+**The hold occupies the worker.** `percolate worker` runs one task at a time,
+so a worker holding an async step claims nothing else until the callee answers
+or `wait_ms` passes. Run as many `http` workers as you expect async steps in
+flight at once, plus the ones your synchronous steps need.
+
+That is the seam a scheduled agent run uses: its step posts to `/internal/run`,
+and the runtime completes the task when the turn ends, or fails it with a
+verdict when the turn does. An `agent:` step does not use it; it is the
+synchronous call [below](#agent-steps-sessions-and-declared-shapes).
 
 <p class="related"><strong>Related</strong>
 <a href="failure.html">which HTTP failures retry</a> ·
+<a href="failure.html#crash-recovery">the heartbeat and lease fence the hold
+relies on</a> ·
 <a href="recipes.html#keys-are-names-never-values">every place a credential is
 named rather than stored</a></p>
 </details>

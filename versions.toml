@@ -52,6 +52,12 @@ chart     = "0.1.9"   # the Helm chart's own version, not what it deploys
 core      = "0.1.12"  # ci/coldstart.sh sends a scheduled run to `agent serve`,
                       # which answers /internal/run and completes the task on
                       # P8_WORKER_DSN only from percolate-core#54; 0.1.11 answers
-                      # 404. (`percolate sample load` needed 0.1.11, REM-147.)
+                      # 404. grammar-workflow.md describes `mode: async` holding
+                      # the task for `wait_ms`, plan.md an unknown agent failing
+                      # on its first attempt (a 404, not a retried 500), and
+                      # agents.md the events stream refusing a caller who cannot
+                      # read the session. 0.1.11 does none of the three. And
+                      # 0.1.11 was already the floor for `percolate sample load`
+                      # against 0.2.0 (REM-147).
 extension = "0.2.0"   # samples/harbour writes agents as JSON Schema documents,
                       # and only 0.2.0 translates one into a row (REM-70)

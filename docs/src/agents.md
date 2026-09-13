@@ -169,7 +169,7 @@ curl -s http://localhost:3000/rpc/upsert_agent \
 Or push the file you wrote at the top of this page, unchanged:
 
 ```bash
-export P8_DSN=postgres://p8:p8@localhost:5432/percolate
+export P8_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
 export P8_USER_ID=$(psql "$P8_DSN" -Atc "select id from rbac.users where email = 'me@example.com'")
 percolate agent push harbourmaster.yaml
 ```

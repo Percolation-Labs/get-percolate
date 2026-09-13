@@ -870,7 +870,7 @@ the ten against it.
 {: .goal }
 
 ```bash
-export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate
+export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
 percolate sample load samples/harbour --as-email you@example.com
 ```
 

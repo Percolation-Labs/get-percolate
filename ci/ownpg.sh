@@ -65,6 +65,24 @@ in_pg env PGPASSWORD="$AUTH_PW"   psql -h 127.0.0.1 -U authenticator -d appdb -t
 in_pg env PGPASSWORD="$WORKER_PW" psql -h 127.0.0.1 -U worker -d appdb -tAc 'select 1' >/dev/null \
     || fail "worker cannot log in with worker_pw"
 
+# Asked of the server, over a login, because a timeout set on a role nobody logs
+# in as reads correctly in pg_db_role_setting and applies to nothing. The values
+# are ci/superuser-step.py's to compare; this asks that each one reaches a
+# session.
+say "every login role starts its session bounded"
+# Over the socket, which this image trusts: scheduler has no password, and the
+# TCP logins above already proved the other two.
+for role in authenticator worker scheduler; do
+    got=$(in_pg psql -U "$role" -d appdb -tAc \
+        "select current_setting('statement_timeout') || ' ' || current_setting('transaction_timeout')
+             || ' ' || current_setting('idle_in_transaction_session_timeout') || ' ' || current_setting('lock_timeout')" 2>&1) \
+        || fail "$role could not log in to read its timeouts: $got"
+    case " $got " in
+        *" 0 "*) fail "$role logs in with an unbounded timeout ($got: statement transaction idle lock)" ;;
+    esac
+    echo "    $role: $got"
+done
+
 say "the extension is whole, and owned by a non-superuser"
 missing=$(psql_ -tAc "select workflow.compiler_capabilities()->>'missing'")
 [ "$missing" = "[]" ] || fail "compiler_capabilities reports missing: $missing"

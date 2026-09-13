@@ -99,3 +99,27 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install into a plain Postgres 19
         run: ci/ownpg.sh
+
+  # TWO FILES DO THE SUPERUSER STEP, and a fix made to one missed the other:
+  # REM-113's per-role timeouts went into p8-subsystems'
+  # dev/image-init/00-superuser.sql and not into bootstrap.sql. bootstrap.sql
+  # is downloaded on its own, so it cannot include that file and carries a copy
+  # instead. Here because the daily schedule above runs it, and a change made
+  # only in p8-subsystems arrives as no commit to this repository.
+  superuser-step:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # The pair docs.yml and parser.yml use: the specs repo is private, so the
+      # default job token cannot read it.
+      - name: Check out the image's superuser step
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.SPECS_REPO || 'Percolation-Labs/p8-subsystems' }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+          path: .specs
+          sparse-checkout: dev/image-init/00-superuser.sql
+          sparse-checkout-cone-mode: false
+      - name: bootstrap.sql sets the same role timeouts as the image
+        run: python3 ci/superuser-step.py .specs/dev/image-init/00-superuser.sql

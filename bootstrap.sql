@@ -121,6 +121,36 @@ grant authenticated to authenticator;
 -- extension refuses to install or upgrade without it, and names this line.
 grant authenticated to api_viewer;
 
+-- WHAT THE DATABASE REFUSES: four timeouts on each role that LOGS IN (REM-113).
+-- `alter role ... set` applies at login, from the role that authenticated, and
+-- SET ROLE does not re-apply it -- so a bound on app_owner, api_viewer,
+-- authenticated or web_anon would read correctly in \drds and apply to nothing.
+-- app_owner is unbounded for the reason an upgrade needs to be: it replays the
+-- whole schema, and a migration cut off half way is worse than a slow one.
+--
+-- THE VALUES ARE p8-subsystems' dev/image-init/00-superuser.sql §2, which the
+-- image runs at initdb; the reasoning for each number is there. This copy exists
+-- because this file is downloaded on its own, and `ci/superuser-step.py` fails
+-- the build when the two tables disagree. The image's copy shipped and this one
+-- did not, so an own-Postgres install ran every query unbounded.
+do $$
+declare r record;
+begin
+    for r in
+        select * from (values
+            ('authenticator', '30s',  '60s',  '30s', '5s'),
+            ('worker',        '300s', '600s', '60s', '15s'),
+            ('scheduler',     '60s',  '120s', '30s', '10s')
+        ) as t(role, stmt, txn, idle, lock)
+    loop
+        continue when not exists (select 1 from pg_roles where rolname = r.role);
+        execute format('alter role %I set statement_timeout = %L', r.role, r.stmt);
+        execute format('alter role %I set transaction_timeout = %L', r.role, r.txn);
+        execute format('alter role %I set idle_in_transaction_session_timeout = %L', r.role, r.idle);
+        execute format('alter role %I set lock_timeout = %L', r.role, r.lock);
+    end loop;
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- 2. The extensions a non-superuser cannot install, and the room app_owner
 --    needs to create things in this database.

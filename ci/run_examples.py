@@ -83,11 +83,28 @@ def wrap(kind: str, context: str | None, body: str) -> str:
         # the same subject, so the harness and the reader are in one seat.
         # SET LOCAL, not select set_config(): a select emits a row, which would
         # count as output when a block's own answer is being weighed for emptiness.
+        #
+        # BOTH ARE RESET, because `reset role` restores the role and leaves the
+        # claims. It reset only the role, and the page is one transaction, so
+        # every owner block after a tenant block ran carrying tenant A's claims:
+        # `rbac.is_operator()` false, `rbac.current_user_id()` the reader. On
+        # cookbook.md that was `not authorized to upload content` at line 384,
+        # three tenant blocks after the page's first -- reported as the page's
+        # failure when the harness had changed who was asking. The DO block
+        # refuses to carry on if a later edit drops either reset again; it emits
+        # no row, for the same reason as SET LOCAL above.
         return (
             "set local role authenticated;\n"
             f"set local request.jwt.claims = '{TENANT_A_CLAIMS}';\n"
             + body + "\n"
             "reset role;\n"
+            "reset request.jwt.claims;\n"
+            "do $$ begin\n"
+            "  if current_user <> session_user\n"
+            "     or coalesce(current_setting('request.jwt.claims', true), '') <> '' then\n"
+            "    raise exception 'the examples runner left a tenant identity set after an as:tenant-a block';\n"
+            "  end if;\n"
+            "end $$;\n"
         )
     raise SystemExit(f"unknown run context 'as:{context}' -- "
                      f"this runner knows: tenant-a")

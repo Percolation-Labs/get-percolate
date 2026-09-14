@@ -399,9 +399,9 @@ compiler fills in</summary>
 It compiles to `POST {{env.P8_AGENT_URL}}/v1/chat/completions` on the `http`
 queue with `credential_ref: P8_API_KEY`, and reads the answer from
 `choices.0.message.content` — the call is synchronous, so the worker holds the
-connection for the length of the turn. The worker must therefore carry both
-variables: `P8_AGENT_URL`, which the compose file and chart set, and
-`P8_API_KEY`, a token signed for a user, which neither ships. Nested delegation
+connection for the length of the turn. The worker needs `P8_AGENT_URL`, which
+the compose file and chart set, and no token: it signs one for the run's owner
+([why](agents.html#naming-one-from-a-workflow)). Nested delegation
 happens inside the runtime rather than being
 unrolled into the workflow graph, which is why a researcher calling an analyst
 is one task here and a delegation tree there.

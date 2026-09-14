@@ -73,9 +73,9 @@ spec:
             # WHERE AN `agent:` STEP SENDS ITS CALL, AND WHO IT CALLS AS. The
             # compiler emits `POST {{"{{"}}env.P8_AGENT_URL{{"}}"}}/v1/chat/completions`
             # with credential_ref P8_API_KEY on the http queue, so a worker
-            # without both fails every agent step -- `template ... resolved to
-            # nothing`, then `credential_ref 'P8_API_KEY' is not set`. The
-            # compose file carries both; this chart carried neither.
+            # without P8_AGENT_URL fails every agent step with `template ...
+            # resolved to nothing`. The compose file carried it; this chart did
+            # not.
             {{- if $root.Values.agent.enabled }}
             - name: P8_AGENT_URL
               value: {{ printf "http://%s-agent.%s.svc.cluster.local:8080" (include "percolate.fullname" $root) $root.Release.Namespace | quote }}
@@ -86,11 +86,12 @@ spec:
             # ...AND WHEN IT DOES NOT USE THAT KEY AT ALL. With this mounted,
             # an agent step is authenticated as the person whose run it belongs
             # to: the worker asks the database for the verified owner and mints
-            # a five-minute token for them. P8_API_KEY above stops being the
-            # identity every scheduled run wears and becomes the fallback for a
-            # run with no owner.
+            # a five-minute token for them, for agent steps and /internal/run
+            # steps alike. P8_API_KEY above is then not read for either, and a
+            # run with no owner fails (`Agent task has no verified run owner`)
+            # rather than falling back to it.
             #
-            # Without the mount that fallback was the only path -- the worker
+            # Without the mount the shared key was the only path -- the worker
             # skips run identity entirely when this is unset -- so every
             # scheduled agent run in the cluster acted as whatever single
             # identity worker-api-key names, and RLS applied that person's

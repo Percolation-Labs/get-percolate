@@ -641,6 +641,23 @@ genuinely unsettled. `summarizer_agent_id` names which agent summarizes the
 windowed-out history — a nullable self-reference, so "who summarizes" is data
 too.
 
+`summarize_after_messages` is when the summary fires. Once a session holds that
+many messages, or a turn fills three quarters of a model's declared context
+window, the runtime starts the `summarize_session_window` workflow. Set it per
+agent, as the statement above does. An agent that leaves it out takes
+`P8_SUMMARIZE_AFTER_MESSAGES` from the runtime's environment, 40 when unset, and
+`P8_SUMMARIZE_AT_CONTEXT_FRACTION`, 0.75, moves the other trigger. The compose
+file passes neither to the `agent` service, so add them under its
+`environment:`; the chart takes them in `agent.env`.
+
+**A stock install has no summary workflow.** Neither the extension nor this
+repository installs `summarize_session_window`, or the `summarizer` agent it
+calls (`P8_DEFAULT_SUMMARIZER`). Turns still succeed. Past the threshold the
+oldest messages leave the window unsummarized and nothing fills the summary
+slot, and the runtime says so when it starts, with a warning that begins
+`sessions will not be summarized: no workflow definition
+'summarize_session_window'`.
+
 The window is scoped to the **branch**, not the session. A session-scoped window
 hands a delegated sub-agent the parent's rows, including the `tool_call` row
 representing its own invocation, which is both wrong and confusing to the model.
@@ -778,14 +795,24 @@ compiler fills in</summary>
 
 It compiles to `POST {{env.P8_AGENT_URL}}/v1/chat/completions` on the `http`
 queue with `credential_ref: P8_API_KEY` — the same completions endpoint a stock
-OpenAI client calls, read back from `choices.0.message.content`. So the worker
-that runs it needs both: `P8_AGENT_URL`, which the compose file and the chart
-set, and `P8_API_KEY`, a Percolate token signed for a user, which neither ships
-because a default would be a token everybody knows. Until it is set every agent
-step fails on `credential_ref 'P8_API_KEY' is not set`; the
-[README](https://github.com/Percolation-Labs/get-percolate#agent-steps-need-a-token-of-their-own)
-has the two commands. The call is synchronous, so the worker holds the
-connection for the length of the turn.
+OpenAI client calls, read back from `choices.0.message.content`. The call is
+synchronous, so the worker holds the connection for the length of the turn.
+
+The worker needs `P8_AGENT_URL`, which the compose file and the chart set, and
+no token of yours. It asks the database who owns the run and signs a
+five-minute token for that person with the key file `P8_AGENT_SIGNING_KEY_FILE`
+names; both deployments mount it from the JWT secret the runtime verifies with.
+So the agent answers as the person who started the run, and a run with no owner,
+started from a psql prompt with no claims, fails at once with `Agent task has
+no verified run owner`. Start it over REST with a token instead.
+
+`credential_ref: P8_API_KEY` is how the worker recognises the step, not a
+variable it reads. It reads `P8_API_KEY` only when it signs nothing: a worker
+started without `P8_AGENT_SIGNING_KEY_FILE`, or a `rest:` step naming that
+credential whose url is not `{{env.P8_AGENT_URL}}/v1/chat/completions` or
+`{{env.P8_AGENT_URL}}/internal/run` written that way. Even then it sends the key
+only to an origin `P8_CREDENTIAL_ORIGINS` binds to `P8_API_KEY`, and the
+shipped default binds none.
 
 `session_group` asks the engine for a session id that is stable for the life of
 the run and bound to `{{run.$session}}`. Steps naming the same group share a
@@ -805,6 +832,87 @@ delegation tree there.
 <a href="grammar-workflow.html#agent-steps-sessions-and-declared-shapes">every
 `agent:` key</a> ·
 <a href="first-workflow.html">a four-step pipeline end to end</a></p>
+</details>
+
+## An agent on a schedule
+
+An `agent:` step holds the worker's connection for the whole turn. For a turn
+nobody is waiting on, such as a nightly check, the step posts to the runtime's
+`/internal/run` instead: the runtime answers `202` at once and completes the
+task itself when the turn ends.
+
+What we are trying to do here is run the harbourmaster every night, and have
+the workflow finish when the agent does.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select workflow.define_yaml($$
+name: nightly_harbourmaster
+steps:
+  - id: overdue_inspections
+    queue: http
+    rest:
+      url: '{{env.P8_AGENT_URL}}/internal/run'
+      method: POST
+      credential_ref: P8_API_KEY
+      mode: async
+      wait_ms: 1800000
+      body:
+        workflow_task_id: '{{task.id}}'
+        input:
+          agent: harbourmaster
+          prompt: 'Which vessel is most overdue for inspection?'
+$$);
+```
+
+Then put it on a schedule as yourself, with the `$TOKEN` from
+[install](install.html#the-first-user-and-a-token):
+
+```bash
+curl -X POST http://localhost:3000/rpc/schedule_workflow \
+  -H 'Content-Type: application/json' \
+  -H 'Content-Profile: workflow' \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"p_name": "nightly-harbourmaster", "p_workflow": "nightly_harbourmaster", "p_cron": "0 3 * * *"}'
+```
+
+**A missing agent fails in seconds, not at `wait_ms`.** If `input.agent` names
+an agent that does not exist, or one the run's owner cannot see, the runtime
+fails the task itself: `failed` after one attempt, `terminal` set, and
+`AgentNotFound: no agent row named '…'` as the error. The worker does not
+retry it.
+
+<details class="why" markdown="1">
+<summary>Why it works — the worker dispatches the turn and the runtime finishes
+the task</summary>
+
+The body is what the runtime reads. `workflow_task_id` names the task it will
+complete, and `{{task.id}}` is this step's own; `input.agent` names the agent
+and `input.prompt` is the turn. A body without `workflow_task_id` or
+`input.agent` is refused with `400`, naming the missing field.
+
+`mode: async` makes the worker send the request and then hold the task
+`running`, heartbeating, until the runtime completes or fails it. `wait_ms`
+bounds the hold, and is fifteen minutes when omitted. Past it the worker fails
+the task terminally rather than start a second turn. The hold occupies that
+worker, so run one `http` worker for each scheduled turn you expect in flight at
+once.
+
+The worker signs the call for the run's owner, as it does for an `agent:` step,
+and a scheduled run's owner is whoever called `schedule_workflow`. That is why
+the schedule is made over REST: one made at a psql prompt with no claims has no
+owner, and every fire fails with `Agent task has no verified run owner`. The
+definition made at the prompt belongs to no one, so the administrator install
+bootstraps can schedule it and other users need a definition of their own.
+
+Nothing fires until `pg_cron` runs `workflow.tick()`.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-workflow.html#rest-steps-and-where-the-credential-lives">every
+`rest:` key, and the hold</a> ·
+<a href="install.html#pg_cron-if-you-want-schedules">setting up
+`pg_cron`</a></p>
 </details>
 
 Next: [skills and plugins](skills.html), the prose an agent carries and shares

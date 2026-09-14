@@ -21,7 +21,9 @@ Eight modes open with a keyword and the ninth is plain SQL, which is how
 `p8_query_grammar()` lists them too. Every mode goes through
 `aiq.query(text, vector)`, which is `POST /rpc/query` over the REST surface. The
 second argument is the embedding, and only the two
-vector modes use it.
+vector modes use it; over REST it is `p_embedding`, and
+[querying](query.html#over-rest-and-the-two-things-that-look-like-bugs) shows
+how to send one.
 
 | Mode | Syntax | What it is for |
 |---|---|---|

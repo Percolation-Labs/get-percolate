@@ -49,7 +49,7 @@ the credential anywhere near the database.
 | `aiq.embedding_models` | `credential_ref` | the worker, when it embeds |
 | `agentic.tool_servers` | `credential_ref` | the Agent Runtime, calling a tool |
 | a `rest:` step | `credential_ref:` inside the mapping | the worker |
-| an `agent:` step | `P8_API_KEY`, written in by the compiler | the worker |
+| an `agent:` step | `P8_API_KEY`, written in by the compiler; the worker signs a token for the run's owner in its place | the worker |
 
 <details class="why" markdown="1">
 <summary>Why it works — a secret in a row is a secret in every backup, and one
@@ -698,10 +698,8 @@ actually held rather than from what the model says it used.
 </details>
 
 > **What is missing.** The Agent Runtime runs as the compose `agent` service,
-> but an `agent:` step reaches it only once the http worker has a `P8_API_KEY`
-> — a token signed for a user, which the compose file leaves empty (the
-> [README](https://github.com/Percolation-Labs/get-percolate#agent-steps-need-a-token-of-their-own)
-> has the two commands). No agents are seeded beyond the sample's. Treat the
+> and the http worker signs each `agent:` step's token for the person who
+> started the run, so a run started over REST with a token reaches it. No agents are seeded beyond the sample's. Treat the
 > streaming and delegation behaviour as specified and reviewed rather than
 > measured.
 

@@ -324,19 +324,21 @@ data: {"type":"RUN_FINISHED","status":"succeeded"}
 ```
 </div>
 
-Two differences from that capture on a stock compose stack. The sample binds
-`harbourmaster` to the query server, so your stream has a `TOOL_CALL` pair for
-each query it makes, and the answer names what the rows said. And in the
-published image an agent with an output schema — the sample's `harbourmaster`
-is one — streams no text at all: the events arrive and the answer does not.
-`"stream": false` returns it, as the completion's `choices[0].message.content`;
-the streamed form is fixed in `percolate-core`'s source and ships with its next
-release. The question names a Meridian vessel because the token from
-[install](install.html#the-first-user-and-a-token) carries Meridian's org, and
-a Kestrel vessel is invisible to it.
+On a stock compose stack your stream has the shape of that capture. The sample
+binds `harbourmaster` to the query server, so the stream has a `TOOL_CALL` pair
+for each query it makes, and the answer names what the rows said. An agent with
+an output schema, which the sample's `harbourmaster` is, streams its answer as
+`TEXT_MESSAGE_CONTENT` deltas carrying the JSON its `properties` describe, and
+`"stream": false` returns the same JSON as the completion's
+`choices[0].message.content`. The question names a Meridian vessel because the
+token from [install](install.html#the-first-user-and-a-token) carries Meridian's
+org, and a Kestrel vessel is invisible to it.
 
 Continuing the conversation is echoing back the session id you were handed, and
-watching one you did not start is a second endpoint:
+watching it from another client is a second endpoint. That endpoint answers
+`404` to a caller who cannot read the session, the same answer as for an id
+that does not exist, so holding somebody else's session id is not enough to
+listen to it:
 
 ```bash
 curl -N http://localhost:8080/chat -H "X-P8-Session-Id: 8f2c…" …

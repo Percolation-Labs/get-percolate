@@ -52,6 +52,8 @@ chart     = "0.1.13"   # the Helm chart's own version, not what it deploys
 core      = "0.1.12"  # agents.md registers delegation at http://agent:8080/mcp
                       # and ci/coldstart.sh syncs it; `agent serve` answers /mcp
                       # only from percolate-core#56, and 0.1.11 answers 404.
+                      # compose's query-mcp service runs `percolate query mcp`,
+                      # which 0.1.11 does not have (percolate-core#52).
                       # (`percolate sample load` needed 0.1.11, REM-147.)
 extension = "0.2.0"   # samples/harbour writes agents as JSON Schema documents,
                       # and only 0.2.0 translates one into a row (REM-70)

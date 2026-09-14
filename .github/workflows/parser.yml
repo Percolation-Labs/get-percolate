@@ -117,6 +117,10 @@ jobs:
           path: |
             extension/percolate/sql/percolate--*.sql
             extension/percolate/percolate.control
+            # The parser's upgrade paths, committed in p8-subsystems by
+            # write-upgrades.py (REM-192): pgrx packages only percolate_parser--<v>.sql,
+            # so an install.sh database had no ALTER EXTENSION percolate_parser UPDATE.
+            extension/percolate_parser/sql/percolate_parser--*--*.sql
 
   parser:
     strategy:

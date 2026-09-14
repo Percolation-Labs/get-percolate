@@ -262,6 +262,13 @@ jobs:
           for up in extension/percolate/sql/percolate--*--"${{ inputs.version }}".sql; do
             [ -e "$up" ] && cp "$up" dev/dist/ && echo "ships: $(basename "$up")"
           done
+          # And the parser's, by the same argument (REM-192): without them `percolate`
+          # moves and `percolate_parser` stays at the version that installed it, over
+          # this image's .so. Committed in p8-subsystems by write-upgrades.py; the
+          # Dockerfile's dist/percolate_parser--*.sql glob ships them.
+          for up in extension/percolate_parser/sql/percolate_parser--*--"${{ inputs.version }}".sql; do
+            [ -e "$up" ] && cp "$up" dev/dist/ && echo "ships: $(basename "$up")"
+          done
 
       # WHAT THIS IMAGE WAS BUILT FROM, and the Dockerfile requires it -- a
       # published image with no provenance is the case percolate_build() exists
@@ -493,7 +500,7 @@ jobs:
           mkdir -p candidate-assets
           cp dev/dist/percolate.control "dev/dist/percolate--$V.sql" \
              dev/dist/percolate_parser.control "dev/dist/percolate_parser--$V.sql" candidate-assets/
-          for up in dev/dist/percolate--*--"$V".sql; do [ -e "$up" ] && cp "$up" candidate-assets/; done
+          for up in dev/dist/percolate--*--"$V".sql dev/dist/percolate_parser--*--"$V".sql; do [ -e "$up" ] && cp "$up" candidate-assets/; done
           for a in amd64 arm64; do
             cp "dev/dist/percolate_parser-$a.so" "candidate-assets/percolate_parser-linux-$a.so"
           done

@@ -24,14 +24,22 @@ on:
     paths: ["docs/**", "charts/**", "README.md", "versions.toml", "ci/versions.py",
             ".github/workflows/docs.yml"]
   workflow_dispatch:
-  # A COMMITTED CHART NOBODY PUBLISHED IS PUBLISHED WITHIN 15 MINUTES (REM-241).
+  # A COMMITTED CHART NOBODY PUBLISHED IS PUBLISHED WITHIN THE HOUR (REM-241, REM-253).
   # Both releases renumber the chart with a push that starts no workflow (a
   # GITHUB_TOKEN push in parser.yml; percolate-core's 0.1.14 push at 08:08Z on
   # 2026-09-14 started none either), so `push` alone left chart 0.1.15 committed
   # and unpublished. The `stale` job below makes a scheduled run cost one curl
   # unless versions.toml names a chart the index does not list.
+  #
+  # OFF THE QUARTER HOURS, because GitHub runs a schedule when it has capacity,
+  # not at the minute written, and the top of each quarter hour is when every
+  # other repository's schedule is due. As `*/15` this never fired: merged at
+  # 12:34Z on 2026-09-14, it had no scheduled run by 15:13Z, while coldstart's
+  # daily `0 7 * * *` in this repository started at 13:44Z that day and 12:36Z
+  # the day before. Four chances an hour at uncrowded minutes is the backstop;
+  # parser.yml's dispatch is what publishes an extension release's chart on time.
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
 
 permissions:
   contents: read

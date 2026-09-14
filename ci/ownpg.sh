@@ -40,7 +40,7 @@ docker run -d --name "$NAME" -e POSTGRES_PASSWORD=pw "$PG_IMAGE" >/dev/null
 for _ in $(seq 1 30); do in_pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 in_pg bash -c 'apt-get update -qq && apt-get install -y -qq postgresql-19-pgvector postgresql-19-cron curl openssl' >/dev/null
 
-AUTH_PW=$(openssl rand -hex 24); WORKER_PW=$(openssl rand -hex 24)
+AUTH_PW=$(openssl rand -hex 24); WORKER_PW=$(openssl rand -hex 24); PROV_PW=$(openssl rand -hex 24)
 docker cp "$ROOT/install.sh" "$NAME:/tmp/install.sh"
 
 # The previous version is read from the latest release's own upgrade scripts --
@@ -99,11 +99,13 @@ for _ in $(seq 1 30); do in_pg pg_isready -U postgres >/dev/null 2>&1 && break; 
 say "bootstrap.sql, three times"
 for i in 1 2 3; do
     out=$(in_pg psql -U postgres -d appdb -v ON_ERROR_STOP=1 \
-            -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" -f /tmp/bootstrap.sql 2>&1) \
+            -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" \
+            -v app_provisioner_pw="$PROV_PW" -f /tmp/bootstrap.sql 2>&1) \
         || { echo "$out" >&2; fail "bootstrap.sql run $i exited non-zero"; }
     # The passwords are not echoed: a generated password printed to a terminal
     # or a CI log is a leaked one.
     ! grep -q "$WORKER_PW" <<<"$out" || fail "bootstrap.sql printed the worker password"
+    ! grep -q "$PROV_PW" <<<"$out" || fail "bootstrap.sql printed the app_provisioner password"
     ! grep -q "clearing password" <<<"$out" || fail "bootstrap.sql cleared a role password (run $i)"
 done
 echo "    three runs, exit 0"
@@ -113,6 +115,8 @@ in_pg env PGPASSWORD="$AUTH_PW"   psql -h 127.0.0.1 -U authenticator -d appdb -t
     || fail "authenticator cannot log in with auth_pw"
 in_pg env PGPASSWORD="$WORKER_PW" psql -h 127.0.0.1 -U worker -d appdb -tAc 'select 1' >/dev/null \
     || fail "worker cannot log in with worker_pw"
+in_pg env PGPASSWORD="$PROV_PW"   psql -h 127.0.0.1 -U app_provisioner -d appdb -tAc 'select 1' >/dev/null \
+    || fail "app_provisioner cannot log in with app_provisioner_pw"
 
 # Asked of the server, over a login, because a timeout set on a role nobody logs
 # in as reads correctly in pg_db_role_setting and applies to nothing. The values

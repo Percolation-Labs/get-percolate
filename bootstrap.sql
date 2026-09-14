@@ -113,6 +113,30 @@ begin
 end $$;
 commit;
 
+-- THE APPLICATION PROVISIONER, only when a password is given. An application
+-- that keeps its own people in core (percolate-application) creates their
+-- users and tokens through rbac.provision_application_* as this role. It holds
+-- no table privilege, and most installs run no application, so it has no
+-- default password and is not created without one:
+--   psql ... -v app_provisioner_pw="$(openssl rand -hex 24)" -f bootstrap.sql
+\if :{?app_provisioner_pw}
+begin;
+select set_config('bootstrap.app_provisioner_pw', :'app_provisioner_pw', true) as _app_provisioner_pw \gset
+do $$
+begin
+    if current_setting('bootstrap.app_provisioner_pw') = '' then
+        raise notice 'app_provisioner_pw is empty -- not creating app_provisioner';
+    elsif exists (select 1 from pg_roles where rolname = 'app_provisioner') then
+        raise notice 'role app_provisioner already exists -- keeping its current password. '
+                     'Change it with ALTER ROLE if you meant to.';
+    else
+        execute format('create role app_provisioner login password %L',
+                       current_setting('bootstrap.app_provisioner_pw'));
+    end if;
+end $$;
+commit;
+\endif
+
 grant api_viewer    to app_owner;      -- so app_owner can hand it the views
 grant web_anon      to authenticator;
 grant authenticated to authenticator;
@@ -140,7 +164,8 @@ begin
         select * from (values
             ('authenticator', '30s',  '60s',  '30s', '5s'),
             ('worker',        '300s', '600s', '60s', '15s'),
-            ('scheduler',     '60s',  '120s', '30s', '10s')
+            ('scheduler',     '60s',  '120s', '30s', '10s'),
+            ('app_provisioner', '10s', '20s',  '10s', '5s')
         ) as t(role, stmt, txn, idle, lock)
     loop
         continue when not exists (select 1 from pg_roles where rolname = r.role);

@@ -425,6 +425,17 @@ services:
       # PostgREST needs nothing -- with server-cors-allowed-origins unset it
       # answers any origin, and ci/coldstart.sh preflights all three.
       P8_CORS_ORIGINS: ${P8_CORS_ORIGINS:-http://localhost:8082,http://127.0.0.1:8082}
+      # THE TOOL SERVERS THAT RECEIVE THE CALLER'S TOKEN, and every other tool
+      # server receives neither the token nor the X-P8-* identity headers. This
+      # service is one: it serves its own agents as MCP tools at /mcp, the
+      # delegation docs/src/agents.md registers, and runs a delegated turn as
+      # the person who asked, so without its own origin here every delegation
+      # is refused `a verified caller is required`. Before
+      # percolate-core#51 that refusal reached the model as a successful
+      # result, and on a test stack it called again 54 times, until
+      # request_limit ended the turn.
+      # Explicit scheme://host:port origins, comma-separated, no wildcard.
+      P8_TOOL_AUTH_ORIGINS: ${P8_TOOL_AUTH_ORIGINS:-http://agent:8080}
     ports: ["${P8_AGENT_PORT:-8080}:8080"]
 
   minio:

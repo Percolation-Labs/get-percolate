@@ -117,6 +117,12 @@ spec:
             # GEMINI_API_KEY and the rest -- because the model is a column and
             # the image carries every provider; see values.yaml agent.env.
             {{- with $root.Values.agent.env }}{{- toYaml . | nindent 12 }}{{- end }}
+            {{- with $root.Values.agent.toolAuthOrigins }}
+            # values.yaml agent.toolAuthOrigins: the tool servers trusted with
+            # the caller's token.
+            - name: P8_TOOL_AUTH_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
             {{- end }}
             {{- with $root.Values.cors.origins }}
             # The browser origins in values.yaml `cors.origins`, under the

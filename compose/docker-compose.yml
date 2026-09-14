@@ -429,7 +429,7 @@ services:
   # row-level security sees the person asking. Not published on a host port;
   # only the agent runtime calls it.
   query-mcp:
-    image: percolationlabs/percolate-core:0.1.11
+    image: percolationlabs/percolate-core:0.1.12
     restart: unless-stopped
     depends_on: [postgrest]
     command: ["query", "mcp", "--port", "8090", "--postgrest", "http://postgrest:3000"]

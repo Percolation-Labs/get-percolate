@@ -49,11 +49,19 @@ chart     = "0.1.14"   # the Helm chart's own version, not what it deploys
 # something nobody can install yet -- `ci/versions.py --check` says so by name
 # rather than leaving it to be discovered by a reader. `ci/coldstart.sh` is the
 # other half: it runs the install guide and fails while that is true.
-core      = "0.1.12"  # agents.md registers delegation at http://agent:8080/mcp
-                      # and ci/coldstart.sh syncs it; `agent serve` answers /mcp
-                      # only from percolate-core#56, and 0.1.11 answers 404.
-                      # compose's query-mcp service runs `percolate query mcp`,
-                      # which 0.1.11 does not have (percolate-core#52).
-                      # (`percolate sample load` needed 0.1.11, REM-147.)
+core      = "0.1.12"  # ci/coldstart.sh sends a scheduled run to `agent serve`,
+                      # which answers /internal/run and completes the task on
+                      # P8_WORKER_DSN only from percolate-core#54; 0.1.11 answers
+                      # 404. agents.md registers delegation at
+                      # http://agent:8080/mcp, which `agent serve` answers only
+                      # from percolate-core#56, and compose's query-mcp service
+                      # runs `percolate query mcp` (percolate-core#52).
+                      # grammar-workflow.md describes `mode: async` holding
+                      # the task for `wait_ms`, plan.md an unknown agent failing
+                      # on its first attempt (a 404, not a retried 500), and
+                      # agents.md the events stream refusing a caller who cannot
+                      # read the session. 0.1.11 does none of these. And
+                      # 0.1.11 was already the floor for `percolate sample load`
+                      # against 0.2.0 (REM-147).
 extension = "0.2.0"   # samples/harbour writes agents as JSON Schema documents,
                       # and only 0.2.0 translates one into a row (REM-70)

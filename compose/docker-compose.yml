@@ -425,7 +425,34 @@ services:
       # PostgREST needs nothing -- with server-cors-allowed-origins unset it
       # answers any origin, and ci/coldstart.sh preflights all three.
       P8_CORS_ORIGINS: ${P8_CORS_ORIGINS:-http://localhost:8082,http://127.0.0.1:8082}
+      # THE TOOL SERVERS THAT RECEIVE THE CALLER'S TOKEN, and every other tool
+      # server receives neither the token nor the X-P8-* identity headers. This
+      # service is one: it serves its own agents as MCP tools at /mcp, the
+      # delegation docs/src/agents.md registers, and runs a delegated turn as
+      # the person who asked, so without its own origin here every delegation
+      # is refused `a verified caller is required`. Before
+      # percolate-core#51 that refusal reached the model as a successful
+      # result, and on a test stack it called again 54 times, until
+      # request_limit ended the turn.
+      # `query-mcp` below is the other: it forwards the caller's token to
+      # PostgREST, so without its origin here PostgREST answers as nobody and
+      # every query the sample's agent makes is refused.
+      # Explicit scheme://host:port origins, comma-separated, no wildcard.
+      P8_TOOL_AUTH_ORIGINS: ${P8_TOOL_AUTH_ORIGINS:-http://agent:8080,http://query-mcp:8090}
     ports: ["${P8_AGENT_PORT:-8080}:8080"]
+
+  # THE QUERY TOOL SERVER: one MCP tool, `query`, over the p8ql dialect. The
+  # sample's `harbourmaster` is bound to it (samples/harbour/plugin.yaml as
+  # `harbour-query`), and without it that agent answered questions about the
+  # sample with "I don't have access to live databases". It holds no
+  # credential: each call carries the caller's Authorization to PostgREST, so
+  # row-level security sees the person asking. Not published on a host port;
+  # only the agent runtime calls it.
+  query-mcp:
+    image: percolationlabs/percolate-core:0.1.12
+    restart: unless-stopped
+    depends_on: [postgrest]
+    command: ["query", "mcp", "--port", "8090", "--postgrest", "http://postgrest:3000"]
 
   minio:
     # From MinIO's own registry. `minio/minio` on Docker Hub stopped resolving

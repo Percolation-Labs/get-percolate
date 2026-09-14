@@ -246,6 +246,121 @@ grep -q '^  plugin harbour' "$WORK/sample.log" || {
 [ "$(psql_ -tAc "select count(*) from agentic.agents where name = 'harbourmaster'")" = "1" ] || \
     fail "sample load reported success and agentic.agents has no harbourmaster"
 
+# ONE MARKED BLOCK FROM A PAGE, picked by a string it contains. A page can mark
+# several blocks of one kind, and running all of them is not what a check of
+# one step means.
+page_block() {   # <page> <kind> <needle>
+    "$PY_BIN" - "$ROOT/ci/extract-runnable.py" "$ROOT/docs/src/$1" "$2" "$3" <<'EOF'
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("extract_runnable", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+text = m.substitute(pathlib.Path(sys.argv[2]).read_text())
+found = [b for _, k, _, _, b in m.blocks_at(text) if k == sys.argv[3] and sys.argv[4] in b]
+if len(found) != 1:
+    sys.exit(f"{sys.argv[2]}: {len(found)} marked {sys.argv[3]} blocks contain {sys.argv[4]!r}, expected 1")
+print(found[0])
+EOF
+}
+# The token a reader mints on install.md, signed with the compose file's own
+# default secret rather than a copy of it typed here.
+SECRET=$(sed -n 's/^ *P8_JWT_SECRET: \${P8_JWT_SECRET:-\(.*\)}$/\1/p' docker-compose.yml | head -1)
+[ -n "$SECRET" ] || fail "no P8_JWT_SECRET default in docker-compose.yml -- the file changed shape"
+TOKEN=$(P8_ADMIN_DSN="postgres://p8:p8@localhost:5432/percolate" P8_JWT_SECRET="$SECRET" \
+        "$WORK/cli-venv/bin/percolate" auth token --email me@example.com) \
+    || fail "percolate auth token failed for me@example.com"
+sync_via_page() {   # <server>: run agents.md's own sync block for it, while the runtime starts
+    local block out=""
+    block=$(page_block agents.md shell "/tools/$1/sync") \
+        || fail "agents.md has no '<!-- run: shell -->' block that syncs $1"
+    for _ in $(seq 1 30); do
+        out=$(TOKEN="$TOKEN" bash -e -c "$block" 2>&1) || true
+        printf '%s' "$out" | grep -q '"tools"' && break
+        sleep 2
+    done
+    printf '%s' "$out"
+}
+holds() {   # <sync response> <tool>...: every named tool is in the synced catalogue
+    local json=$1; shift
+    printf '%s' "$json" | "$PY_BIN" -c '
+import json, sys
+try:
+    tools = json.load(sys.stdin).get("tools") or []
+except ValueError:
+    tools = []
+missing = [t for t in sys.argv[1:] if t not in tools]
+print(f"    catalogue: {tools}")
+sys.exit(f"missing from the catalogue: {missing}" if missing else 0)
+' "$@"
+}
+trusted() {   # <url>: asked of the runtime's own settings and origin parser, in its container
+    docker compose exec -T agent python -c '
+import sys
+from percolate_core.agentic.settings import Settings
+from percolate_core.agentic.tools.auth import origin
+want = origin(sys.argv[1])
+have = sorted({origin(o) for o in Settings.from_env().tool_auth_origins})
+print(f"    {want} against P8_TOOL_AUTH_ORIGINS {have}")
+sys.exit(0 if want in have else 1)
+' "$1"
+}
+
+say "the sample's agent: its query server syncs, is trusted with the caller's token, and answers as the caller"
+# `harbourmaster` answered questions about the sample with "I don't have access
+# to live databases", because the stack ran no query server and the sample bound
+# none. What is checked needs no provider key: the binding the sample made, a
+# catalogue the runtime fetched from query-mcp, the origin on the trusted list,
+# and one query made the way the runtime makes it, with the caller's token, so
+# PostgREST's refusal of an anonymous caller would fail it.
+[ "$(psql_ -tAc "select r->>'server' from agentic.agents a, jsonb_array_elements(a.tools) r
+                  where a.name = 'harbourmaster'")" = "harbour-query" ] \
+    || fail "sample load left harbourmaster unbound to harbour-query"
+psql_ -f - >/dev/null <<<"$(page_block agents.md sql '"name": "harbour-query"')" \
+    || fail "agents.md's harbour-query registration block did not apply"
+q=$(sync_via_page harbour-query)
+holds "$q" query || fail "the runtime did not sync query from harbour-query (it said: $q)"
+qurl=$(psql_ -tAc "select url from agentic.tool_servers where name = 'harbour-query'")
+trusted "$qurl" || fail "the runtime would not send the caller's token to $qurl, so every query the sample's agent makes is refused"
+docker compose exec -T -e TOKEN="$TOKEN" agent python - "$qurl" <<'EOF' \
+    || fail "a query through $qurl, made as the runtime makes it, did not answer"
+import asyncio, os, sys
+from percolate_core.agentic.contracts import CanonicalTool, ToolInvocation, ToolServer
+from percolate_core.agentic.contracts.tools import InvocationTarget
+from percolate_core.agentic.settings import Settings
+from percolate_core.agentic.tools.auth import caller_credentials
+from percolate_core.agentic.tools.mcp import McpProvider
+
+async def main():
+    server = ToolServer(name="harbour-query", kind="mcp", url=sys.argv[1])
+    tool = CanonicalTool(name="query", target=InvocationTarget(tool_name="query"))
+    call = ToolInvocation(call_id="coldstart", tool_name="query", arguments={"query": 'SCHEMA "p8ql"'})
+    with caller_credentials(f"Bearer {os.environ['TOKEN']}", Settings.from_env().tool_auth_origins):
+        r = await McpProvider().invoke(server, tool, call)
+    answered = isinstance(r.content, dict) and "schema" in r.content
+    print(f"    SCHEMA \"p8ql\" as the caller: is_error={r.is_error}, answered={answered}")
+    sys.exit(0 if answered and not r.is_error else 1)
+
+asyncio.run(main())
+EOF
+
+say "agents.md: delegation registers, syncs, and the runtime trusts its own /mcp with the caller's token"
+# THE PAGE'S OWN BLOCKS, run for real rather than inside examples.sh's rolled-back
+# transaction, because the sync reads the rows through the running runtime. The
+# page's `http://agent:8080/mcp` answered 404 before `agent serve` mounted the
+# gateway, and the page never said to sync or to set P8_TOOL_AUTH_ORIGINS; all
+# three failed only at the turn, and the third failed as a model retrying a
+# refusal until request_limit. The delegated turn itself needs a model and is
+# not run.
+psql_ -f - >/dev/null <<<"$(page_block agents.md sql '"serves_agents": true')" \
+    || fail "agents.md's delegation block did not apply"
+bound=$(psql_ -tAc "select t from agentic.agents a, jsonb_array_elements(a.tools) r,
+                           jsonb_array_elements_text(r->'tools') t where a.name = 'researcher'")
+[ -n "$bound" ] || fail "agents.md's block bound researcher to no tool"
+d=$(sync_via_page p8-agents)
+# shellcheck disable=SC2086 -- one tool name per word
+holds "$d" $bound || fail "the synced p8-agents catalogue lacks what researcher is bound to (runtime said: $d)"
+durl=$(psql_ -tAc "select url from agentic.tool_servers where name = 'p8-agents'")
+trusted "$durl" || fail "the agent runtime would not send the caller's token to $durl, so every delegation is refused"
+
 say "every function the documentation names exists in this install"
 # `agentic.remove_plugin('harbour')` was documented in two places -- install.md
 # and samples/harbour/README.md -- as the way to take the sample back out, and

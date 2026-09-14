@@ -11,11 +11,45 @@ REST. Everything after them is what the row can carry once you want more from
 it — including the prose it shares with other agents, which is
 [skills](skills.html) rather than more of this page.
 
+## What the model receives on each turn
+
+We describe what the runtime sends a model with the five components of context
+engineering, the way Anthropic's
+[write-up](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+frames them. The aim there is to find *"the smallest set of high-signal tokens
+that maximize the likelihood of your desired outcome"*, and in Percolate each of
+the five is read from rows, so you can query what an agent had in front of it
+when it answered.
+
+| Component | Where it comes from | Covered in |
+|---|---|---|
+| System instructions | The agent's `description`, stored as `system_prompt`, followed by a `<context>` block holding the time, locale and tenant from the request headers | [write the spec](#write-the-spec), [skills](skills.html) |
+| Conversation state and history | The conversation's recent messages, with a summary of older ones at the oldest end once one has been written | [the rest of what the row carries](#the-rest-of-what-the-row-carries) |
+| Retrieved knowledge | Query results from the world model, fetched by a tool call during the turn | [citations](#citations-are-derived-not-asked-for), [querying](query.html) |
+| Tool definitions and outputs | The tool servers the agent binds, narrowed by its allowlist, and what those calls return | [tools](#tools-are-external-and-they-are-rows), [delegation](#delegation-is-an-ordinary-tool-call) |
+| Memory systems | What earlier sessions wrote back into the world model, found by the same retrieval as knowledge | not shipped yet |
+
+Retrieval is not a step the runtime runs before calling the model. The agent
+asks for it through a tool, the result sits in the context for that turn, and
+afterwards only the citation is kept, so the next turn fetches again against the
+current index. Memory, when it arrives, lives in the same tables as knowledge,
+and the difference between the two is where a row came from: a source you
+ingested, or the system's own use.
+
+Two gaps in what percolate-core @@core@@ assembles. The runtime does not yet
+read an agent's [skills](skills.html), so its system instructions are the
+`system_prompt` and the context block and nothing else. And the summary slot is
+read on every turn, but the `summarize_session_window` workflow that writes it
+is not installed by a stock install, so a long conversation is windowed without
+a summary of what fell out. Nothing shipped writes memory from a conversation
+yet, and the summary is not memory: it belongs to one conversation and is never
+carried into another.
+
 ## Write the spec
 
 An agent definition is a **JSON Schema document**. There is no `prompt` key: the
-system prompt is the schema's `description`, and the structured output is its
-`properties`.
+agent's system instructions are the schema's `description`, and the structured
+output is its `properties`.
 
 What we are trying to do here is write an agent as a file we can commit, review
 in a diff, and hand to anything that reads JSON Schema.

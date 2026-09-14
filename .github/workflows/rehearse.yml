@@ -28,10 +28,10 @@ on:
   workflow_dispatch:
     inputs:
       p8_ref:
-        description: p8-subsystems ref (sha or branch) the extension candidate is built from
+        description: p8-subsystems ref (full or short sha, branch or tag) the extension candidate is built from
         default: main
       core_ref:
-        description: percolate-core ref (sha or branch) the core candidate is built from
+        description: percolate-core ref (full or short sha, branch or tag) the core candidate is built from
         default: main
       extension:
         description: candidate extension version -- the tree is bumped to it if it is one bump away
@@ -67,18 +67,42 @@ jobs:
       verify_binaries: ${{ steps.p.outputs.verify_binaries }}
     steps:
       - uses: actions/checkout@v7
+      # A REF IS RESOLVED BEFORE IT IS CHECKED OUT. actions/checkout takes a
+      # branch, a tag or a FULL sha, and a short sha -- what a person copies
+      # out of `git log --oneline` -- failed the plan with "A branch or tag with
+      # the name '2671fd7' could not be found", before anything was built. The
+      # commits API resolves all four forms to one full sha, so the checkouts
+      # below, and every later job, work from the same commit.
+      - id: refs
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+          P8_REPO: ${{ vars.SPECS_REPO }}
+          P8_REF: ${{ inputs.p8_ref }}
+          CORE_REF: ${{ inputs.core_ref }}
+        run: |
+          set -euo pipefail
+          resolve() {   # resolve <repo> <ref>
+            gh api "repos/$1/commits/$2" --jq .sha 2>/dev/null || {
+              echo "::error::$1 has no commit, branch or tag named '$2'" >&2; exit 1; }
+          }
+          # Assigned first: `set -e` does not see a failed substitution inside
+          # an echo's arguments, and an empty sha would check out the default branch.
+          p8=$(resolve "$P8_REPO" "$P8_REF")
+          core=$(resolve Percolation-Labs/percolate-core "$CORE_REF")
+          echo "p8=$p8" | tee -a "$GITHUB_OUTPUT"
+          echo "core=$core" | tee -a "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
-          ref: ${{ inputs.p8_ref }}
+          ref: ${{ steps.refs.outputs.p8 }}
           path: p8
           fetch-depth: 0          # the published tag, to diff the parser against
       - uses: actions/checkout@v7
         with:
           repository: Percolation-Labs/percolate-core
           token: ${{ secrets.SOURCE_TOKEN }}
-          ref: ${{ inputs.core_ref }}
+          ref: ${{ steps.refs.outputs.core }}
           path: core
       - id: p
         env: {MODE: "${{ inputs.parser }}"}

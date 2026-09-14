@@ -24,6 +24,14 @@ on:
     paths: ["docs/**", "charts/**", "README.md", "versions.toml", "ci/versions.py",
             ".github/workflows/docs.yml"]
   workflow_dispatch:
+  # A COMMITTED CHART NOBODY PUBLISHED IS PUBLISHED WITHIN 15 MINUTES (REM-241).
+  # Both releases renumber the chart with a push that starts no workflow (a
+  # GITHUB_TOKEN push in parser.yml; percolate-core's 0.1.14 push at 08:08Z on
+  # 2026-09-14 started none either), so `push` alone left chart 0.1.15 committed
+  # and unpublished. The `stale` job below makes a scheduled run cost one curl
+  # unless versions.toml names a chart the index does not list.
+  schedule:
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: read
@@ -38,7 +46,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  stale:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.s.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: versions.toml
+          sparse-checkout-cone-mode: false
+      - id: s
+        name: Is there anything to publish?
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          CHART=$(sed -n 's/^chart *= *"\([0-9.]*\)".*/\1/p' versions.toml | head -1)
+          INDEX=https://percolation-labs.github.io/get-percolate/charts/index.yaml
+          if curl -fsSL "$INDEX" | grep -q "^    version: $CHART$"; then
+            echo "chart $CHART is published; nothing to do"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::chart $CHART is committed in versions.toml and missing from $INDEX; publishing it"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: stale
+    if: needs.stale.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

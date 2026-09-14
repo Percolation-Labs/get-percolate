@@ -31,7 +31,7 @@ name: percolate
 
 services:
   db:
-    image: percolationlabs/percolate-postgres:19-0.2.0
+    image: percolationlabs/percolate-postgres:19-0.2.3
     restart: unless-stopped
     # pg_cron is a background worker, so it must be preloaded at startup --
     # there is no CREATE EXTENSION that can add it later. cron.database_name
@@ -138,6 +138,9 @@ services:
       # .env; override both for anything reachable by anyone else.
       P8_AUTHENTICATOR_PASSWORD: ${P8_AUTHENTICATOR_PASSWORD:-authpass}
       P8_WORKER_PASSWORD: ${P8_WORKER_PASSWORD:-workerpass}
+      # Optional, no default: only an application that provisions its own
+      # users needs app_provisioner, and unset it is never created.
+      P8_APP_PROVISIONER_PASSWORD: ${P8_APP_PROVISIONER_PASSWORD:-}
     ports: ["${P8_PG_PORT:-5432}:5432"]
     # MOUNTED AT /var/lib/postgresql, NOT .../data, and on 18+ that is the
     # difference between a stack that starts and one that restart-loops.
@@ -314,6 +317,19 @@ services:
       P8_S3_SECRET: ${MINIO_PASSWORD:-p8password}
       P8_BUCKET: p8-content
       P8_JWT_SECRET: ${P8_JWT_SECRET:-change-me-a-long-random-string-at-least-32-chars}
+      # THE WORKBENCH'S ORIGIN, so a browser on it may upload and download.
+      # `percolate ui serve` (docs/src/ui.md) is a page on :8082 calling this
+      # service on :8081, which is a different origin, and without this
+      # variable the Content Server adds no CORS headers: the preflight gets a
+      # 405 and every upload from the page fails before it is sent.
+      #
+      # This service's own name for it, P8_CONTENT_CORS_ORIGINS, not the Agent
+      # Runtime's P8_CORS_ORIGINS below -- ui.md named one variable for both,
+      # and the one it named is read by nothing here. Explicit origins because
+      # the code refuses a wildcard or a path; no credentials, because the page
+      # sends a bearer token and never a cookie. Both spellings of loopback,
+      # since either reaches the page. Point it at your own UI origin in .env.
+      P8_CONTENT_CORS_ORIGINS: ${P8_CONTENT_CORS_ORIGINS:-http://localhost:8082,http://127.0.0.1:8082}
     ports: ["${P8_CONTENT_PORT:-8081}:8081"]
 
   agent:
@@ -384,6 +400,11 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       LLM_API_KEY: ${LLM_API_KEY:-${OPENAI_API_KEY:-}}
+      # The workbench's origin, for the Content Server's reason above: every
+      # agent turn and AI suggestion in the page is a cross-origin POST /chat.
+      # PostgREST needs nothing -- with server-cors-allowed-origins unset it
+      # answers any origin, and ci/coldstart.sh preflights all three.
+      P8_CORS_ORIGINS: ${P8_CORS_ORIGINS:-http://localhost:8082,http://127.0.0.1:8082}
     ports: ["${P8_AGENT_PORT:-8080}:8080"]
 
   minio:

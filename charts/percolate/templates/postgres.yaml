@@ -61,6 +61,9 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: authenticator-password}}
             - name: P8_WORKER_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: worker-password}}
+            # Optional: empty or absent, and the image creates no app_provisioner.
+            - name: P8_APP_PROVISIONER_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: app-provisioner-password, optional: true}}
             # The official image refuses to initdb into a non-empty directory,
             # and a PVC mounted at /var/lib/postgresql/data is never empty --
             # it has lost+found. This is the documented answer, not a hack.

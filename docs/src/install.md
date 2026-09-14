@@ -240,7 +240,9 @@ psql -d yourdb -v ON_ERROR_STOP=1 \
 ```
 
 Keep the two passwords: PostgREST connects as `authenticator` and the workers
-as `worker`. A bare `CREATE EXTENSION percolate` does not work on this path —
+as `worker`. Add `-v app_provisioner_pw="$(openssl rand -hex 24)"` only if an
+application will provision its own users as `app_provisioner`; without it that
+role is not created. A bare `CREATE EXTENSION percolate` does not work on this path —
 as a superuser the extension refuses to load, and as anyone else the roles it
 needs do not exist yet — which is what `bootstrap.sql` sequences. It is safe to
 run again.

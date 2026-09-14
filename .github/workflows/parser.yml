@@ -556,6 +556,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write     # to dispatch docs.yml, which publishes the chart this job renumbers
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -580,4 +581,33 @@ jobs:
             git pull --rebase --quiet && git push && exit 0
           done
           echo "::error::could not push the version bump after three rebases" >&2
+          exit 1
+
+      # THE CHART THIS COMMIT RENUMBERED, PUBLISHED (REM-241). The push above is
+      # made with GITHUB_TOKEN, and GitHub starts no workflow for a push by that
+      # token -- so docs.yml, which packages and publishes the chart, never ran,
+      # and on 2026-09-14 chart 0.1.15 sat committed and unpublished until a
+      # person dispatched it. A workflow_dispatch is the one event GITHUB_TOKEN
+      # may start, so this job starts it, and then waits for the index to list
+      # the chart: a release whose chart nobody can install is not finished, and
+      # p8-subsystems' release.yml watches this run with --exit-status.
+      # It also runs when the bump was already committed, which is the retry path
+      # after exactly this failure.
+      - name: Publish the chart it names, and wait for the index to list it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git pull --rebase --quiet
+          CHART=$(sed -n 's/^chart *= *"\([0-9.]*\)".*/\1/p' versions.toml | head -1)
+          INDEX=https://percolation-labs.github.io/get-percolate/charts/index.yaml
+          listed() { curl -fsSL "$INDEX" 2>/dev/null | grep -q "^    version: $CHART$"; }
+          if listed; then echo "chart $CHART is already in the index"; exit 0; fi
+          gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref main
+          # Pages publishes the index a few minutes after the build starts; the
+          # docs run itself takes about three.
+          for _ in $(seq 1 40); do
+            sleep 30
+            listed && { echo "chart $CHART is in $INDEX"; exit 0; }
+          done
+          echo "::error::chart $CHART was committed but $INDEX does not list it after 20 minutes. Check the docs.yml run on $GITHUB_REPOSITORY." >&2
           exit 1

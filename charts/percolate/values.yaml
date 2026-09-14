@@ -20,7 +20,7 @@ secrets:
   # Name of a Secret you manage. When set, every value below is ignored and the
   # keys are read from it: postgres-password, authenticator-password,
   # worker-password, jwt-secret, s3-key, s3-secret -- and, optionally,
-  # llm-api-key, openai-api-key and worker-api-key.
+  # llm-api-key, openai-api-key, worker-api-key and app-provisioner-password.
   existingSecret: ""
 
   # openssl rand -hex 24 for the two below. They are written into postgres://
@@ -30,6 +30,12 @@ secrets:
   postgresPassword: ""
   authenticatorPassword: ""
   workerPassword: ""
+  # Optional, and only for an application that keeps its own people in core
+  # (percolate-application): the password of `app_provisioner`, which creates
+  # their users and tokens through rbac.provision_application_* and holds no
+  # table privilege. Empty and the database never creates the role. Hex, for
+  # the same postgres:// reason as the two above.
+  appProvisionerPassword: ""
   # HS256, so at least 32 bytes: openssl rand -hex 32. Keep it: it is also
   # what you sign tokens with (`percolate auth token --secret ...`).
   jwtSecret: ""
@@ -73,7 +79,7 @@ postgres:
     # Pinned, like the compose file, and for its reason: a bare "19" moves
     # under an existing install and IfNotPresent keeps whatever each node last
     # pulled. ci/versions.py holds it to versions.toml's extension.
-    tag: "19-0.1.6"
+    tag: "19-0.2.2"
     pullPolicy: IfNotPresent
   user: p8
   database: percolate
@@ -89,9 +95,61 @@ postgres:
   # every scheduled workflow, the stale-task reaper and every timer step
   # silently never fires.
   # cron.database_name is added by the template, from `database` above.
+  # pg_stat_statements and auto_explain are preloaded beside pg_cron, for the
+  # reasons the shipped compose file states at length. In short: the deferral
+  # in p8-subsystems meta/postgres-manifest.md:44 -- "enable when there's
+  # something to tune" -- is overturned by the fact that no statement in this
+  # deployment is timed at all (what exists measures the workload: completed_at,
+  # oldest_wait, and a plan-shape check on the claim path), and by
+  # 2026-09-04-resource-scoping.md:81-82, where two CORRECT RLS predicates
+  # differ 58x (360.574 ms against 6.205 ms over 52,000 rows on a development
+  # PG19) with nothing in the plan to say which you got. The graph-algorithms
+  # figures are NOT the argument and the compose file says why: that document
+  # is a research article over a synthetic fixture.
+  #
+  # Both are contrib, so no new dependency. pg_stat_statements needs a CREATE
+  # EXTENSION as well as the preload or the view does not exist; that statement
+  # is in the image's superuser step as of the change this ships with, so an
+  # older image under this chart collects into a view it has not got.
   extraArgs:
     - -c
-    - shared_preload_libraries=pg_cron
+    - shared_preload_libraries=pg_cron,pg_stat_statements,auto_explain
+    # 2s: a fifteenth of the 30s statement_timeout the image gives
+    # `authenticator`, which it describes as longer than any interactive query
+    # should need. So a plan in the log is a statement outside what this
+    # deployment already calls normal, and log_analyze stays off because
+    # instrumenting one means executing it again.
+    - -c
+    - auto_explain.log_min_duration=2s
+    - -c
+    - auto_explain.log_analyze=off
+    # BOUNDS, EXPLICIT RATHER THAN PACKAGED. Nothing in this chart, the compose
+    # file or the image set a limit of any kind before this. The per-role
+    # timeouts live in the image's own bootstrap; these four have to be process
+    # flags, and they are values rather than hard-coded so an operator sizing a
+    # real cluster changes them here.
+    #
+    # max_connections: the default 100 faces up to 72 backends from one
+    # agent-runtime replica alone, before the worker, PostgREST's pool and
+    # anybody with psql. Raise it with replicas.
+    - -c
+    - max_connections=200
+    # Per sort/hash NODE, not per query. Against 200 connections the worst case
+    # is large, and it is a worst case nobody reaches.
+    - -c
+    - work_mem=8MB
+    # Both of these want raising on a machine bigger than the 1Gi request
+    # above; they are set at all so that sizing is an edit rather than a
+    # discovery.
+    - -c
+    - shared_buffers=512MB
+    - -c
+    - maintenance_work_mem=256MB
+  # /dev/shm. pgvector sizes a parallel HNSW build's shared-memory segment from
+  # maintenance_work_mem, and a pod's default /dev/shm is 64Mi -- so an index
+  # build over a real corpus dies with "could not resize shared memory segment".
+  # The template mounts an emptyDir at /dev/shm when this is set.
+  shmSize: 1Gi
 
 externalDatabase:
   host: ""
@@ -111,6 +169,12 @@ postgrest:
   image: {repository: postgrest/postgrest, tag: v12.2.8}
   replicas: 2
   schemas: "content, aiq, rbac, workflow, agentic, public"
+  # PGRST_DB_MAX_ROWS. No read returns an unbounded number of rows -- PostgREST
+  # will otherwise stream a whole table to anybody holding select on it, which
+  # is a larger surface than aiq.sql_passthrough's own cap. Unset in every
+  # configuration before REM-113. Raise it if a legitimate client pages
+  # through more than this in one request.
+  maxRows: 10000
   resources:
     requests: {cpu: 100m, memory: 128Mi}
     limits: {memory: 512Mi}
@@ -208,14 +272,37 @@ minio:
   enabled: true
   # Pinned to the release the compose file runs, for the database image's
   # reason: `latest` moves under an existing install.
-  image: {repository: minio/minio, tag: RELEASE.2025-09-07T16-13-09Z}
+  # MinIO's own registry: `minio/minio` on Docker Hub stopped resolving on
+  # 2026-09-11. Same image, same id.
+  image: {repository: quay.io/minio/minio, tag: RELEASE.2025-09-07T16-13-09Z}
   persistence: {enabled: true, size: 50Gi, storageClass: ""}
+
+# ---------------------------------------------------------------------------
+# Where each credential a worker holds may be SENT, by origin. From
+# percolate-core 0.1.9 a credential with no entry goes nowhere: an upload's
+# metadata could otherwise name a transcription endpoint on any host and
+# receive the worker's key as a bearer token. Add a provider's origin when
+# secrets.llmApiKey is meant for it. Rendered into P8_CREDENTIAL_ORIGINS on
+# every worker; read by nothing before 0.1.9.
+# ---------------------------------------------------------------------------
+credentialOrigins:
+  LLM_API_KEY: ["https://api.openai.com"]
 
 objectStorage:
   external:
     endpoint: ""       # e.g. https://s3.eu-west-1.amazonaws.com
     region: us-east-1
   bucket: p8-content
+
+# Browser origins allowed to call the Agent Runtime and the Content Server
+# directly -- the address a browser uses for `percolate ui serve`, such as
+# https://workbench.example.com. Empty sends no CORS headers, so a workbench
+# served from another origin is refused. Explicit scheme://host[:port] entries
+# only: both services refuse a wildcard or a path at startup, and neither
+# allows credentials. Rendered as P8_CORS_ORIGINS on the runtime and
+# P8_CONTENT_CORS_ORIGINS on content, the name each one reads.
+cors:
+  origins: []
 
 ingress:
   enabled: false

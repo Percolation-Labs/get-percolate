@@ -18,7 +18,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 WORK=$(mktemp -d)
-trap 'cd "$WORK" && docker compose down -v >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
+# The pkill is for ui.md's workbench, started in the background near the end:
+# its process runs out of $WORK/ui-home, so the path names it and nothing else.
+trap 'pkill -f "$WORK/ui-home" 2>/dev/null; cd "$WORK" && docker compose down -v >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 
 say() { printf '\n=== %s\n' "$*"; }
 fail() {
@@ -61,8 +63,27 @@ docker compose -f "$ROOT/compose/docker-compose.yml" -p percolate down -v >/dev/
 # container onto the volume the previous image already initialised. Gating an
 # unpublished build means it has to be there for the first start, not the
 # second.
+#
+# EVERY SERVICE, AS THE WORKING TREE NAMES IT, not only `db` and not only when
+# IMAGE is set. The page curls MAIN's compose file and starts it; the working
+# tree's copy replaces it only after that first `up` (below). So a change that
+# moved `percolate-postgres:19-<v>` in compose/docker-compose.yml was graded on
+# a volume main's image had already initialised -- its extension, not the
+# change's -- and a release rehearsal (rehearse.yml, which points every image at
+# a local candidate) ran the published percolate-core for its first minute.
+overrides=$(awk '
+    /^[^[:space:]#]/ { top = $1 }
+    top == "services:" && /^  [A-Za-z0-9._-]+:[[:space:]]*$/ { svc = $1; sub(/:$/, "", svc) }
+    top == "services:" && /^    image:/ { print svc, $2 }' "$ROOT/compose/docker-compose.yml")
+[ -n "$overrides" ] || fail "no service images found in compose/docker-compose.yml -- the file changed shape"
+{
+    echo "services:"
+    while read -r svc img; do
+        [ "$svc" = db ] && [ -n "${IMAGE:-}" ] && img=$IMAGE
+        printf '  %s:\n    image: %s\n' "$svc" "$img"
+    done <<<"$overrides"
+} > docker-compose.override.yml
 if [ -n "${IMAGE:-}" ]; then
-    printf 'services:\n  db:\n    image: %s\n' "$IMAGE" > docker-compose.override.yml
     echo "(db image overridden: $IMAGE)"
 fi
 
@@ -84,8 +105,11 @@ if ! cmp -s "$ROOT/compose/docker-compose.yml" docker-compose.yml; then
 fi
 
 say "wait for the database"
+# TCP first: the image's first-start server listens on the socket only, and the
+# extension row can exist there before it stops and the real server starts.
 for _ in $(seq 1 60); do
-    docker compose exec -T db psql -U p8 -d percolate -tAc \
+    docker compose exec -T db pg_isready -h 127.0.0.1 -U p8 -d percolate >/dev/null 2>&1 \
+    && docker compose exec -T db psql -U p8 -d percolate -tAc \
         "select 1 from pg_extension where extname='percolate'" 2>/dev/null \
         | grep -q 1 && break
     sleep 3
@@ -98,13 +122,11 @@ psql_() { docker compose exec -T db psql -U p8 -d percolate -v ON_ERROR_STOP=1 "
 # whichever assertion happened to touch it first.
 say "is the documentation ahead of what is published?"
 "$PY_BIN" "$ROOT/ci/versions.py" --check | sed -n '/^note:/,$p' | sed 's/^/    /'
-AHEAD=$("$PY_BIN" - "$ROOT/versions.toml" <<'EOF'
-import sys, tomllib
-v = tomllib.load(open(sys.argv[1], "rb"))
-p, r = v["published"], v["requires"]
-print("yes" if any(r.get(k, p[k]) != p[k] for k in ("core", "extension")) else "no")
-EOF
-)
+# Asked of versions.py rather than computed here. This was a second copy of the
+# comparison, and both copies used `!=` where versions.toml says "exceeds", so a
+# requires BEHIND published read as a release outstanding and the excuse below
+# fired on a pair that should have had percolate_build().
+AHEAD=$("$PY_BIN" "$ROOT/ci/versions.py" --outstanding) || fail "ci/versions.py --outstanding failed"
 
 say "what is under test"
 psql_ -c "select * from percolate_build()" || {
@@ -255,5 +277,85 @@ live_fns=$(psql_ -tAc "select n.nspname||'.'||p.proname
 absent=$(comm -23 <(echo "$docs_fns") <(echo "$live_fns") | tr '\n' ' ')
 [ -z "${absent// /}" ] || fail "the documentation names function(s) this install does not have: $absent"
 echo "    $(echo "$docs_fns" | wc -l | tr -d ' ') documented function names, all present"
+
+say "ui.md: a browser on the workbench's origin may call every backend it names"
+# THE WORKBENCH IS A BROWSER PAGE ON ONE ORIGIN CALLING THREE OTHERS, and the
+# checks above never asked whether a browser is allowed to. Every service
+# answered curl, so the stack looked healthy while a reader who opened
+# http://localhost:8082 got a page whose every agent turn and upload was refused
+# before it left the browser: neither CORS variable was set here, and the
+# Agent Runtime and the Content Server add no CORS headers without one.
+#
+# The addresses, the port and the start command come out of ui.md's own block,
+# so the preflights go where the page sends a reader. The methods and headers
+# are the ones percolate_core/ui/static sends: api.js's request() for PostgREST
+# (Accept-Profile on reads, Content-Profile on writes, Prefer, Range), the chat
+# POST in access.js and api.js, and contentRequest() in files.js.
+UI_BLOCK=$("$PY_BIN" "$ROOT/ci/extract-runnable.py" "$ROOT/docs/src/ui.md" --kind shell) \
+    || fail "ui.md has no '<!-- run: shell -->' block that starts the workbench"
+ui_env() { printf '%s\n' "$UI_BLOCK" | sed -n "s/^export $1=//p"; }
+UI_PORT=$(printf '%s\n' "$UI_BLOCK" | sed -n 's/.*percolate ui serve.*--port \([0-9][0-9]*\).*/\1/p')
+[ -n "$UI_PORT" ] || fail "ui.md's block does not run 'percolate ui serve --port <n>'"
+ORIGIN="http://localhost:$UI_PORT"
+REST_URL=$(ui_env P8_UI_REST_URL); CORE_URL=$(ui_env P8_UI_CORE_URL); CONTENT_URL=$(ui_env P8_UI_CONTENT_URL)
+# Collected rather than failed one at a time, so one run names every backend
+# that refuses the page instead of the first.
+problems=()
+preflight() {   # <label> <url> <method> <request headers>
+    local head code acao
+    head=$(curl -s -o /dev/null -D - -X OPTIONS "$2" \
+             -H "Origin: $ORIGIN" -H "Access-Control-Request-Method: $3" \
+             -H "Access-Control-Request-Headers: $4" \
+             --retry 10 --retry-connrefused --retry-delay 2 | tr -d '\r') || true
+    code=$(printf '%s\n' "$head" | sed -n '1s/^HTTP\/[0-9.]* \([0-9]*\).*/\1/p')
+    acao=$(printf '%s\n' "$head" | sed -n 's/^[Aa]ccess-[Cc]ontrol-[Aa]llow-[Oo]rigin: *//p')
+    if [ "${code:0:1}" = "2" ] && { [ "$acao" = "$ORIGIN" ] || [ "$acao" = "*" ]; }; then
+        echo "    ok   $1: $3 $2 ($code, allow-origin $acao)"
+    else
+        echo "    FAIL $1: $3 $2 answered ${code:-nothing} with allow-origin '${acao}'"
+        problems+=("$1 refuses a $3 from $ORIGIN (HTTP ${code:-none}, allow-origin '${acao}')")
+    fi
+}
+preflight PostgREST     "$REST_URL/runs_api"               GET   "accept-profile,authorization,prefer,range"
+preflight PostgREST     "$REST_URL/rpc/start_run"          POST  "authorization,content-profile,content-type"
+preflight PostgREST     "$REST_URL/tool_servers"           PATCH "authorization,content-profile,content-type"
+preflight "Agent Runtime" "$CORE_URL/chat"                 POST  "authorization,content-type"
+preflight "Content Server" "$CONTENT_URL/files"            POST  "authorization,content-type,x-p8-channel,x-p8-title-utf8"
+preflight "Content Server" "$CONTENT_URL/files/00000000-0000-0000-0000-000000000000" GET "authorization"
+
+say "ui.md: the workbench starts the way the page says, and is told the page's endpoints"
+# RUN VERBATIM, under a HOME of its own, so the block's own install lands in a
+# directory this script deletes rather than in the runner's. `bash -e` stops at
+# the first line that fails, which is where a reader pasting it would stop too.
+printf '%s\n' "$UI_BLOCK" > "$WORK/ui-steps.sh"
+mkdir -p "$WORK/ui-home"
+( cd "$WORK/ui-home" && HOME="$WORK/ui-home" exec bash -e "$WORK/ui-steps.sh" ) > "$WORK/ui.log" 2>&1 &
+UI_PID=$!
+for _ in $(seq 1 120); do
+    curl -fsS "$ORIGIN/config.json" -o "$WORK/ui-config.json" 2>/dev/null && break
+    kill -0 "$UI_PID" 2>/dev/null || break
+    sleep 2
+done
+if [ ! -s "$WORK/ui-config.json" ]; then
+    sed 's/^/    /' "$WORK/ui.log" >&2
+    problems+=("ui.md's block did not bring up a workbench answering $ORIGIN/config.json")
+else
+    curl -fsS "$ORIGIN/" | grep -qi '<script' \
+        || problems+=("$ORIGIN/ did not serve the workbench page")
+    for pair in rest:P8_UI_REST_URL core:P8_UI_CORE_URL content:P8_UI_CONTENT_URL; do
+        key=${pair%%:*}; var=${pair#*:}; want=$(ui_env "$var")
+        got=$("$PY_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' \
+                "$WORK/ui-config.json" "$key")
+        if [ -n "$want" ] && [ "$want" = "$got" ]; then
+            echo "    ok   config.json $key = $got"
+        else
+            problems+=("config.json says $key='$got'; ui.md exports $var='$want'")
+        fi
+    done
+fi
+if [ ${#problems[@]} -gt 0 ]; then
+    printf '    %s\n' "${problems[@]}" >&2
+    fail "ui.md: a reader following the page does not get a working workbench (${#problems[@]} problem(s) above)"
+fi
 
 printf '\nCOLD START OK\n'

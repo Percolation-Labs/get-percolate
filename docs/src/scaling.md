@@ -11,7 +11,8 @@ if you are running an older build, the first section is the one to read.
 
 ## The claim path is the only query that really matters
 
-Every worker runs it on every task, so its cost is multiplied by worker count and
+Every worker runs it on every task, so its cost is multiplied by worker count
+and
 by backlog depth at the same time. Nothing else in the engine is.
 
 What we are trying to do here is check that claiming a task from a deep queue
@@ -56,9 +57,11 @@ is the number to plan against.
 the planner sorts the whole backlog</summary>
 
 The claim orders by `priority desc, created_at`. An index of
-`(queue, priority, run_after)` does not contain `created_at` at all, so it cannot
+`(queue, priority, run_after)` does not contain `created_at` at all, so it
+cannot
 supply that order — and because every row in a deep queue matches
-`status = 'ready'`, the index offers no selectivity either. The planner correctly
+`status = 'ready'`, the index offers no selectivity either. The planner
+correctly
 concludes a sequential scan plus a sort is cheaper, and then sorts the entire
 ready set to return twenty rows:
 
@@ -115,8 +118,10 @@ Two properties make this cheap in the way that matters.
 claimable rows. It is sized by the backlog rather than by the table — 1.3 MB for
 200k ready tasks against a 66 MB table. An empty queue is an empty index probe.
 
-And the sleep happens only when the claim returned nothing. A worker that claimed
-something loops straight back and claims again, so under load there is no polling
+And the sleep happens only when the claim returned nothing. A worker that
+claimed
+something loops straight back and claims again, so under load there is no
+polling
 at all. **Polling cost is inversely proportional to utilisation**: it is highest
 when the system is doing nothing and has the capacity to serve it.
 
@@ -174,13 +179,14 @@ Measured throughput on a 10-core host, claiming from a deep queue:
 </div>
 
 The regression at 32 is oversubscription on ten cores rather than a contention
-limit in the engine — worth knowing as the shape to expect, which is that more
+limit in the engine — the shape to expect, which is that more
 workers than cores stops helping before it starts hurting badly.
 
 **`queue_depth()` is in the hot path too**, because a 30-second cadence per pool
 is a hot path. It counts ready-and-due plus running, and what the planner does
 depends on how much of the table is live: with a small backlog it answers from
-the existing partial indexes in 92 buffers, and with a large one it can fall back
+the existing partial indexes in 92 buffers, and with a large one it can fall
+back
 to a sequential scan. `idx_tasks_live` gives it an index-only scan — 867 buffers
 instead of 30,733 on a million-row table with a 300k backlog.
 
@@ -231,10 +237,12 @@ matrix keys</a></p>
 
 ## What happens when a worker dies holding work
 
-A pod is evicted, a node drains, a process is OOM-killed. The task it had claimed
+A pod is evicted, a node drains, a process is OOM-killed. The task it had
+claimed
 is sitting in `running` with a lease nobody is refreshing.
 
-What we are trying to do here is get that work back without ever taking it from a
+What we are trying to do here is get that work back without ever taking it from
+a
 worker that is merely slow.
 {: .goal }
 
@@ -304,10 +312,10 @@ cannot get in to find out why**.
 
 Two things follow when you size a pool.
 
-**Cap `maxReplicas` against `max_connections` on purpose.** A pool scaling on
+**Cap `maxReplicas` against `max_connections`.** A pool scaling on
 queue depth will happily grow past the connection budget, because depth says
 nothing about connections. Either put a pooler in front, or pick the ceiling
-deliberately.
+by design.
 
 **This is the concrete reason workers poll rather than `LISTEN`.** A listening
 connection is session state and cannot be pooled in transaction mode, so a

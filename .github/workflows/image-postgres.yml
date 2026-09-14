@@ -15,9 +15,12 @@
 #
 #   FAST  (verify_binaries: false)  the extension SQL changed and nothing else.
 #         Three COPY layers over a warm cache; the binary gate is skipped
-#         because the binaries are the ones it already passed. This is most
-#         releases. It refuses to run if dev/Dockerfile.pg19 actually changed,
-#         so the fast path cannot silently become the wrong one.
+#         because the binaries are the SAME BYTES as the ones it already
+#         passed -- which is checked, by comparing the resolved parser release
+#         and the .so digests, plus the Dockerfile hash, against what the
+#         published image records. This is most releases. It refuses to run
+#         when any of the three moved, so the fast path cannot silently
+#         become the wrong one.
 #
 #   FULL  (verify_binaries: true)   something COMPILED changed: the Dockerfile,
 #         the pgvector or pg_cron version, the base image, or the parser
@@ -60,8 +63,9 @@ on:
       # header). `false` is the fast path: the compiled artifacts are
       # unchanged, so the build is three COPY layers over a cache and the
       # binary gate has nothing new to inspect. It is REFUSED below if the
-      # Dockerfile has in fact changed, so choosing it wrongly fails loudly
-      # rather than skipping a check that was needed.
+      # Dockerfile hash, the resolved parser release or the parser .so digests
+      # differ from what the published image records, so choosing it wrongly
+      # fails loudly rather than skipping a check that was needed.
       verify_binaries:
         description: >-
           full path -- recompile and re-run the CPU-portability gate. Needed
@@ -69,6 +73,26 @@ on:
           pg_cron, the base image, or the parser release.
         type: boolean
         default: true
+      # A THIRD CALLER, rehearse.yml, and the reason it calls this rather than
+      # copying it: a rehearsal that builds the image some other way rehearses
+      # something other than the release. Off by default, so the release
+      # (parser.yml) and the rebuild (images.yml) are unchanged byte for byte.
+      #
+      # On, it differs in exactly what a candidate needs: the tree is bumped to
+      # `version` the way p8-subsystems' release.yml bumps it, the build is
+      # linux/amd64 only (the one platform a runner can start, and the
+      # portability gate is push-only anyway), and the image and the
+      # release-shaped assets leave as run artifacts instead of a registry.
+      # Refused together with `push`.
+      rehearse:
+        type: boolean
+        default: false
+      # A build-only parser.yml run (empty version) whose parser-linux-*
+      # artifacts replace the release download: the rehearsal's path when the
+      # parser source moved since the published release. Rehearsal only.
+      parser_run:
+        type: string
+        default: ''
     secrets:
       SOURCE_TOKEN:      {required: true}
       DOCKERHUB_USERNAME: {required: false}
@@ -78,33 +102,153 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: A rehearsal publishes nothing
+        if: (inputs.rehearse && inputs.push) || (inputs.parser_run != '' && !inputs.rehearse)
+        run: |
+          echo "::error::rehearse cannot be combined with push, and parser_run is rehearsal-only" >&2
+          exit 1
+
+      - uses: actions/checkout@v7
         with:
           repository: ${{ vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
+
+      - name: Rehearsal only -- bump the tree to the candidate, as release.yml would
+        # The same script p8-subsystems' release.yml runs, so the candidate
+        # carries the same five files the release commits -- including the
+        # upgrade scripts, which build-sql.py names from the tags, and which is
+        # why the tags are fetched first: this checkout is shallow and tagless.
+        if: inputs.rehearse
+        env: {V: "${{ inputs.version }}"}
+        run: |
+          set -euo pipefail
+          have=$(sed -n "s/^default_version = '\(.*\)'/\1/p" extension/percolate/percolate.control)
+          if [ "$have" = "$V" ]; then echo "tree is already at $V"; exit 0; fi
+          part=$(python3 - "$have" "$V" <<'EOF'
+          import sys
+          a, b = [int(x) for x in sys.argv[1].split(".")], sys.argv[2]
+          for part, n in (("patch", (a[0], a[1], a[2] + 1)), ("minor", (a[0], a[1] + 1, 0)),
+                          ("major", (a[0] + 1, 0, 0))):
+              if ".".join(map(str, n)) == b:
+                  print(part)
+          EOF
+          )
+          [ -n "$part" ] || {
+            echo "::error::candidate $V is not one bump from the tree's $have -- release.yml could not produce it" >&2
+            exit 1; }
+          git fetch --quiet --depth=1 origin 'refs/tags/v*:refs/tags/v*'
+          python3 .github/scripts/bump_extension_version.py "$part"
+
+      - name: Rehearsal only -- take the compiled parser from a build-only run
+        if: inputs.parser_run != ''
+        uses: actions/download-artifact@v8
+        with:
+          run-id: ${{ inputs.parser_run }}
+          github-token: ${{ github.token }}
+          pattern: parser-linux-*
+          path: parser-run
 
       - name: Fetch the parser for both Linux architectures
         # From the release, rather than rebuilt here: the .so in the image and
         # the .so someone installs with install.sh must be the same artifact,
         # or "works in Docker, fails on my Postgres" becomes a class of bug
         # with no way to tell the two builds apart.
+        #
+        # THIS STEP IS WHERE THE COMPILED HALF GETS AN IDENTITY, and it had
+        # none before. Nothing in this workflow compiles the parser, so no
+        # property of this tree describes it -- it is whatever bytes a release
+        # is serving at the moment curl runs. The precondition below used to
+        # compare the Dockerfile hash and read the answer as "the binaries did
+        # not change", which is a different sentence: a new parser release, or
+        # the same tag re-pointed, moves every byte of the parser with
+        # dev/Dockerfile.pg19 untouched. So the tag is RESOLVED here and the
+        # .so files are HASHED here, and those three values -- resolved tag,
+        # per-arch digest, combined digest -- are what the image records and
+        # what the fast path compares.
+        id: parser
         env:
-          BASE: >-
-            ${{ inputs.parser_release == 'latest'
-                && 'https://github.com/Percolation-Labs/get-percolate/releases/latest/download'
-                || format('https://github.com/Percolation-Labs/get-percolate/releases/download/{0}', inputs.parser_release) }}
+          PARSER_RELEASE: ${{ inputs.parser_release }}
+          PARSER_RUN: ${{ inputs.parser_run }}
+          REHEARSE: ${{ inputs.rehearse }}
+          V: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          repo=Percolation-Labs/get-percolate
           mkdir -p dev/dist
+          if [ -n "$PARSER_RUN" ]; then
+            tag="parser.yml run $PARSER_RUN"
+            for a in amd64 arm64; do
+              cp "parser-run/parser-linux-$a/percolate_parser-linux-$a.so" "dev/dist/percolate_parser-$a.so"
+            done
+            cp parser-run/parser-linux-amd64/percolate_parser.control dev/dist/
+            cp parser-run/parser-linux-amd64/percolate_parser--*.sql dev/dist/
+          else
+          # `latest` IS RESOLVED BEFORE ANYTHING COMPARES IT. It is a moving
+          # name: recording it on the image and then comparing it against the
+          # next run's `latest` compares a string to itself and proves exactly
+          # as little as hashing the Dockerfile did. Resolved once, here, and
+          # the download URL, the label and the precondition all use the
+          # answer -- which also collapses the two URL shapes into one.
+          tag=$PARSER_RELEASE
+          if [ "$tag" = latest ]; then
+            tag=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+                    "https://api.github.com/repos/$repo/releases/latest" \
+                  | jq -r '.tag_name // empty')
+            [ -n "$tag" ] || {
+              echo "::error::could not resolve 'latest' to a get-percolate release tag" >&2
+              exit 1; }
+          fi
+          echo "parser release: $PARSER_RELEASE -> $tag"
+          BASE="https://github.com/$repo/releases/download/$tag"
+
           for a in amd64 arm64; do
             curl -fsSL -o "dev/dist/percolate_parser-$a.so" "$BASE/percolate_parser-linux-$a.so"
           done
           curl -fsSL -o dev/dist/percolate_parser.control "$BASE/percolate_parser.control"
-          # Named by the version rather than hardcoded: the release asset is
-          # percolate_parser--<version>.sql, and pinning 0.1.0 here is what
-          # made the old install path a silent 404 after the first bump.
-          curl -fsSL -o "dev/dist/percolate_parser--${{ inputs.version }}.sql" \
-            "$BASE/percolate_parser--${{ inputs.version }}.sql"
+          # Named by the version the CONTROL FILE declares rather than
+          # hardcoded: the release asset is percolate_parser--<version>.sql, and
+          # pinning 0.1.0 here is what made the old install path a silent 404
+          # after the first bump.
+          q=$(sed -n "s/^default_version = '\(.*\)'/\1/p" dev/dist/percolate_parser.control)
+          curl -fsSL -o "dev/dist/percolate_parser--$q.sql" "$BASE/percolate_parser--$q.sql"
+          fi
+
+          # The parser files name the version they were built at, and for a
+          # release that is this image's version or the image is a lie. A
+          # rehearsal is the one legitimate exception: it reuses a published
+          # parser (or compiles an unbumped tree) for a number not yet released,
+          # so the control file and the script NAME are restamped -- the .so
+          # bytes, which are what the digests below and the fast path compare,
+          # are untouched.
+          q=$(sed -n "s/^default_version = '\(.*\)'/\1/p" dev/dist/percolate_parser.control)
+          if [ "$q" != "$V" ]; then
+            [ "$REHEARSE" = true ] || {
+              echo "::error::$tag carries percolate_parser $q; this image is $V" >&2
+              exit 1; }
+            echo "::notice::rehearsal: percolate_parser $q from $tag restamped as $V (the .so bytes are unchanged)"
+            sed -i "s/^default_version = '[^']*'/default_version = '$V'/" dev/dist/percolate_parser.control
+            mv "dev/dist/percolate_parser--$q.sql" "dev/dist/percolate_parser--$V.sql"
+          fi
+
+          # The digests are of the BYTES THAT GO INTO THE IMAGE, taken here
+          # rather than read back out of it, because these same files are what
+          # the Dockerfile COPYs. The combined digest is what the precondition
+          # compares; the per-arch ones are on the image so that a human can
+          # check a published image against them without a rebuild:
+          #   docker run --rm --platform linux/arm64 <image> \
+          #     sha256sum /usr/lib/postgresql/19/lib/percolate_parser.so
+          amd=$(sha256sum dev/dist/percolate_parser-amd64.so | cut -c1-64)
+          arm=$(sha256sum dev/dist/percolate_parser-arm64.so | cut -c1-64)
+          so=$(printf 'amd64:%s\narm64:%s\n' "$amd" "$arm" | sha256sum | cut -c1-64)
+          echo "  amd64 .so: $amd"
+          echo "  arm64 .so: $arm"
+          echo "  combined:  $so"
+          { echo "tag=$tag"
+            echo "so_sha256=$so"
+            echo "amd64_sha256=$amd"
+            echo "arm64_sha256=$arm"; } >> "$GITHUB_OUTPUT"
 
       - name: Generate the extension SQL
         run: |
@@ -126,14 +270,40 @@ jobs:
       # on `"/dist/percolate-build.sql": not found` AFTER publishing the release
       # assets. The tag was not created, which is why the retry is clean.
       - name: Stamp what this image was built from
+        # TWO ROWS, TWO PROVENANCES. The loop this replaces wrote one value
+        # into both, and `git rev-parse HEAD` is the SPECS checkout the
+        # extension SQL was generated from -- while the parser .so was
+        # DOWNLOADED from a release built at some other commit. So the `parser`
+        # row named a commit that did not produce the binary it described, and
+        # percolate_build()'s old `consistent` column (count(distinct
+        # commit_sha) <= 1) was true by construction on every published image:
+        # a check that could not fail.
+        #
+        # The values come from the `parser` step rather than being recomputed
+        # here. That step already resolves `latest` to the tag it actually
+        # pointed at and digests both .so files for the image labels; taking
+        # them from its outputs is what keeps the label and the in-database
+        # answer from being two independently-derived claims that can disagree.
+        env:
+          PARSER_TAG:   ${{ steps.parser.outputs.tag }}
+          PARSER_AMD64: ${{ steps.parser.outputs.amd64_sha256 }}
+          PARSER_ARM64: ${{ steps.parser.outputs.arm64_sha256 }}
         run: |
+          set -euo pipefail
           SHA=$(git rev-parse --short HEAD)
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           printf -- '-- GENERATED by image-postgres.yml.\n' > dev/dist/percolate-build.sql
-          for c in schema parser; do
-            printf "select public.percolate_record_build('%s', '%s', '%s', '%s');\n" \
-              "$c" "${{ inputs.version }}" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              >> dev/dist/percolate-build.sql
-          done
+          # The schema: a commit, and nothing to add to it.
+          printf "select public.percolate_record_build('schema', '%s', '%s', '%s', null);\n" \
+            "${{ inputs.version }}" "$SHA" "$NOW" >> dev/dist/percolate-build.sql
+          # The parser: no commit -- nothing in this job knows which one built
+          # it -- and the release plus BOTH architectures' digests, because one
+          # stamp is baked into a multi-arch image and a single digest would
+          # describe whichever runner happened to build it.
+          printf "select public.percolate_record_build('parser', '%s', null, '%s', '%s');\n" \
+            "${{ inputs.version }}" "$NOW" \
+            "$PARSER_TAG, amd64 .so sha256:$PARSER_AMD64, arm64 .so sha256:$PARSER_ARM64" \
+            >> dev/dist/percolate-build.sql
           cat dev/dist/percolate-build.sql
 
       - name: Confirm the tree is at the version being tagged
@@ -146,9 +316,9 @@ jobs:
             echo "::error::ref ${{ inputs.ref }} is extension $have, not ${{ inputs.version }}" >&2
             exit 1; }
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         if: inputs.push
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -161,43 +331,117 @@ jobs:
       # property of this tree and of what is already published.
       #
       # The fast path is only legitimate while the compiled half is identical
-      # to a build that already passed the gate. That is checkable rather than
-      # a matter of discipline: the previous image carries the hash of the
-      # Dockerfile it was built from, and if this tree's differs then something
-      # compiled DID change and the full path is the one that was needed.
+      # to a build that already passed the gate, and "identical" has to be
+      # decided by comparing the compiled half -- not by comparing something
+      # nearby that is easier to reach.
+      #
+      # IT USED TO COMPARE THE DOCKERFILE HASH ALONE, and the converse it
+      # relied on is false. Its reasoning was "the previous image carries the
+      # hash of the Dockerfile it was built from, and if this tree's differs
+      # then something compiled DID change" -- true, and the useful direction
+      # is the other one. The parser .so is not compiled here at all; it is
+      # downloaded from a get-percolate release (see the fetch step). So a
+      # different parser release, or the same tag re-pointed, changes every
+      # byte of the parser while dev/Dockerfile.pg19 stays identical, the
+      # precondition passes in exactly the case it exists to refuse, and the
+      # run reports that it proved the binaries unchanged while publishing
+      # binaries nothing inspected. Live instance: REM-51/65 changed
+      # extension/percolate_parser/src/graph.rs and no Dockerfile.
+      #
+      # THREE TERMS NOW, and the digest is the decisive one:
+      #   dockerfile-sha        -- the layers this tree would build
+      #   parser-release        -- which release the .so files came from
+      #   parser-so-sha256      -- the bytes themselves
+      # A term the published image does not record is a REFUSAL, not a pass:
+      # an image published before this check existed cannot prove anything
+      # about its parser, and one full run is what establishes it.
+      #
+      # IT RUNS WHETHER OR NOT THIS RUN PUSHES, which the Dockerfile-only
+      # version did not (`inputs.push &&`). A gate that only exists on the run
+      # that publishes cannot be rehearsed, and "make a new gate fail once on
+      # purpose" then means risking a publish to find out. With push: false
+      # this job builds nothing that leaves the runner, so the precondition is
+      # dispatchable on its own, costs a manifest inspect, and answers the
+      # only question a dry run has: would this fast path have been allowed.
       - name: Refuse the fast path when the compiled half changed
-        if: inputs.push && !inputs.verify_binaries
+        if: ${{ !inputs.verify_binaries }}
+        env:
+          WANT_TAG: ${{ steps.parser.outputs.tag }}
+          WANT_SO:  ${{ steps.parser.outputs.so_sha256 }}
         run: |
+          set -euo pipefail
           # `.Image` is a MAP KEYED BY PLATFORM on a multi-arch manifest, not
           # a single config, so the obvious `.Image.Config.Labels` silently
           # returns empty and the check reports "no label" for an image that
           # has one -- a false negative that sends you down the slow path
           # forever. Both platforms carry identical labels here, so reading the
           # first entry is the whole answer.
-          prev=$(docker buildx imagetools inspect \
-                   percolationlabs/percolate-postgres:19 --format '{{ json .Image }}' \
-                 2>/dev/null \
-                 | jq -r 'to_entries[0].value.config.Labels["org.percolate.dockerfile-sha"] // empty' \
-                 2>/dev/null || true)
-          now='${{ hashFiles('dev/Dockerfile.pg19') }}'
-          echo "published Dockerfile sha: ${prev:-unknown}"
-          echo "this tree's:              $now"
-          if [ -z "$prev" ]; then
-            echo "::error::the published image carries no Dockerfile hash, so the" >&2
-            echo "::error::fast path cannot prove the compiled half is unchanged." >&2
-            echo "::error::Re-run with verify_binaries: true once, to establish it." >&2
-            exit 1
+          labels=$(docker buildx imagetools inspect \
+                     percolationlabs/percolate-postgres:19 --format '{{ json .Image }}' \
+                   2>/dev/null \
+                   | jq -c 'to_entries[0].value.config.Labels // {}' \
+                   2>/dev/null || echo '{}')
+          label() { printf '%s' "$labels" | jq -r --arg k "$1" '.[$k] // empty'; }
+          prev_dockerfile=$(label org.percolate.dockerfile-sha)
+          prev_tag=$(label org.percolate.parser-release)
+          prev_so=$(label org.percolate.parser-so-sha256)
+          now_dockerfile='${{ hashFiles('dev/Dockerfile.pg19') }}'
+
+          # A published `latest` is NOT A VALUE, it is the absence of one.
+          # Images built before the fetch step resolved the tag carry the
+          # literal string, and accepting it would compare 'latest' to
+          # 'latest' -- this whole defect, one level out.
+          if [ "$prev_tag" = latest ]; then
+            echo "the published image records its parser release as 'latest', which names" >&2
+            echo "no particular build; treating it as unrecorded." >&2
+            prev_tag=
           fi
-          [ "$prev" = "$now" ] || {
-            echo "::error::dev/Dockerfile.pg19 changed since the published image." >&2
+
+          # THE TABLE GOES TO STDERR, with the errors, and that is not a
+          # preference. stdout through the runner's pipe is block-buffered and
+          # stderr is not, so on the first run of this check the three
+          # ::error:: lines appeared BEFORE the row whose values they were
+          # explaining -- a log that reads as if the digest term failed for
+          # the release named one line above it. Same stream, same order.
+          row() { printf '%-22s %-34s %s\n' "$1" "$2" "$3" >&2; }
+          row term published 'this run'
+          row dockerfile-sha "${prev_dockerfile:-(none)}" "$now_dockerfile"
+          row parser-release "${prev_tag:-(none)}" "$WANT_TAG"
+          row parser-so-sha256 "${prev_so:-(none)}" "$WANT_SO"
+
+          fail=0
+          compare() {
+            what=$1 prev=$2 now=$3
+            if [ -z "$prev" ]; then
+              echo "::error::the published image records no $what, so the fast path cannot" >&2
+              echo "::error::prove the compiled half is unchanged. Re-run with" >&2
+              echo "::error::verify_binaries: true once, to establish it." >&2
+              fail=1
+            elif [ "$prev" != "$now" ]; then
+              echo "::error::$what changed since the published image:" >&2
+              echo "::error::  published: $prev" >&2
+              echo "::error::  this run:  $now" >&2
+              fail=1
+            fi
+          }
+          compare 'Dockerfile hash (dev/Dockerfile.pg19)' "$prev_dockerfile" "$now_dockerfile"
+          compare 'parser release'   "$prev_tag" "$WANT_TAG"
+          compare 'parser .so digest' "$prev_so" "$WANT_SO"
+          [ "$fail" = 0 ] || {
             echo "::error::That is the FULL path -- re-run with verify_binaries: true." >&2
             exit 1; }
+          echo "fast path allowed: Dockerfile, parser release and parser .so digests all" >&2
+          echo "match the image that passed the portability gate." >&2
 
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: dev
           file: dev/Dockerfile.pg19
-          platforms: linux/amd64,linux/arm64
+          # A rehearsal builds the one platform its runner can start, into a
+          # tarball the test jobs load. A multi-platform build cannot be loaded
+          # into a daemon, and the portability gate below is push-only.
+          platforms: ${{ inputs.rehearse && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          outputs: ${{ inputs.rehearse && format('type=docker,dest={0}/percolate-postgres.tar', runner.temp) || '' }}
           push: ${{ inputs.push }}
           # THE REASON A RELEASE TOOK EIGHT MINUTES. Without a cache an
           # ephemeral runner recompiles pgvector and pg_cron from source for
@@ -209,11 +453,18 @@ jobs:
           # is what lets it pay off.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Recorded ON the image so the fast path below can check its own
-          # precondition instead of trusting whoever ticked the box.
+          # Recorded ON the image so the fast path above can check its own
+          # precondition instead of trusting whoever ticked the box. The
+          # parser labels are RESOLVED VALUES: the tag `latest` pointed at
+          # when this ran, and the digests of the .so files that release
+          # served. An image labelled `latest` says nothing about which
+          # binaries it carries, and the precondition treats it as unrecorded.
           labels: |
             org.percolate.dockerfile-sha=${{ hashFiles('dev/Dockerfile.pg19') }}
-            org.percolate.parser-release=${{ inputs.parser_release }}
+            org.percolate.parser-release=${{ steps.parser.outputs.tag }}
+            org.percolate.parser-so-sha256=${{ steps.parser.outputs.so_sha256 }}
+            org.percolate.parser-so-amd64-sha256=${{ steps.parser.outputs.amd64_sha256 }}
+            org.percolate.parser-so-arm64-sha256=${{ steps.parser.outputs.arm64_sha256 }}
           # Two tags, and the second one is the point. `19` is the Postgres
           # major and is mutable -- it is what the compose file and the chart
           # pull, and it moves every release. `19-<version>` never moves, so a
@@ -230,6 +481,39 @@ jobs:
           # opens the door and then inspects the visitor is a report.
           tags: |
             percolationlabs/percolate-postgres:19-${{ inputs.version }}
+
+      # WHAT A RELEASE WOULD HAVE ATTACHED, under the names parser.yml's release
+      # job checks for, so install.sh can install the candidate the way it
+      # installs a release. Artifacts of this run, kept a day, never a release.
+      - name: Rehearsal only -- stage the candidate as release assets
+        if: inputs.rehearse
+        env: {V: "${{ inputs.version }}"}
+        run: |
+          set -euo pipefail
+          mkdir -p candidate-assets
+          cp dev/dist/percolate.control "dev/dist/percolate--$V.sql" \
+             dev/dist/percolate_parser.control "dev/dist/percolate_parser--$V.sql" candidate-assets/
+          for up in dev/dist/percolate--*--"$V".sql; do [ -e "$up" ] && cp "$up" candidate-assets/; done
+          for a in amd64 arm64; do
+            cp "dev/dist/percolate_parser-$a.so" "candidate-assets/percolate_parser-linux-$a.so"
+          done
+          # The asset list install.sh reads from the releases API, in its shape.
+          ls candidate-assets | jq -R '{name: .}' | jq -s '{tag_name: "candidate", assets: .}' \
+            > candidate-assets/release.json
+          ls -la candidate-assets
+      - uses: actions/upload-artifact@v7
+        if: inputs.rehearse
+        with:
+          name: candidate-postgres-image
+          path: ${{ runner.temp }}/percolate-postgres.tar
+          compression-level: 1
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        if: inputs.rehearse
+        with:
+          name: candidate-extension-assets
+          path: candidate-assets/
+          retention-days: 1
 
       - name: Confirm both architectures are in the manifest
         if: inputs.push

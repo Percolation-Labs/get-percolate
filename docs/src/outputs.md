@@ -113,7 +113,7 @@ can treat as an object rather than as prose.
 shaped by a contract</summary>
 
 The engine validates before storing, and a violation retries — the one failure
-in this engine deliberately classified that way, because the same prompt
+in this engine classified that way, because the same prompt
 genuinely can conform on the next attempt.
 
 <div class="evidence" markdown="1">
@@ -169,7 +169,8 @@ Three things follow from putting it there:
 gives back a row in `content.resources`, which is what makes an artefact
 RLS-scoped, deduplicated by checksum, servable, and visible to
 `content.check_drift`. A bucket path in a JSONB column is none of those, and it
-puts a bucket name into a row you wanted to keep inspectable and replayable — the
+puts a bucket name into a row you wanted to keep inspectable and replayable —
+the
 same argument that makes `credential_ref` a name rather than a secret.
 
 Returning `{"$ref": "s3://…"}` in its place does not work, and nothing tells

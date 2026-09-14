@@ -17,7 +17,7 @@ select workflow.plan_document('sec_revenue');
 ```
 
 `sec_revenue` is the pipeline the output below came from — an agent, an MCP tool
-server and a corpus, which is what makes it worth reading — and it is not
+server and a corpus, which is why it repays reading — and it is not
 installed by anything here, so that exact call answers `no workflow definition
 named sec_revenue` on your stack. Every function on this page takes any
 definition name, so substitute one you have.
@@ -75,7 +75,7 @@ registered, which is a different question and the one that hides a broken
 pipeline.
 
 **Curation is the point.** Constraints, indexes, RLS policies and full JSON
-Schemas are deliberately absent. An expansion that reproduces everything a
+Schemas are absent. An expansion that reproduces everything a
 workflow touches is a document nobody reads twice, which fails the same way as
 not expanding at all. The rule for what stays: *if two steps of the same kind
 would differ in it, it describes the pipeline.*
@@ -87,7 +87,8 @@ would differ in it, it describes the pipeline.*
 
 ## The same resolution, as a graph
 
-What we are trying to do here is get the nodes and edges, for a viewer or a diff.
+What we are trying to do here is get the nodes and edges, for a viewer or a
+diff.
 {: .goal }
 
 ```sql
@@ -118,7 +119,8 @@ answers to the only question that matters, and the second one would be wrong
 first.
 
 Node ids are stable (`kind:name`), so the same agent named by three steps is one
-node with three edges into it, and a diff between two versions of a definition is
+node with three edges into it, and a diff between two versions of a definition
+is
 a set difference. Steps carry `rank` — longest path from a root — and every node
 carries a `lane`, which is what a layout needs. Steps also carry `step_key`, and
 `workflow.tasks` is keyed `(run_id, step_key)`, so colouring a plan with a live
@@ -159,7 +161,7 @@ The errors, in the order they will cost you something:
 | code | what it means |
 |---|---|
 | `space_model_split` | a query ranks a corpus in a space that corpus has no vectors in — returns rows, not an error |
-| `unknown_rate_key` | the throttle has no row, so `claim_task` skips the task **forever**, silently |
+| `unknown_rate_key` | the throttle has no row, so `claim_task` skips the task **forever**, reporting nothing |
 | `unknown_agent` | the runtime 404s every call; the step burns its retries on a name that was never going to resolve |
 | `unknown_source` · `unknown_model` | the query returns zero rows, or has nowhere to rank |
 | `unregistered_server` | the agent runs with a smaller toolset than its definition claims, and answers anyway |
@@ -227,16 +229,16 @@ creation and executes nothing.
 
 `arity` is the one that saves an afternoon: at dispatch, a step passing one
 argument to a two-argument function fails with `function f(text) does not
-exist`, which reads as a missing function rather than a miscounted argument
+exist`, which looks like a missing function rather than a miscounted argument
 list.
 
 **`skipped` is never `ok`.** The worker's environment, an outbound URL, whether
 a credential resolves — all of those belong to a process the database
-deliberately cannot see. A probe that passed them would be worse than one that
+cannot see, by design. A probe that passed them would be worse than one that
 says it cannot tell.
 
 Templates become `null` before probing, since `{{run.cik}}` is not SQL. That is
-enough for parsing, relations and column types, and honestly less than a run.
+enough for parsing, relations and column types, and less than a run.
 
 <p class="related"><strong>Related</strong>
 <a href="grammar-workflow.html#sql-steps-run-sql">what a statement step may
@@ -287,7 +289,7 @@ is RLS-enabled and per-tenant, so you see the runs your policies admit.
 ## What it cannot do
 
 This is pre-flight, not verification, and the difference matters enough to state
-plainly.
+in plain terms.
 
 **It cannot tell you the plan is wrong.** It checks that names resolve. A
 pipeline that fetches the right document, lands every row and answers the
@@ -298,14 +300,16 @@ name and the landing step ignored the period start. Zero errors, all the way
 through.
 
 **It cannot see the worker's environment.** `requires_env` lists what a step
-needs, and cannot check it: the environment belongs to the worker, deliberately,
+needs, and cannot check it: the environment belongs to the worker,
 because that is where credentials live. The commonest failure of an otherwise
 sound plan is an agent step on a deployment with no Agent Runtime configured,
-and the plan can name the variable while knowing nothing about whether it is set.
+and the plan can name the variable while knowing nothing about whether it is
+set.
 
 **Its warnings are not all news.** Every queue warning fires on a fresh install,
 because nothing ships `queue_config` rows. A report whose warnings are all
-present on a clean deployment teaches people to skip it, so read the errors first
+present on a clean deployment teaches people to skip it, so read the errors
+first
 and treat the warnings as a list of defaults nobody chose.
 
 <details class="why" markdown="1">

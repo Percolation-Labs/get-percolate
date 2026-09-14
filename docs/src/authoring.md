@@ -44,7 +44,7 @@ before the function returns</a></p>
 
 ## Write the query, not the plumbing
 
-The two places the compiler does work on your behalf are worth knowing, because
+The two places the compiler does work on your behalf repay attention, because
 both look like magic until you know why they exist.
 
 What we are trying to do here is search a corpus by meaning without writing the

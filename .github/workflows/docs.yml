@@ -6,6 +6,15 @@
 name: docs
 
 on:
+  # THE HOUSE-VOICE GATE NEEDS A PR TRIGGER AND THE PUBLISH DOES NOT, which is
+  # why this list grew one. `versions.py --check` and the prose check below both
+  # answer questions about a page BEFORE it is worth deploying, and a gate that
+  # only runs after merge cannot stop the page it is about. The deploy job stays
+  # `push`-only -- see `if:` on it -- so a pull request checks and does not
+  # publish.
+  pull_request:
+    paths: ["docs/**", "README.md", "versions.toml", "ci/versions.py",
+            ".github/workflows/docs.yml"]
   push:
     branches: [main]
     # README.md is here because this job runs `ci/versions.py --check`, and one
@@ -32,9 +41,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: {python-version: "3.12"}   # tomllib is stdlib from 3.11
 
       # Before building, because a site built from a stale number is a site that
@@ -42,6 +51,34 @@ jobs:
       # a person to go and find every version quoted in prose -- which did not
       # work: three pages said the dialect was 0.1.0 for a whole release after
       # it became 0.1.1, and nothing reported it.
+      # THE HOUSE VOICE, ON THE PAGES A READER SEES. `banned.py` is an
+      # exact-phrase list, not a pattern inferring meaning, and it lives in
+      # p8-subsystems beside the writing standard it enforces.
+      #
+      # THESE PAGES AND NOT ENGINEERING PROSE, which is the scope Sirsh settled
+      # on 2026-09-12. The same list over p8-subsystems' own markdown reports
+      # 882 hits across 377 of 377 files, because `deliberately`, `silently` and
+      # `load-bearing` are the working vocabulary of code commentary -- there
+      # they are checkable claims about a line of code, and a reader has the
+      # code. Here the reader has nothing to check against, so `inherited
+      # quietly` is the writer reassuring them, which is what the list is for.
+      # p8-subsystems gates only what a branch ADDS (`banned.py --changed`);
+      # this gates the whole corpus, because the whole corpus is clean.
+      - name: Check out the writing standard
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.SPECS_REPO || 'Percolation-Labs/p8-subsystems' }}
+          # The same pair `parser.yml` uses, and for its reason: the specs repo
+          # is private, so the default job token cannot read it and the checkout
+          # fails with a bare `Not Found` naming the REST endpoint rather than
+          # the repository. Measured on the first run of this step.
+          token: ${{ secrets.SOURCE_TOKEN }}
+          path: .specs
+          sparse-checkout: meta/skills/docs-writing
+
+      - name: The published pages hold the house voice
+        run: python3 .specs/meta/skills/docs-writing/banned.py docs/src/*.md README.md
+
       - name: versions.toml agrees with every file that repeats it
         run: python3 ci/versions.py --check
 
@@ -50,7 +87,7 @@ jobs:
           pip install "markdown==3.7" "pygments==2.19.1" "pyyaml==6.0.2"
           python docs/build.py
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with: {version: v3.16.3}
 
       - name: Lint and package the chart
@@ -117,15 +154,19 @@ jobs:
           V=$(sed -n 's/^version: //p' charts/percolate/Chart.yaml)
           helm push "docs/_site/charts/percolate-$V.tgz" "oci://ghcr.io/$OWNER/charts"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with: {path: docs/_site}
 
   deploy:
     needs: build
+    # A PULL REQUEST CHECKS AND DOES NOT PUBLISH. The `pull_request` trigger was
+    # added for the two prose gates in `build`; without this line it would also
+    # deploy the site from a branch, which is the one thing a PR must not do.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

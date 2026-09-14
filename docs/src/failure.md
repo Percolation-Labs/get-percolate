@@ -19,7 +19,8 @@ fail_task(task_id, error, terminal=False)  # requeue with exponential backoff
 | Failure | Class | Why |
 |---|---|---|
 | HTTP 4xx (except 408, 429) | terminal | the same request gets the same answer |
-| HTTP 5xx, 429, connection error | retryable | transient by definition |
+| HTTP 429 whose `error.code` is `insufficient_quota`, or 402 | terminal | the account has no credit, and waiting does not add any |
+| HTTP 5xx, any other 429, connection error | retryable | transient by definition |
 | Output over the payload limit | terminal | the same response is the same size every time |
 | Output violating `output_schema` | retryable | the same prompt really can conform next time |
 | Unregistered step function, missing handler | terminal | `pip install` does not run itself between attempts |
@@ -32,7 +33,11 @@ appearances</summary>
 
 A 400 or a 404 will fail the same way every time, so retrying it five times with
 backoff turns a fast failure into a slow one and burns your rate limit doing it.
-A 5xx or a 429 is the server's problem and is worth another go.
+A 5xx or a 429 is the server's problem and is worth another go, unless the 429
+says the account is out of credit: that is the same status with the opposite
+remedy, and the worker reads the provider's error code to tell them apart. The
+rule is the same for an `http_call` step, embedding, transcription and API
+ingestion.
 
 The shape violation is the interesting row, because it looks like a bug and is
 classified retryable anyway. Every other terminal classification exists because
@@ -91,7 +96,8 @@ looks like, so the threshold answers *did enough calls come back* and the
 declared shape answers the rest.
 
 In an evaluation the polarity flips. The fraction of documents an extractor
-cannot parse is the measurement you wanted, so an eval sets `continue_on: failed`
+cannot parse is the measurement you wanted, so an eval sets `continue_on:
+failed`
 with no floor at all.
 
 <p class="related"><strong>Related</strong>
@@ -122,7 +128,8 @@ requeues a task whose lease has gone stale — unclaimed, and behind a backoff.
 Two parts are less obvious than they look.
 
 **A reaped worker cannot publish its result.** If the original worker comes back
-and calls `complete_task`, the lease fence refuses it and the refusal shows up in
+and calls `complete_task`, the lease fence refuses it and the refusal shows up
+in
 `v_lease_violations` rather than disappearing. Without that, a slow worker and a
 dead one are indistinguishable right up until the "dead" one returns and
 overwrites the retry's answer with a stale one.
@@ -154,7 +161,7 @@ when a later step fails.
 ```
 
 <details class="why" markdown="1">
-<summary>Why it works — compensations are ordinary tasks, deliberately</summary>
+<summary>Why it works — compensations are ordinary tasks, by design</summary>
 
 `begin_compensation()` enqueues the compensating steps for completed tasks in
 reverse completion order. Because they are ordinary tasks they inherit retries,
@@ -189,7 +196,8 @@ refreshes it — so the failure keeps resetting the signal that is supposed to
 reveal it. That is worse than having no view, because somebody is watching it
 and drawing the wrong conclusion. `v_stuck_tasks` therefore pairs the two.
 
-The general rule is to pair staleness with progress. "Not moving" and "moving and
+The general rule is to pair staleness with progress. "Not moving" and "moving
+and
 getting nowhere" are different failures, and a monitor that only detects the
 first will report health during the second.
 

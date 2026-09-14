@@ -4,8 +4,8 @@ The views and audits below are how you inspect runs and queues, investigate
 failures and size your worker pools, from SQL or over PostgREST on any install.
 {: .lede }
 
-A browser workbench covers the same ground — [Using the UI](ui.html) — but it
-is not in a published release yet, so nothing on this page depends on it.
+A browser workbench covers the same ground — [Using the UI](ui.html) — and
+nothing on this page depends on it: everything here is SQL and PostgREST.
 
 ## Scaling on queue depth
 
@@ -58,7 +58,8 @@ table — a task that vanished during backoff would make the autoscaler
 under-provision exactly while work was pending.
 
 `minReplicas: 0` is safe here: nothing ready and nothing running, no pod. It
-depends on the reaper's clock ([pg_cron](install.html#pg_cron-if-you-want-schedules)),
+depends on the reaper's clock
+([pg_cron](install.html#pg_cron-if-you-want-schedules)),
 because a task left `running` by a pod that died counts until
 `reap_stale_tasks()` returns it to `ready`.
 
@@ -115,6 +116,7 @@ missing-bucket failure in full</a> ·
 | `workflow.encoding_drift()` | a producer returning double-encoded JSON |
 | `content.check_drift()` | files no resource points at; resources never chunked |
 | `workflow.compiler_capabilities()` | the installed parser versus the SQL schema |
+| `rbac.v_auth_activity` | sign-ins, resets and role grants by kind over the last day — **and refresh-token reuse, which is theft** |
 
 <details class="why" markdown="1">
 <summary>Why it works — the first one has a lesson worth generalising</summary>
@@ -136,15 +138,16 @@ during the second.
 
 The views above answer *what is stuck*. They cannot answer *why this one answer
 took eleven seconds*, because that time is spread across a model call, four tool
-calls and two delegated sub-agents, and the rows record each of those separately.
+calls and two delegated sub-agents, and the rows record each of those
+separately.
 A trace is the shape that puts them back together.
 
-The agent runtime speaks OpenTelemetry **from the next `percolate-core`
-release**: the published image has no telemetry module and no `otel` extra, so
-on it the spans below never appear, while the collector's metrics
-half — the views above, read as metrics — works today. From that release it
-is **off unless you point it somewhere** — set the endpoint and it starts,
-unset and it costs nothing:
+The agent runtime speaks OpenTelemetry, and it is **off unless you point it
+somewhere** — set the endpoint and it starts, unset and it costs nothing. It
+needs the extra: `percolate-core[otel]` carries the SDK and the OTLP exporter,
+and a runtime installed without it exports nothing rather than failing. The
+collector's metrics half — the views above, read as metrics — needs no extra
+and works on any install:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
@@ -154,7 +157,8 @@ export OTEL_SERVICE_NAME=percolate-agent-runtime
 Install the exporter with the extra: `pip install 'percolate-core[agent,otel]'`.
 
 What arrives is mostly not ours. pydantic-ai emits the
-[GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+[GenAI semantic
+conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
 for every model request and tool call — `gen_ai.request.model`,
 `gen_ai.operation.name`, token counts, `gen_ai.conversation.id`. Percolate adds
 one span around the turn carrying the ids that join a trace to a row:
@@ -188,7 +192,7 @@ The shape above is a real capture, not a sketch: it is where the 775ms went.
 **Prompts and completions are not exported by default.** `include_content` puts
 message bodies in span attributes, which walks them straight out of the
 database's RLS and into whatever you pointed OTLP at. `P8_OTEL_CONTENT=1` opens
-that deliberately, for a debugging session, on a backend you trust.
+that as a considered choice, for a debugging session, on a backend you trust.
 
 ### Turning it on
 
@@ -214,7 +218,7 @@ reads the views below as metrics, exporting OTLP to whatever `P8_OTLP_BACKEND`
 names. Nothing in its config mentions SigNoz — point it at Grafana, Datadog,
 Honeycomb or a collector you already run and none of the queries change.
 
-SigNoz itself is deliberately **not** vendored here. It is seven services, five
+SigNoz itself is **not** vendored here. It is seven services, five
 ClickHouse config files and a startup download; copying that in would mean this
 repository owning their upgrade path. `signoz.sh` fetches their own compose at a
 pinned ref and runs it unmodified.
@@ -226,10 +230,10 @@ pinned ref and runs it unmodified.
 SigNoz's collector cannot register and *refuses every OTLP connection*. The
 backend logs `cannot create agent without orgId`; the sender sees `Connection
 reset by peer`, and a plain `curl` at the ingest port fails identically — so it
-reads as a network fault on your side rather than a setup step on theirs. The
+looks like a network fault on your side rather than a setup step on theirs. The
 script POSTs the registration, and fails loudly rather than shrugging, because
 the first version of it reported "already set up" for a password the policy had
-rejected and left the whole thing silently broken.
+rejected and left the whole thing broken with nothing to show it.
 
 That policy: 12+ characters, with an uppercase, a lowercase, a digit and a
 symbol. A rejection arrives as a bare `400`.
@@ -263,10 +267,40 @@ tables: there is no second definition of backlog to drift from the first.
 | `percolate.db.connections_in_use`, `.connection_headroom` | `workflow.v_capacity` |
 | `percolate.agentic.runs` | `agentic.runs`, by status |
 | `percolate.agentic.max_delegation_depth` | how deep trees actually go |
+| `percolate.auth.events` | `rbac.v_auth_activity`, per event type |
+| `percolate.auth.refresh_reuse` | `v_auth_activity` — **the other one to alert on**, at any value above zero |
+| `percolate.auth.login_failed`, `.login_success` | the pair, because a failure count alone means nothing |
 
 Depth alone is ambiguous — a deep queue being drained quickly is healthy. How
 long the oldest item has waited is not, which is why `oldest_wait_seconds` is
 the alerting signal rather than `claimable`.
+
+`refresh_reuse` is the other alert, and it is the easier one to set because it
+needs no baseline: the event is written only when a refresh token that was
+already rotated away is presented a second time, and the database's response is
+to revoke every live session that user has. **Any value above zero** means
+somebody was just signed out of everything — a stolen token, or a client racing
+itself, and you want to know which. Alert on `> 0`.
+
+`login_failed` is *not* an alert, and that is a choice rather than an omission. A hundred failures in an hour is
+a botnet on a ten-person deployment and a Monday morning on a ten-thousand-person
+one, so the threshold is yours and the number is only readable next to
+`login_success`. It ships as a dashboard pair.
+
+Both come from `rbac.v_auth_activity`, which is an **operator** view: it counts
+every tenant's events, so it is owner-privileged and granted to no caller. The
+`rbac.auth_events` table underneath it is granted to `authenticated` and carries
+RLS, which gives a signed-in person their own sign-in history — the right answer
+to a different question. Credential stuffing is a fact about everybody else's
+rows.
+
+One shape here is worth copying. `percolate.auth.events` is per event type, so
+on a healthy stack there is no `refresh_reuse_detected` series at all — and an
+alert cannot fire on a series that is absent, which is exactly the series you
+need. `percolate.auth.refresh_reuse` is therefore a second query that aggregates
+with no `GROUP BY`: one row of zeros always, and a threshold on a number that is
+always there. Any metric you add whose interesting value is *rare* wants the
+same treatment.
 
 Adding one is a query and a name:
 
@@ -307,8 +341,10 @@ strconv.Atoi: parsing "19beta3 (Debian 19~beta3-1": invalid syntax
 ```
 
 Nothing is wrong with your configuration — the receiver cannot read the version
-string. `sqlquery` is unaffected because it runs only the SQL you gave it, and it
-reports percolate's own state rather than the server's internal statistics, which
+string. `sqlquery` is unaffected because it runs only the SQL you gave it, and
+it
+reports percolate's own state rather than the server's internal statistics,
+which
 is what you wanted from a percolate dashboard anyway. Revisit at a stable 19.
 
 ## Work nobody can claim
@@ -485,13 +521,17 @@ and the graph. Two things are not covered by it.
 <summary>Why it works — and where the reconciliation has to happen outside</summary>
 
 **Object storage.** Artefacts and uploaded files are pointers in `content.files`
-and the bytes are in your bucket. `content.check_drift()` reports the half of the
-reconciliation the database can see — *no resource points at this file* — and the
-other half is a bucket listing compared against it, which nothing here can do for
+and the bytes are in your bucket. `content.check_drift()` reports the half of
+the
+reconciliation the database can see — *no resource points at this file* — and
+the
+other half is a bucket listing compared against it, which nothing here can do
+for
 you.
 
 **Secrets.** `credential_ref` is a name resolved from the worker's environment.
-That is exactly what makes a dump safe to hand around, and also why restoring one
+That is exactly what makes a dump safe to hand around, and also why restoring
+one
 into an environment without those names gives you tasks that fail at dispatch
 rather than tasks that work.
 
@@ -499,6 +539,56 @@ rather than tasks that work.
 <a href="recipes.html#keys-are-names-never-values">every place a credential is
 named rather than stored</a> ·
 <a href="ingest.html">what else lives in object storage</a></p>
+</details>
+
+### Restoring one
+
+A restore is not `psql -f dump.sql` into an empty database, and the reason is a
+safety property rather than an inconvenience: the extension **refuses to install
+as a superuser**, and a dump's own `CREATE EXTENSION percolate` runs as whoever
+invoked `psql`. Install the extension the documented way first, then load only
+the data.
+{: .goal }
+
+```bash
+# 1. the target, with roles and the extension, exactly as a fresh install
+psql -U postgres -d postgres -c 'create database percolate_restored'
+psql -U postgres -d percolate_restored -f bootstrap.sql
+
+# 2. the data, from a --data-only dump of the source
+pg_dump -U postgres -d percolate --data-only -f data.sql
+psql -U postgres -d percolate_restored -f data.sql
+```
+
+<details class="why" markdown="1">
+<summary>Why the extension has to go in first, and what a restore does not carry</summary>
+
+**Superuser is refused.** A superuser bypasses row-level security
+unconditionally, so an extension installed by one would leave every
+owner-privileged view returning all rows to every caller. `bootstrap.sql`
+creates
+the roles and installs as `app_owner`, which is the same path a first install
+takes — so a restored database is a normal one, not a special case.
+
+**The dump sets an empty `search_path`**, which is what makes it hermetic, and
+that in turn means every trigger firing during `COPY` resolves nothing but
+`pg_catalog`. Functions here pin `search_path = pg_catalog, public` for exactly
+that reason; `dev/restore-is-possible.sh` in the source repo does this whole
+round trip on every gate run, because "the backup contains the rows" and "the
+rows go back in" are two questions and only the first used to be asked.
+
+**Three things a `--data-only` restore does not bring back**, so check them
+rather than assume:
+
+- the `cron` schema and its jobs, if the source had `pg_cron` — install it in
+  the target and re-create the schedules
+- per-model embedding tables (`aiq.emb_<model>`), which are created when a model
+  is first used rather than by the extension. Re-run an embedding and they come
+  back; the vectors in them do not
+- object storage and secrets, for the reasons in the section above
+
+<p class="related"><strong>Related</strong>
+<a href="install.html">what <code>bootstrap.sql</code> does</a></p>
 </details>
 
 ## Upgrading

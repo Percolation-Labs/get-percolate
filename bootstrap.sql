@@ -113,9 +113,68 @@ begin
 end $$;
 commit;
 
+-- THE APPLICATION PROVISIONER, only when a password is given. An application
+-- that keeps its own people in core (percolate-application) creates their
+-- users and tokens through rbac.provision_application_* as this role. It holds
+-- no table privilege, and most installs run no application, so it has no
+-- default password and is not created without one:
+--   psql ... -v app_provisioner_pw="$(openssl rand -hex 24)" -f bootstrap.sql
+\if :{?app_provisioner_pw}
+begin;
+select set_config('bootstrap.app_provisioner_pw', :'app_provisioner_pw', true) as _app_provisioner_pw \gset
+do $$
+begin
+    if current_setting('bootstrap.app_provisioner_pw') = '' then
+        raise notice 'app_provisioner_pw is empty -- not creating app_provisioner';
+    elsif exists (select 1 from pg_roles where rolname = 'app_provisioner') then
+        raise notice 'role app_provisioner already exists -- keeping its current password. '
+                     'Change it with ALTER ROLE if you meant to.';
+    else
+        execute format('create role app_provisioner login password %L',
+                       current_setting('bootstrap.app_provisioner_pw'));
+    end if;
+end $$;
+commit;
+\endif
+
 grant api_viewer    to app_owner;      -- so app_owner can hand it the views
 grant web_anon      to authenticator;
 grant authenticated to authenticator;
+-- From 0.2.0 a workflow step runs as the person who started its run, through
+-- api_viewer, which therefore needs what a signed-in person holds. The 0.2.0
+-- extension refuses to install or upgrade without it, and names this line.
+grant authenticated to api_viewer;
+
+-- WHAT THE DATABASE REFUSES: four timeouts on each role that LOGS IN (REM-113).
+-- `alter role ... set` applies at login, from the role that authenticated, and
+-- SET ROLE does not re-apply it -- so a bound on app_owner, api_viewer,
+-- authenticated or web_anon would read correctly in \drds and apply to nothing.
+-- app_owner is unbounded for the reason an upgrade needs to be: it replays the
+-- whole schema, and a migration cut off half way is worse than a slow one.
+--
+-- THE VALUES ARE p8-subsystems' dev/image-init/00-superuser.sql §2, which the
+-- image runs at initdb; the reasoning for each number is there. This copy exists
+-- because this file is downloaded on its own, and `ci/superuser-step.py` fails
+-- the build when the two tables disagree. The image's copy shipped and this one
+-- did not, so an own-Postgres install ran every query unbounded.
+do $$
+declare r record;
+begin
+    for r in
+        select * from (values
+            ('authenticator', '30s',  '60s',  '30s', '5s'),
+            ('worker',        '300s', '600s', '60s', '15s'),
+            ('scheduler',     '60s',  '120s', '30s', '10s'),
+            ('app_provisioner', '10s', '20s',  '10s', '5s')
+        ) as t(role, stmt, txn, idle, lock)
+    loop
+        continue when not exists (select 1 from pg_roles where rolname = r.role);
+        execute format('alter role %I set statement_timeout = %L', r.role, r.stmt);
+        execute format('alter role %I set transaction_timeout = %L', r.role, r.txn);
+        execute format('alter role %I set idle_in_transaction_session_timeout = %L', r.role, r.idle);
+        execute format('alter role %I set lock_timeout = %L', r.role, r.lock);
+    end loop;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- 2. The extensions a non-superuser cannot install, and the room app_owner
@@ -128,6 +187,24 @@ do $$ begin
     execute format('grant create on database %I to app_owner', current_database());
 end $$;
 grant create, usage on schema public to app_owner;
+
+-- NOBODY A PERSON CAN BECOME MAY REWRITE WHO THEY ARE, from 0.2.0. Every row
+-- rule reads the caller from `request.jwt.claims`, and set_config writes it:
+-- through the SQL passthrough a signed-in user could put anyone's id there and
+-- read as them. So set_config belongs to the roles that set identity on
+-- someone's behalf. Per database, because a function's ACL lives in the
+-- database. Conditional on the version this database will install, because
+-- 0.1.x's passthrough still calls set_config as the caller and would stop
+-- working; 0.2.0 refuses to install until this has run.
+do $$
+declare v text := (select default_version from pg_available_extensions where name = 'percolate');
+begin
+    if v is not null and string_to_array(v, '.')::int[] >= array[0, 2, 0] then
+        revoke execute on function pg_catalog.set_config(text, text, boolean) from public;
+        grant execute on function pg_catalog.set_config(text, text, boolean)
+            to authenticator, app_owner, worker, scheduler;
+    end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- 3. The system itself, installed BY app_owner so that app_owner owns it.
@@ -176,7 +253,24 @@ begin
                     'select workflow.reap_stale_tasks()',   current_database(), 'scheduler');
         perform cron.schedule_in_database('workflow-timers', '* * * * *',
                     'select workflow.promote_due_timers()', current_database(), 'scheduler');
-        raise notice 'percolate: pg_cron scheduled -- tick, reaper and timers are live';
+        -- A FOURTH JOB, BECAUSE NOTHING DELETED A FINISHED RUN (REM-109).
+        -- workflow.purge_completed shipped and was scheduled by no deployment,
+        -- so an operator who left this running kept every run, task and
+        -- task_event for ever. Disk is the least of it: workflow.queue_depth --
+        -- what the autoscaler asks how much work there is -- degrades with the
+        -- live-to-total row ratio, so at around 10k tasks/day the thing that
+        -- decides how many workers to run gets slower for a quarter and then
+        -- starts mattering.
+        --
+        -- Daily, not per-minute, because it is retention rather than clock
+        -- work; 03:17 rather than 03:00 so it does not land with everything
+        -- else on the hour. Its own defaults bound one pass (30 days, 50 runs
+        -- a batch, 1000 batches), and the three jobs above are `scheduler` for
+        -- the same reason this is: the function is SECURITY DEFINER and is
+        -- granted to scheduler and to nobody else.
+        perform cron.schedule_in_database('workflow-purge',  '17 3 * * *',
+                    'select workflow.purge_completed()',    current_database(), 'scheduler');
+        raise notice 'percolate: pg_cron scheduled -- tick, reaper, timers and purge are live';
         -- scheduler has no password, so a job that connects over libpq fails
         -- once a minute wherever pg_hba asks for one, and still shows active.
         if coalesce(current_setting('cron.use_background_workers', true), 'off') <> 'on' then

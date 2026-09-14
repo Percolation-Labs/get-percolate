@@ -1,0 +1,472 @@
+# Run the install guide against a RELEASE CANDIDATE, before anything is published.
+#
+# Both dry runs stopped one step short of the question a release is for. p8-subsystems'
+# release.yml with `publish: false` compiles the parser and builds the image;
+# percolate-core's builds the wheel and the image. Neither ran the install guide
+# against what it built, so "clean for a reader" was measured only by publishing:
+# percolate-core 0.1.9 and 0.1.10 both went out and then failed coldstart.yml,
+# which is the first thing that ran them.
+#
+# This builds both candidates from the given commits, in this repository's runners,
+# and runs the same three scripts coldstart.yml runs against them. PUSHING NOTHING:
+#
+#   - no registry login anywhere in this run: image-postgres.yml is called with
+#     `push: false` and `rehearse: true` (it refuses the pair), and without the
+#     Docker Hub secrets, so its login step has neither a reason nor the means;
+#   - images leave the build job as run artifacts (`type=docker,dest=`), which is
+#     also how the test jobs get them -- nothing is pulled by a candidate tag;
+#   - `versions.py --set` writes to the runner's checkout, which is never committed;
+#   - the token is `contents: read`, and the only `actions: write` is the job that
+#     dispatches parser.yml build-only (empty version), the door p8-subsystems'
+#     dry run already uses.
+name: rehearse
+run-name: >-
+  rehearse extension ${{ inputs.extension }} (${{ inputs.p8_ref }}),
+  core ${{ inputs.core }} (${{ inputs.core_ref }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      p8_ref:
+        description: p8-subsystems ref (full or short sha, branch or tag) the extension candidate is built from
+        default: main
+      core_ref:
+        description: percolate-core ref (full or short sha, branch or tag) the core candidate is built from
+        default: main
+      extension:
+        description: candidate extension version -- the tree is bumped to it if it is one bump away
+        required: true
+      core:
+        description: candidate percolate-core version -- likewise
+        required: true
+      parser:
+        description: >-
+          auto compiles the parser only when its source moved since the published
+          release; compile forces it (to rehearse the slow path itself)
+        type: choice
+        options: [auto, compile]
+        default: auto
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # What is being built, decided once: the SHAs the refs resolve to now (a branch
+  # can move mid-run), and whether the compiled half of the extension changed.
+  # ---------------------------------------------------------------------------
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      p8_sha: ${{ steps.p.outputs.p8_sha }}
+      core_sha: ${{ steps.p.outputs.core_sha }}
+      published_extension: ${{ steps.p.outputs.published_extension }}
+      published_core: ${{ steps.p.outputs.published_core }}
+      parser: ${{ steps.p.outputs.parser }}
+      parser_why: ${{ steps.p.outputs.parser_why }}
+      verify_binaries: ${{ steps.p.outputs.verify_binaries }}
+    steps:
+      - uses: actions/checkout@v7
+      # A REF IS RESOLVED BEFORE IT IS CHECKED OUT. actions/checkout takes a
+      # branch, a tag or a FULL sha, and a short sha -- what a person copies
+      # out of `git log --oneline` -- failed the plan with "A branch or tag with
+      # the name '2671fd7' could not be found", before anything was built. The
+      # commits API resolves all four forms to one full sha, so the checkouts
+      # below, and every later job, work from the same commit.
+      - id: refs
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+          P8_REPO: ${{ vars.SPECS_REPO }}
+          P8_REF: ${{ inputs.p8_ref }}
+          CORE_REF: ${{ inputs.core_ref }}
+        run: |
+          set -euo pipefail
+          resolve() {   # resolve <repo> <ref>
+            gh api "repos/$1/commits/$2" --jq .sha 2>/dev/null || {
+              echo "::error::$1 has no commit, branch or tag named '$2'" >&2; exit 1; }
+          }
+          # Assigned first: `set -e` does not see a failed substitution inside
+          # an echo's arguments, and an empty sha would check out the default branch.
+          p8=$(resolve "$P8_REPO" "$P8_REF")
+          core=$(resolve Percolation-Labs/percolate-core "$CORE_REF")
+          echo "p8=$p8" | tee -a "$GITHUB_OUTPUT"
+          echo "core=$core" | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.SPECS_REPO }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+          ref: ${{ steps.refs.outputs.p8 }}
+          path: p8
+          fetch-depth: 0          # the published tag, to diff the parser against
+      - uses: actions/checkout@v7
+        with:
+          repository: Percolation-Labs/percolate-core
+          token: ${{ secrets.SOURCE_TOKEN }}
+          ref: ${{ steps.refs.outputs.core }}
+          path: core
+      - id: p
+        env: {MODE: "${{ inputs.parser }}"}
+        run: |
+          set -euo pipefail
+          read -r pub_ext pub_core < <(python3 -c '
+          import tomllib; p = tomllib.load(open("versions.toml", "rb"))["published"]
+          print(p["extension"], p["core"])')
+          # THE PARSER'S SOURCE AND ITS BUILDER, against the tag that produced the
+          # published .so. Version lines are not a change: the bump writes them,
+          # and a tree already carrying an untagged bump differs from the tag in
+          # exactly those lines.
+          paths="extension/percolate_parser dev/Dockerfile.pgrx-builder"
+          if [ "$MODE" = compile ]; then
+            parser=compile; why="forced by the parser input"
+          elif ! git -C p8 rev-parse -q --verify "refs/tags/v$pub_ext" >/dev/null; then
+            parser=compile; why="no tag v$pub_ext to compare the parser source with"
+          else
+            moved=$(git -C p8 diff "v$pub_ext" HEAD -- $paths \
+                    | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ' \
+                    | grep -vE "^[+-](version = \"|default_version = ')" || true)
+            if [ -z "$moved" ]; then
+              parser=reuse; why="parser source unchanged since v$pub_ext; its published .so is reused"
+            else
+              parser=compile
+              why="parser source changed since v$pub_ext: $(git -C p8 diff --name-only "v$pub_ext" HEAD -- $paths | tr '\n' ' ')"
+            fi
+          fi
+          # The image's FULL path (recompile pgvector and pg_cron) whenever
+          # anything compiled moved. image-postgres.yml refuses the fast path
+          # on its own if this is wrong; deciding it here avoids asking to be refused.
+          verify=false
+          [ "$parser" = compile ] && verify=true
+          git -C p8 diff --quiet "v$pub_ext" HEAD -- dev/Dockerfile.pg19 2>/dev/null || verify=true
+          {
+            echo "p8_sha=$(git -C p8 rev-parse HEAD)"
+            echo "core_sha=$(git -C core rev-parse HEAD)"
+            echo "published_extension=$pub_ext"
+            echo "published_core=$pub_core"
+            echo "parser=$parser"
+            echo "parser_why=$why"
+            echo "verify_binaries=$verify"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Only when the parser source moved: parser.yml, build-only, the way
+  # p8-subsystems' dry run dispatches it -- the real compiler matrix, nothing
+  # released. Dispatched and watched rather than copied.
+  # ---------------------------------------------------------------------------
+  parser:
+    needs: plan
+    if: needs.plan.outputs.parser == 'compile'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: write
+    outputs:
+      run_id: ${{ steps.d.outputs.run_id }}
+    steps:
+      - id: d
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.plan.outputs.p8_sha }}
+        run: |
+          set -euo pipefail
+          since=$(date -u -d '-2 minutes' +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run parser.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
+            -f ref="$SHA" -f version= -f push_image=false
+          # parser.yml names its run `extension <version || ref>`, so a build-only
+          # run is found by the SHA it was given, and by having started after this.
+          id=""
+          for _ in $(seq 1 30); do
+            sleep 5
+            id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow parser.yml \
+                   --event workflow_dispatch --limit 20 \
+                   --json databaseId,displayTitle,createdAt \
+                   --jq "[.[] | select(.displayTitle == \"extension $SHA\" and .createdAt >= \"$since\")][0].databaseId // empty")
+            [ -n "$id" ] && break
+          done
+          [ -n "$id" ] || { echo "::error::dispatched parser.yml but no run appeared in 150s" >&2; exit 1; }
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+          echo "::notice::compiling the parser: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$id"
+          gh run watch "$id" --repo "$GITHUB_REPOSITORY" --interval 30 --exit-status >/dev/null
+
+  # ---------------------------------------------------------------------------
+  # The database candidate, by the workflow the release uses.
+  # ---------------------------------------------------------------------------
+  db-image:
+    needs: [plan, parser]
+    if: >-
+      always() && needs.plan.result == 'success'
+      && (needs.parser.result == 'success' || needs.parser.result == 'skipped')
+    permissions:
+      contents: read
+      actions: read            # the parser run's artifacts, when it compiled
+    uses: ./.github/workflows/image-postgres.yml
+    with:
+      ref: ${{ needs.plan.outputs.p8_sha }}
+      version: ${{ inputs.extension }}
+      parser_release: v${{ needs.plan.outputs.published_extension }}
+      parser_run: ${{ needs.parser.outputs.run_id }}
+      verify_binaries: ${{ needs.plan.outputs.verify_binaries == 'true' }}
+      push: false
+      rehearse: true
+    secrets:
+      SOURCE_TOKEN: ${{ secrets.SOURCE_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # The core candidate: the wheel and the image, from the same commit. Its
+  # Dockerfile builds the wheel from the tree it is given and installs that, so
+  # the image is the candidate with no build argument; the wheel is built here as
+  # well because the CLI half of the guide pip-installs it.
+  # ---------------------------------------------------------------------------
+  core-image:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Percolation-Labs/percolate-core
+          token: ${{ secrets.SOURCE_TOKEN }}
+          ref: ${{ needs.plan.outputs.core_sha }}
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - name: Bump to the candidate, as percolate-core's release.yml would
+        env: {V: "${{ inputs.core }}"}
+        run: |
+          set -euo pipefail
+          have=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+          if [ "$have" = "$V" ]; then echo "tree is already at $V"; exit 0; fi
+          part=$(python3 - "$have" "$V" <<'EOF'
+          import sys
+          a, b = [int(x) for x in sys.argv[1].split(".")], sys.argv[2]
+          for part, n in (("patch", (a[0], a[1], a[2] + 1)), ("minor", (a[0], a[1] + 1, 0)),
+                          ("major", (a[0] + 1, 0, 0))):
+              if ".".join(map(str, n)) == b:
+                  print(part)
+          EOF
+          )
+          [ -n "$part" ] || {
+            echo "::error::candidate $V is not one bump from the tree's $have" >&2; exit 1; }
+          python3 .github/scripts/bump_version.py "$part"
+      - name: The wheel
+        run: |
+          pip install --quiet build
+          python -m build --wheel --outdir wheel
+          ls wheel | grep -q "^percolate_core-${{ inputs.core }}-" || {
+            echo "::error::built $(ls wheel), not ${{ inputs.core }}" >&2; exit 1; }
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          outputs: type=docker,dest=${{ runner.temp }}/percolate-core.tar
+          tags: percolationlabs/percolate-core:${{ inputs.core }}
+          cache-from: type=gha,scope=rehearse-core
+          cache-to: type=gha,scope=rehearse-core,mode=max
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-core-image
+          path: ${{ runner.temp }}/percolate-core.tar
+          compression-level: 1
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: candidate-core-wheel
+          path: wheel/
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # THE SAME THREE SCRIPTS coldstart.yml RUNS, with the candidates in place of
+  # the published artifacts. Each script is unchanged in what it asserts; what
+  # differs is only where the artifacts come from:
+  #
+  #   images     loaded from this run's artifacts under their real tags, then
+  #              `versions.py --set` makes the working tree's compose name them
+  #   the CLI    PIP_FIND_LINKS offers the candidate wheel and PIP_CONSTRAINT
+  #              pins it, so the pip spec the page gives is what installs it
+  #   own PG     install.sh reads the candidate's release-shaped assets
+  # ---------------------------------------------------------------------------
+  cold-start:
+    needs: [plan, db-image, core-image]
+    # EXPLICIT, because `parser` is skipped whenever the parser is reused, and a
+    # skipped job anywhere upstream makes the implicit success() false -- the
+    # first proof run built both candidates and then skipped every script.
+    if: >-
+      !cancelled() && needs.db-image.result == 'success' && needs.core-image.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: candidate-*-image
+          path: ${{ runner.temp }}/images
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with: {name: candidate-core-wheel, path: "${{ runner.temp }}/wheel"}
+      - name: The candidates, where the guide will look for them
+        run: |
+          set -euo pipefail
+          for t in "$RUNNER_TEMP"/images/*.tar; do docker load -i "$t"; done
+          python3 ci/versions.py --set published.extension=${{ inputs.extension }}
+          python3 ci/versions.py --set published.core=${{ inputs.core }}
+          echo "percolate-core==${{ inputs.core }}" > "$RUNNER_TEMP/constraints.txt"
+          { echo "PIP_FIND_LINKS=$RUNNER_TEMP/wheel"
+            echo "PIP_CONSTRAINT=$RUNNER_TEMP/constraints.txt"; } >> "$GITHUB_ENV"
+      - name: ci/coldstart.sh
+        run: set -o pipefail; ci/coldstart.sh 2>&1 | tee "$RUNNER_TEMP/script.log"
+      - name: Its full output, and what the stack said
+        if: failure()
+        run: |
+          { echo "### ci/coldstart.sh failed"; echo '```'
+            tail -c 800000 "$RUNNER_TEMP/script.log"; echo '```'
+            echo "#### docker compose logs"; echo '```'
+            docker compose -p percolate logs --tail=80 2>&1 | tail -c 150000 || true
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  examples:
+    needs: [plan, db-image, core-image]
+    # EXPLICIT, because `parser` is skipped whenever the parser is reused, and a
+    # skipped job anywhere upstream makes the implicit success() false -- the
+    # first proof run built both candidates and then skipped every script.
+    if: >-
+      !cancelled() && needs.db-image.result == 'success' && needs.core-image.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - uses: actions/download-artifact@v8
+        with: {name: candidate-postgres-image, path: "${{ runner.temp }}/images"}
+      - uses: actions/download-artifact@v8
+        with: {name: candidate-core-wheel, path: "${{ runner.temp }}/wheel"}
+      - name: The candidates, where the examples will look for them
+        run: |
+          set -euo pipefail
+          docker load -i "$RUNNER_TEMP"/images/percolate-postgres.tar
+          python3 ci/versions.py --set published.extension=${{ inputs.extension }}
+          python3 ci/versions.py --set published.core=${{ inputs.core }}
+          echo "percolate-core==${{ inputs.core }}" > "$RUNNER_TEMP/constraints.txt"
+          { echo "PIP_FIND_LINKS=$RUNNER_TEMP/wheel"
+            echo "PIP_CONSTRAINT=$RUNNER_TEMP/constraints.txt"; } >> "$GITHUB_ENV"
+      - name: ci/examples.sh
+        run: set -o pipefail; ci/examples.sh 2>&1 | tee "$RUNNER_TEMP/script.log"
+      - name: Its full output, and what the database said
+        if: failure()
+        run: |
+          { echo "### ci/examples.sh failed"; echo '```'
+            tail -c 800000 "$RUNNER_TEMP/script.log"; echo '```'
+            echo "#### docker compose logs"; echo '```'
+            docker compose -p p8examples logs --tail=80 2>&1 | tail -c 150000 || true
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  own-postgres:
+    needs: [plan, db-image]
+    # EXPLICIT, because `parser` is skipped whenever the parser is reused, and a
+    # skipped job anywhere upstream makes the implicit success() false -- the
+    # first proof run built both candidates and then skipped every script.
+    if: >-
+      !cancelled() && needs.db-image.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with: {name: candidate-extension-assets, path: "${{ runner.temp }}/assets"}
+      - name: ci/ownpg.sh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}     # install.sh lists the previous release's assets
+        run: set -o pipefail; ASSETS="$RUNNER_TEMP/assets" ci/ownpg.sh 2>&1 | tee "$RUNNER_TEMP/script.log"
+      - name: Its full output
+        if: failure()
+        run: |
+          { echo "### ci/ownpg.sh failed"; echo '```'
+            tail -c 800000 "$RUNNER_TEMP/script.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  # bootstrap.sql against the superuser step of the CANDIDATE's image, not main's.
+  superuser-step:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.SPECS_REPO }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+          ref: ${{ needs.plan.outputs.p8_sha }}
+          path: .specs
+          sparse-checkout: dev/image-init/00-superuser.sql
+          sparse-checkout-cone-mode: false
+      - name: ci/superuser-step.py
+        run: |
+          set -o pipefail
+          python3 ci/superuser-step.py .specs/dev/image-init/00-superuser.sql 2>&1 | tee "$RUNNER_TEMP/script.log"
+      - name: Its full output
+        if: failure()
+        run: |
+          { echo "### ci/superuser-step.py failed"; echo '```'
+            cat "$RUNNER_TEMP/script.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  summary:
+    needs: [plan, parser, db-image, core-image, cold-start, examples, own-postgres, superuser-step]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          P8_REF: ${{ inputs.p8_ref }}
+          CORE_REF: ${{ inputs.core_ref }}
+          P8_SHA: ${{ needs.plan.outputs.p8_sha }}
+          CORE_SHA: ${{ needs.plan.outputs.core_sha }}
+          EXT: ${{ inputs.extension }}
+          CORE: ${{ inputs.core }}
+          PUB_EXT: ${{ needs.plan.outputs.published_extension }}
+          PUB_CORE: ${{ needs.plan.outputs.published_core }}
+          PARSER: ${{ needs.plan.outputs.parser }}
+          PARSER_WHY: ${{ needs.plan.outputs.parser_why }}
+          PARSER_RUN: ${{ needs.parser.outputs.run_id }}
+          VERIFY: ${{ needs.plan.outputs.verify_binaries }}
+          R_PLAN: ${{ needs.plan.result }}
+          R_PARSER: ${{ needs.parser.result }}
+          R_DB: ${{ needs.db-image.result }}
+          R_CORE: ${{ needs.core-image.result }}
+          R_COLD: ${{ needs.cold-start.result }}
+          R_EX: ${{ needs.examples.result }}
+          R_OWN: ${{ needs.own-postgres.result }}
+          R_SU: ${{ needs.superuser-step.result }}
+        run: |
+          case "$PARSER" in
+            compile) parser="**compiled** by [parser.yml run $PARSER_RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$PARSER_RUN) (slow path) -- $PARSER_WHY" ;;
+            reuse)   parser="**reused** from release v$PUB_EXT (fast path) -- $PARSER_WHY" ;;
+            *)       parser="(plan did not finish)" ;;
+          esac
+          [ "$VERIFY" = true ] && image="full (pgvector and pg_cron recompiled)" || image="fast (compiled layers from cache, precondition checked)"
+          {
+            echo "### Release rehearsal: extension $EXT, percolate-core $CORE"
+            echo
+            echo "Nothing was pushed, released, tagged or committed. Published today: extension $PUB_EXT, core $PUB_CORE."
+            echo
+            echo "| | ref | commit | candidate |"
+            echo "|---|---|---|---|"
+            echo "| p8-subsystems | \`$P8_REF\` | \`$P8_SHA\` | extension $EXT |"
+            echo "| percolate-core | \`$CORE_REF\` | \`$CORE_SHA\` | core $CORE |"
+            echo
+            echo "- parser: $parser"
+            echo "- database image path: $image"
+            echo
+            echo "| job | result |"
+            echo "|---|---|"
+            echo "| plan | $R_PLAN |"
+            echo "| parser compile | $R_PARSER |"
+            echo "| db image (image-postgres.yml) | $R_DB |"
+            echo "| core wheel + image | $R_CORE |"
+            echo "| \`ci/coldstart.sh\` | **$R_COLD** |"
+            echo "| \`ci/examples.sh\` | **$R_EX** |"
+            echo "| \`ci/ownpg.sh\` | **$R_OWN** |"
+            echo "| \`ci/superuser-step.py\` | **$R_SU** |"
+            echo
+            echo "A failed script's full output is in that job's own summary."
+          } >> "$GITHUB_STEP_SUMMARY"
+          for r in "$R_COLD" "$R_EX" "$R_OWN" "$R_SU"; do [ "$r" = success ] || exit 1; done

@@ -2,14 +2,16 @@
 
 P8QL is the query dialect this collection speaks: nine modes over one endpoint,
 compiled by a Rust parser that ships with the extension. This page is the whole
-grammar at version @@extension@@, and the last section shows you how to ask your own
+grammar at version @@extension@@, and the last section shows you how to ask your
+own
 database for its version rather than trusting this one.
 {: .lede }
 
-There is one thing worth knowing before the table, because it explains most of
+There is one thing to read before the table, because it explains most of
 what the parser refuses. A modifier that means nothing for a mode is rejected
 rather than ignored, so `TEXT "x" DEPTH 2` is an error instead of a query that
-quietly does something other than what it says. That rule costs a little
+does something other than what it says, without failing. That rule costs a
+little
 convenience and buys the property that a query you can read is a query you can
 trust.
 
@@ -17,7 +19,8 @@ trust.
 
 Eight modes open with a keyword and the ninth is plain SQL, which is how
 `p8_query_grammar()` lists them too. Every mode goes through
-`aiq.query(text, vector)`, which is `POST /rpc/query` over the REST surface. The second argument is the embedding, and only the two
+`aiq.query(text, vector)`, which is `POST /rpc/query` over the REST surface. The
+second argument is the embedding, and only the two
 vector modes use it.
 
 | Mode | Syntax | What it is for |
@@ -72,7 +75,8 @@ select aiq.query('FUZZY LOOKUP "acme", "globex" LIMIT 5');
 <summary>Why it works — `FUZZY` is a prefix because it changes what the query means</summary>
 
 `LOOKUP "acme" FUZZY`, with the modifier trailing, is refused with a message
-telling you what to write instead. A modifier that changes the meaning of a query belongs in front of the
+telling you what to write instead. A modifier that changes the meaning of a
+query belongs in front of the
 thing it modifies, where you read it before you read the argument rather than
 after you have already formed an expectation.
 
@@ -159,7 +163,8 @@ score almost identically because each is strongly related to the other.
 argument in one sentence: it ranks by how much score reaches a node, not by how
 many hops away it is.
 
-Two keys appear on this envelope that most modes do not carry. `unresolved` is here for the
+Two keys appear on this envelope that most modes do not carry. `unresolved` is
+here for the
 reason it is on `LOOKUP` — the underlying call drops a seed it cannot resolve,
 and through a JSON envelope that makes "no such entity" indistinguishable from
 "that entity has nothing near it". `exhausted` is here because this and `PATH`
@@ -248,7 +253,8 @@ select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :'query_vector')
 ```
 
 `TEXT` runs on its own. **The other two take the vector as an argument, because
-the database makes no model calls** — so `:query_vector` is something you supply, and
+the database makes no model calls** — so `:query_vector` is something you
+supply, and
 that is the whole reason a vector query compiles to two tasks rather than one.
 In a workflow you never write it: the compiler emits an `embed` step that calls
 the model the registry names and hands the result to the query step. By hand,
@@ -265,7 +271,7 @@ and it ranks confidently against a space it never came from.
 <summary>Why it works — the database makes no model calls, so the vector is an argument</summary>
 
 `SEMANTIC` and `SEARCH` rank against a vector, and producing one is an HTTP call
-to a model. No HTTP client extension is installed here deliberately, so the
+to a model. No HTTP client extension is installed here, so the
 vector arrives as the second argument to `aiq.query` and the database never
 blocks on somebody else's latency.
 
@@ -336,7 +342,7 @@ somewhere else</summary>
 
 There is no `SQL` keyword. The parser sniffs the first word against exactly five
 read-only openers — `SELECT`, `WITH`, `TABLE`, `VALUES`, `EXPLAIN` — and
-anything else is an honest dialect error. That matters more than it sounds:
+anything else is a dialect error. That matters more than it sounds:
 treating every unrecognised first word as SQL would turn `LOKUP "acme"` into a
 Postgres syntax error at position 1, about a language the caller was not
 writing.
@@ -347,7 +353,8 @@ statement runs as you and not as the definer that would otherwise be reading on
 your behalf.
 
 The consequence catches people in workflows, and it runs the opposite way to
-what the split above suggests. `aiq.query` does not run SQL mode — it returns the
+what the split above suggests. `aiq.query` does not run SQL mode — it returns
+the
 statement and a note — but `workflow.p8ql`, the step function, honours the note
 by putting the statement through the passthrough. So the step **executes**, and
 inside a step the invoker is the engine owner:

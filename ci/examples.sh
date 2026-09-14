@@ -42,8 +42,12 @@ dc down -v >/dev/null 2>&1 || true
 dc up -d db >/dev/null
 
 say "wait for the extension"
+# TCP first: the image's first-start server listens on the socket only, and the
+# extension row can exist there before it stops and the real server starts --
+# which the TCP DSN below would then meet.
 for _ in $(seq 1 60); do
-    dc exec -T db psql -U p8 -d percolate -tAc \
+    dc exec -T db pg_isready -h 127.0.0.1 -U p8 -d percolate >/dev/null 2>&1 \
+    && dc exec -T db psql -U p8 -d percolate -tAc \
         "select 1 from pg_extension where extname='percolate'" 2>/dev/null | grep -q 1 && break
     sleep 3
 done
@@ -57,8 +61,25 @@ say "the first administrator, from install.md"
     | psql "$DSN" -v ON_ERROR_STOP=1 -q -f -
 
 say "load the sample (the state every reference page assumes)"
+# THE FLOOR COMES FROM versions.toml, not from a literal here. This line said
+# `>=0.1.7` against a `[requires] core` of 0.1.8 -- so the job whose entire
+# purpose is proving the reference pages work against the core the docs tell a
+# reader to install was proving it against an older one, and a page using
+# anything added since 0.1.7 would have been green here and broken for them.
+#
+# Nothing substitutes into a shell script the way docs/build.py substitutes into
+# a page, so the number had no way to follow versions.toml and no way to be
+# noticed when it stopped. Reading it is the fix; `ci/versions.py --check` now
+# also scans ci/*.sh for anyone who types one back in. `coldstart.sh` reads this
+# file the same way, and $PY_BIN is already required to be >= 3.11 for tomllib.
+CORE_MIN=$("$PY_BIN" - "$ROOT/versions.toml" <<'EOF'
+import sys, tomllib
+print(tomllib.load(open(sys.argv[1], "rb"))["requires"]["core"])
+EOF
+)
+[ -n "$CORE_MIN" ] || fail "could not read [requires] core from versions.toml"
 "$PY_BIN" -m venv "$WORK/venv"
-"$WORK/venv/bin/pip" install --quiet "${PERCOLATE_CORE_SPEC:-percolate-core[sample,agent]>=0.1.7}"
+"$WORK/venv/bin/pip" install --quiet "${PERCOLATE_CORE_SPEC:-percolate-core[sample,agent]>=$CORE_MIN}"
 P8_ADMIN_DSN="$DSN" "$WORK/venv/bin/percolate" sample load "$ROOT/samples/harbour" \
     --as-email me@example.com --skip-documents > "$WORK/load.log" 2>&1 \
     || { sed 's/^/    /' "$WORK/load.log" >&2; fail "sample load failed"; }

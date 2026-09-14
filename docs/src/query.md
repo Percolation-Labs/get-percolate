@@ -8,7 +8,8 @@ when they ask.
 [The P8QL grammar](grammar-p8ql.html) is the reference for the nine modes and
 every modifier, and [Graph algorithms](graph.html) is the page for the
 questions a walk cannot answer at all — ranked relatedness, the best routes
-between two things, what connects a result set, and what all of that costs. The four things a reference cannot tell you are who the dialect
+between two things, what connects a result set, and what all of that costs. The
+four things a reference cannot tell you are who the dialect
 is written for, which rows become nodes, why the property graph costs no
 migration, and why a query can look empty when it is working correctly.
 
@@ -237,7 +238,7 @@ time. There is no separate graph store, no migration to adopt it, and no second
 copy of anything to keep in step — which is the whole reason this collection
 targets PG19 rather than bolting a graph layer on.
 
-One PG19 limitation is worth knowing before you run into it: element pattern
+One PG19 limitation to know before you run into it: element pattern
 quantifiers are not supported, so variable-length paths use `DEPTH` rather than
 `{1,3}` syntax.
 
@@ -278,17 +279,18 @@ things make results look like they are missing, and neither is a bug.
 rather than less, and the filtered views start behaving oddly around you. This
 is the failure this collection refuses to install into: every schema checks at
 load time that its owner is not a superuser, because an owner-privileged view
-owned by one silently disables RLS for every caller of that view.
+owned by one disables RLS for every caller of that view, without a word.
 
 **No token at all** is not narrow visibility, it is a wall: PostgREST falls back
 to `web_anon`, which holds no table grants and no `usage` on `aiq`, so
 `/rpc/query` answers `permission denied for schema aiq` with a 401. That is a
 different failure from the one below and it says so.
 
-**A token with no `orgs` claim** is the quiet one. It authenticates, RLS applies,
+**A token with no `orgs` claim** is the quiet one. It authenticates, RLS
+applies,
 and tenanted rows are simply not there — so the query succeeds, returns zero
 rows, and `LOOKUP` reports the name unresolved. Nothing distinguishes that from
-data you never loaded, which is why it is worth minting the claim deliberately:
+data you never loaded, which is why the claim is worth minting with care:
 
 ```bash
 percolate auth token --email you@example.com --orgs <org-uuid>

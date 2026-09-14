@@ -15,8 +15,8 @@ rests on a model's guess.
 
 Every example on this page ran against the [harbour
 fixture](cookbook.html#the-domain) — four operators, five vessels, three ports,
-nine edges — and the output is what it produced. Nine edges is small on
-purpose: every answer below can be checked by eye. What the same calls cost on
+nine edges — and the output is what it produced. Nine edges is small so that
+every answer below can be checked by eye. What the same calls cost on
 a graph of four million edges is measured rather than guessed, and it is at the
 bottom of the page.
 
@@ -93,7 +93,8 @@ set local request.jwt.claims =
 rollback;
 ```
 
-Wrap each example below in those four lines. The `begin` is load-bearing and
+Wrap each example below in those four lines. The `begin` carries the behaviour
+and
 its absence is silent: `SET LOCAL` outside a transaction warns and then does
 nothing, so the claims are never set and you get the superuser's answer, which
 looks like the example working.
@@ -128,7 +129,8 @@ the other side.
 ## Two of them are dialect modes
 
 Four of the six stay SQL functions. Two are P8QL modes, because they are the
-ones an agent asks constantly and the ones generated SQL gets wrong quietly — a
+ones an agent asks constantly and the ones generated SQL gets wrong without
+failing — a
 depth-capped walk returns the right rows in the wrong order and nothing says
 so.
 
@@ -428,7 +430,7 @@ there without giving anything up.
 is the column to read second</summary>
 
 `confidence` is the best single path, computed as the product of the weights
-along it. There is no per-hop penalty, deliberately: a long chain of certain
+along it. There is no per-hop penalty: a long chain of certain
 edges should not lose to a short uncertain one, which is precisely what the two
 answers above show.
 
@@ -451,7 +453,7 @@ none.
 
 ## What connects these several things
 
-The honest follow-up to a retrieval that returned eight entities is not "which
+The follow-up to a retrieval that returned eight entities is not "which
 is most relevant" but "what connects them", and no amount of ranking answers
 it.
 
@@ -491,7 +493,7 @@ leaves are pruned.
 
 `terminals_joined` is there because a partial answer must not read as a
 complete one. A terminal whose neighbourhood the walk never reached is left out
-and counted, rather than quietly dropped.
+and counted, rather than dropped without a number.
 
 The single-walk form replaced one walk per terminal after measuring it: at four
 million edges the per-terminal version spent 502 ms of a 500 ms budget and
@@ -682,7 +684,7 @@ image — the case this page's own functions are most likely to be missing in.
 
 Three rules follow, and they are why this is a section rather than a footnote.
 A caller across the boundary checks first, and the check names the *extension*
-rather than raising `function p8_graph_ppr does not exist`, which reads as a
+rather than raising `function p8_graph_ppr does not exist`, which looks like a
 corrupt schema. The compiled half stays pure or close to it — the parser is
 computation over a string, the graph functions read through SPI as the caller so
 row-level security still applies, and nothing across the boundary writes.
@@ -723,7 +725,7 @@ The last two rows are the point of the table. At two hops the ordinary walk
 wins by two orders of magnitude and you should use it. At three it has a 4.5
 second 95th percentile and a worst case of nineteen seconds, because nothing
 bounds it — and that is the failure every function on this page exists to
-convert into a budget and an honest `budget_exhausted`.
+convert into a budget and a reported `budget_exhausted`.
 
 And under concurrency, which is the measurement that changed the design:
 

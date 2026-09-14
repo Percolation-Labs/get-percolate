@@ -20,7 +20,7 @@ secrets:
   # Name of a Secret you manage. When set, every value below is ignored and the
   # keys are read from it: postgres-password, authenticator-password,
   # worker-password, jwt-secret, s3-key, s3-secret -- and, optionally,
-  # llm-api-key, openai-api-key and worker-api-key.
+  # llm-api-key, openai-api-key, worker-api-key and app-provisioner-password.
   existingSecret: ""
 
   # openssl rand -hex 24 for the two below. They are written into postgres://
@@ -30,6 +30,12 @@ secrets:
   postgresPassword: ""
   authenticatorPassword: ""
   workerPassword: ""
+  # Optional, and only for an application that keeps its own people in core
+  # (percolate-application): the password of `app_provisioner`, which creates
+  # their users and tokens through rbac.provision_application_* and holds no
+  # table privilege. Empty and the database never creates the role. Hex, for
+  # the same postgres:// reason as the two above.
+  appProvisionerPassword: ""
   # HS256, so at least 32 bytes: openssl rand -hex 32. Keep it: it is also
   # what you sign tokens with (`percolate auth token --secret ...`).
   jwtSecret: ""
@@ -73,7 +79,7 @@ postgres:
     # Pinned, like the compose file, and for its reason: a bare "19" moves
     # under an existing install and IfNotPresent keeps whatever each node last
     # pulled. ci/versions.py holds it to versions.toml's extension.
-    tag: "19-0.2.0"
+    tag: "19-0.2.3"
     pullPolicy: IfNotPresent
   user: p8
   database: percolate

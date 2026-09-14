@@ -121,6 +121,14 @@ spec:
         # defaultMode 0400: readable by the process that needs it and nothing
         # else. `items` rather than the whole secret, so a worker pod does not
         # get the database passwords on disk as a side effect of needing one key.
+        #
+        # READABLE BECAUSE OF podSecurityContext.fsGroup, NOT BECAUSE OF THE
+        # MODE. The kubelet mounts a secret file as root:<fsGroup> and adds group
+        # read, so with fsGroup 10001 this file is `-r--r----- root 10001`.
+        # uid 10001 reads it through the group (checked on kind, Kubernetes
+        # 1.37). Remove fsGroup and the worker cannot read its key: compose's
+        # copy of this mount, which has no fsGroup, failed exactly that way until
+        # it named the uid.
         - name: agent-signing-key
           secret:
             secretName: {{ include "percolate.secretName" $root }}

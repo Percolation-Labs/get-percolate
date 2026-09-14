@@ -93,6 +93,15 @@ spec:
             # release older than that still connects.
             - name: P8_DATABASE_URL
               value: {{ include "percolate.serviceDsn" $root | quote }}
+            # The login that completes a scheduled run's task. complete_task and
+            # fail_task are granted to `worker`, and the DSN above logs in as
+            # `authenticator`, which cannot become `worker`. So the runtime gets
+            # the workers' own login, for those two calls only; the compose
+            # file's agent service says why. Without it /internal/run answers 503.
+            - name: P8_WORKER_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: worker-password}}
+            - name: P8_WORKER_DSN
+              value: {{ include "percolate.workerDsn" $root | quote }}
             - name: LLM_API_KEY
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: llm-api-key, optional: true}}
             # The provider's own variable. LLM_API_KEY above is the worker's

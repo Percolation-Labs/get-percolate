@@ -32,8 +32,8 @@ Nothing in this database holds a secret. A row that needs credentials holds the
 **name of an environment variable**, and the process making the call resolves
 it.
 
-What we are trying to do here is point a step at a credential without putting
-the credential anywhere near the database.
+Here we point a step at a credential without putting the credential anywhere
+near the database.
 {: .goal }
 
 ```yaml
@@ -86,8 +86,8 @@ ERROR:  new row for relation "tool_servers" violates check constraint
 
 ### An embedding model, or `SEARCH` will not compile
 
-What we are trying to do here is register a model so that vector queries have a
-URL to be compiled against.
+Here we register a model so that vector queries have a URL to be compiled
+against.
 {: .goal }
 
 <!-- run: sql -->
@@ -136,8 +136,7 @@ a declaration of one, and `claim_task` consumes from that bucket with
 `update … where key = $1` — which matches nothing when the bucket does not
 exist, and therefore returns false every time, forever.
 
-What we are trying to do here is create the bucket a throttled step will name,
-before anything names it.
+Here we create the bucket a throttled step will name, before anything names it.
 {: .goal }
 
 <!-- run: sql -->
@@ -169,8 +168,8 @@ when you ask it for a graph index, for exactly this reason.
 
 ### Agents and tool servers are rows
 
-What we are trying to do here is register an agent and the tool server it calls,
-neither of which is code and neither of which is deployed.
+Here we register an agent and the tool server it calls, neither of which is code
+and neither of which is deployed.
 {: .goal }
 
 <!-- run: sql -->
@@ -216,8 +215,8 @@ doctype), and a picker showing a person a thousand extractors is broken.
 
 ### Ask this deployment what it accepts
 
-What we are trying to do here is find out what this installation supports,
-before debugging a document that will not compile.
+Here we find out what this installation supports, before debugging a document
+that will not compile.
 {: .goal }
 
 <!-- run: sql -->
@@ -237,8 +236,8 @@ which is where the reasoning lives.
 Every deployment starts here. A **channel** is where content comes from: `file_upload` covers a person dragging
 a PDF in, and `http_pull` covers a source you go and get.
 
-What we are trying to do here is poll an external feed on the hour and turn what
-comes back into resources the rest of the system can answer questions about.
+Here we poll an external feed on the hour and turn what comes back into
+resources the rest of the system can answer questions about.
 {: .goal }
 
 ### Registering a function, and when it is worth it
@@ -247,9 +246,9 @@ The poll calls two functions of yours: one that says where the last poll got
 to, and one that lands what came back. Registration refuses a function that
 does not exist yet, so they are created first.
 
-What we are trying to do here is bless the two operations this recipe runs, so
-each is reviewed and carries a description a model reads — while ordinary
-queries stay ordinary queries.
+Here we bless the two operations this recipe runs, so each is reviewed and
+carries a description a model reads — while ordinary queries stay ordinary
+queries.
 {: .goal }
 
 <!-- run: sql -->
@@ -312,8 +311,8 @@ error, and the `sql:` key</a></p>
 
 ### The poll, on a clock
 
-What we are trying to do here is fetch the feed from where the last poll
-stopped, land it, and do that every hour.
+Here we fetch the feed from where the last poll stopped, land it, and do that
+every hour.
 {: .goal }
 
 <!-- run: sql -->
@@ -413,8 +412,8 @@ URL interpolates and the argument does not</a> ·
 
 ## 2. Make what lands answerable
 
-What we are trying to do here is install the pipeline that turns any arriving
-resource into chunks, vectors and graph nodes, in one call.
+Here we install the pipeline that turns any arriving resource into chunks,
+vectors and graph nodes, in one call.
 {: .goal }
 
 <!-- run: sql -->
@@ -498,9 +497,8 @@ matrix keys</a></p>
 
 ## 3. Answer a question from your own corpus
 
-What we are trying to do here is retrieve from the corpus, have an agent answer
-from what was retrieved, and land the answer in a table as a shape rather than
-as prose.
+Here we retrieve from the corpus, have an agent answer from what was retrieved,
+and land the answer in a table as a shape rather than as prose.
 {: .goal }
 
 ```yaml
@@ -561,8 +559,8 @@ This is the population the agentic subsystem is sized for. The agents a person
 talks to are a rounding error; turning prose into structured data is
 `sources × doctypes` specialists, each with a declared output shape.
 
-What we are trying to do here is push a backlog of reports through a specialist
-extractor and land the results, tolerating the ones that fail.
+Here we push a backlog of reports through a specialist extractor and land the
+results, tolerating the ones that fail.
 {: .goal }
 
 <!-- run: sql -->
@@ -645,8 +643,8 @@ A classification and a follow-up should usually be two independent calls. When
 the second agent needs what the first was *told* rather than only what it
 answered, declare a session group.
 
-What we are trying to do here is have three agents share one thread, and capture
-the runtime's envelope from the last of them rather than only its text.
+Here we have three agents share one thread, and capture the runtime's envelope
+from the last of them rather than only its text.
 {: .goal }
 
 ```yaml
@@ -705,8 +703,8 @@ actually held rather than from what the model says it used.
 
 ## 6. A pipeline that waits for a person
 
-What we are trying to do here is have a model draft a notice, hold it for an
-hour, and issue it only once a harbourmaster has signed off.
+Here we have a model draft a notice, hold it for an hour, and issue it only once
+a harbourmaster has signed off.
 {: .goal }
 
 ```yaml
@@ -770,8 +768,8 @@ control steps</a> ·
 An agent that only answers needs no compensation. A `rest:` step that booked
 something does.
 
-What we are trying to do here is give back a berth and a pilot, in the reverse
-of the order they were taken, when the tide window is missed.
+Here we give back a berth and a pilot, in the reverse of the order they were
+taken, when the tide window is missed.
 {: .goal }
 
 ```yaml

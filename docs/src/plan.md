@@ -8,8 +8,7 @@ resolves all of it and hands back the pipeline, in order, with each entity
 expanded where it is used.
 {: .lede }
 
-What we are trying to do here is read a workflow somebody else wrote, without
-opening four catalogs.
+Here we read a workflow somebody else wrote, without opening four catalogs.
 {: .goal }
 
 ```sql
@@ -87,8 +86,7 @@ would differ in it, it describes the pipeline.*
 
 ## The same resolution, as a graph
 
-What we are trying to do here is get the nodes and edges, for a viewer or a
-diff.
+Here we get the nodes and edges, for a viewer or a diff.
 {: .goal }
 
 ```sql
@@ -136,8 +134,8 @@ the plan you get is built from exactly the rows you could see.
 
 ## What it checks
 
-What we are trying to do here is find every definition in the deployment that
-names something which is not there.
+Here we find every definition in the deployment that names something which is
+not there.
 {: .goal }
 
 ```sql
@@ -192,8 +190,7 @@ step naming a throttle that does not exist never runs at all.
 
 ## Probing: run the cheap half
 
-What we are trying to do here is find out whether a pipeline works, without
-paying for it.
+Here we find out whether a pipeline works, without paying for it.
 {: .goal }
 
 ```sql
@@ -248,8 +245,8 @@ carry</a> ·
 
 ## The last run, beside the plan
 
-What we are trying to do here is find out what shape a step actually returns, so
-the next step can be written against it.
+Here we find out what shape a step actually returns, so the next step can be
+written against it.
 {: .goal }
 
 ```sql

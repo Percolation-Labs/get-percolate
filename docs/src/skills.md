@@ -38,8 +38,8 @@ A skill has two parts and the split between them is the entire mechanism: a
 **listing** a model reads to decide whether it needs this, and a **body** it
 reads once it has decided.
 
-What we are trying to do here is turn a paragraph that four different agents
-have been carrying in their own prompts into one row that all four reference.
+Here we turn a paragraph that four different agents have been carrying in their
+own prompts into one row that all four reference.
 {: .goal }
 
 <!-- run: sql -->
@@ -122,8 +122,8 @@ listing line in every prompt, whether or not it is used. The body arrives only
 when the turn calls for it. Attaching one more capability costs a line, not a
 page.
 
-What we are trying to do here is give an agent eleven procedures it may use,
-while its prompt carries the text of two.
+Here we give an agent eleven procedures it may use, while its prompt carries the
+text of two.
 {: .goal }
 
 Eleven skills is the shape this is sized for. This block is about
@@ -212,8 +212,8 @@ this mirrors</a> ·
 
 ## Attach it to an agent
 
-What we are trying to do here is add one fragment to an agent without knowing,
-or overwriting, the rest of the list it already carries.
+Here we add one fragment to an agent without knowing, or overwriting, the rest
+of the list it already carries.
 {: .goal }
 
 The skill written above declares `requires_tools: ["harbour-query"]`, and
@@ -297,9 +297,8 @@ Attachment says what an agent *may* use. This is when a body actually arrives,
 and there are three answers, differing only in **who decides**: the author, the
 runtime, or the model.
 
-What we are trying to do here is have an agent always follow two house rules,
-pick up whatever else the current question calls for, and know what else it
-could ask for.
+Here we have an agent always follow two house rules, pick up whatever else the
+current question calls for, and know what else it could ask for.
 {: .goal }
 
 <!-- run: sql -->
@@ -442,8 +441,8 @@ require the model to ask</a></p>
 The database already knows how to rank text against a question. Skills register
 as a corpus like any other, so nothing new was built to find them.
 
-What we are trying to do here is ask which fragments bear on a request, using
-the same modes that answer every other retrieval question in this system.
+Here we ask which fragments bear on a request, using the same modes that answer
+every other retrieval question in this system.
 {: .goal }
 
 <!-- run: sql -->
@@ -511,9 +510,8 @@ Servers, skills and agents arrive together and leave together. That is what a
 plugin is here: not a new kind of thing, but **provenance on the things that
 already exist**.
 
-What we are trying to do here is install a capability — the tools, the prose
-and the agent that uses both — from one document, and be able to take it back
-out later.
+Here we install a capability — the tools, the prose and the agent that uses both
+— from one document, and be able to take it back out later.
 {: .goal }
 
 ```sql
@@ -617,8 +615,8 @@ requests where the agent without it does the wrong thing every time.
 
 The surprise is the middle row. A single 223-character listing line — the model
 is told only that the fragment *exists* — produces sixteen of the eighteen
-behaviour changes that the full body produces. What the body actually buys is
-not behaviour but **specificity**: told only that a fragment about destructive
+behaviour changes that the full body produces. The body buys **specificity**,
+not behaviour: told only that a fragment about destructive
 SQL existed, the model proposed the statement and declined to run it, which is
 correct, and never asked for the primary-key predicate the body requires.
 

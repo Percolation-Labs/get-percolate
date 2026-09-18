@@ -58,8 +58,8 @@ enough to be a lookup rather than a second database.
 This is the question an agent asks first, and it almost never arrives with the
 right spelling.
 
-What we are trying to do here is find a vessel from a misspelled name, and then
-make the right spelling cheap for next time.
+Here we find a vessel from a misspelled name, and then make the right spelling
+cheap for next time.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -119,8 +119,8 @@ a prefix</a> ·
 
 ## 2. Walk the ownership chain, and find a neighbour on the way
 
-What we are trying to do here is answer two questions from one walk: who
-ultimately operates this ship, and what else was in the same port.
+Here we answer two questions from one walk: who ultimately operates this ship,
+and what else was in the same port.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -186,8 +186,8 @@ where they agree cannot show you why there are three. One report carries a rare
 inspection code verbatim; another says the same thing in different words and
 carries none of them.
 
-What we are trying to do here is find the same page lexically, semantically, and
-by fusing both, and watch the ranking change.
+Here we find the same page lexically, semantically, and by fusing both, and
+watch the ranking change.
 {: .goal }
 
 ```sql
@@ -281,8 +281,8 @@ the embed step for you</a></p>
 
 ## 4. Two tenants, one table
 
-What we are trying to do here is run the same query under two different claims
-and see the answers differ, with nothing in the query filtering by organisation.
+Here we run the same query under two different claims and see the answers
+differ, with nothing in the query filtering by organisation.
 {: .goal }
 
 <!-- examples.sh: this block carries its own begin/rollback (the point of §4), so it is not gated; the tenancy it shows is gated via query.md and graph.md -->
@@ -376,8 +376,8 @@ caller's identity</a></p>
 
 ## 5. A file becomes answerable
 
-What we are trying to do here is register bytes that live in object storage,
-record what they say, and have them searchable with no reindex step.
+Here we register bytes that live in object storage, record what they say, and
+have them searchable with no reindex step.
 {: .goal }
 
 <!-- run: sql -->
@@ -449,8 +449,8 @@ poller</a></p>
 
 ## 6. A workflow with nothing running
 
-What we are trying to do here is run a three-step pipeline that has already
-finished by the time `start_workflow` returns.
+Here we run a three-step pipeline that has already finished by the time
+`start_workflow` returns.
 {: .goal }
 
 ```yaml
@@ -562,8 +562,8 @@ step kinds</a></p>
 
 ## 7. Fan out over a query result
 
-What we are trying to do here is turn one authored step into one task per
-vessel with an open deficiency, without deciding the width outside the database.
+Here we turn one authored step into one task per vessel with an open deficiency,
+without deciding the width outside the database.
 {: .goal }
 
 ```yaml
@@ -641,8 +641,8 @@ matrix key</a> ·
 A detention decision belongs to the harbourmaster, and the run should sit there
 until they make it.
 
-What we are trying to do here is hold a run open through a cooling-off period
-and then a human decision, with no process doing the waiting.
+Here we hold a run open through a cooling-off period and then a human decision,
+with no process doing the waiting.
 {: .goal }
 
 ```yaml
@@ -717,8 +717,8 @@ an agent drafting the notice</a></p>
 A berth is booked, a pilot is booked, and then the tide window is missed. Two
 things have to be given back in the reverse of the order they were taken.
 
-What we are trying to do here is roll back the parts of a booking that
-succeeded, after a later step fails terminally.
+Here we roll back the parts of a booking that succeeded, after a later step
+fails terminally.
 {: .goal }
 
 ```yaml
@@ -785,8 +785,8 @@ external calls</a></p>
 
 ## 10. An agent is a row
 
-What we are trying to do here is register an agent and the tool server it calls,
-with no class, no decorator and nothing to deploy.
+Here we register an agent and the tool server it calls, with no class, no
+decorator and nothing to deploy.
 {: .goal }
 
 ```sql
@@ -865,8 +865,7 @@ The fixture is `samples/harbour` in
 [get-percolate](https://github.com/Percolation-Labs/get-percolate), and the ten
 scripts are the blocks on this page — there is nothing else to fetch.
 
-What we are trying to do here is get back to a known state and run any subset of
-the ten against it.
+Here we get back to a known state and run any subset of the ten against it.
 {: .goal }
 
 ```bash

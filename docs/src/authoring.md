@@ -47,8 +47,8 @@ before the function returns</a></p>
 The two places the compiler does work on your behalf repay attention, because
 both look like magic until you know why they exist.
 
-What we are trying to do here is search a corpus by meaning without writing the
-model call, and call a model without writing where its key lives.
+Here we search a corpus by meaning without writing the model call, and call a
+model without writing where its key lives.
 {: .goal }
 
 ```yaml

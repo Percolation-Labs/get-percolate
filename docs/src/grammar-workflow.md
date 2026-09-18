@@ -57,8 +57,8 @@ declaring one alongside an action is refused.
 
 ## Queries that need no process
 
-What we are trying to do here is run a graph walk and a lexical search as
-workflow steps, with nothing deployed anywhere.
+Here we run a graph walk and a lexical search as workflow steps, with nothing
+deployed anywhere.
 {: .goal }
 
 ```yaml
@@ -114,8 +114,7 @@ way</a> ·
 
 ## `sql` steps run SQL
 
-What we are trying to do here is ask the database a question, in a workflow,
-without ceremony.
+Here we ask the database a question, in a workflow, without ceremony.
 {: .goal }
 
 ```yaml
@@ -213,8 +212,8 @@ function, and when it is worth it</a> ·
 
 ## Registering a function, and what it still buys
 
-What we are trying to do here is bless an operation the deployment wants
-reviewed, and give it a description a model can read.
+Here we bless an operation the deployment wants reviewed, and give it a
+description a model can read.
 {: .goal }
 
 <!-- run: sql -->
@@ -266,8 +265,7 @@ the trigger adds is that an owner cannot do it by accident.
 
 ## `rest` steps, and where the credential lives
 
-What we are trying to do here is call an external API and keep the key out of
-the database.
+Here we call an external API and keep the key out of the database.
 {: .goal }
 
 ```yaml
@@ -328,8 +326,8 @@ named rather than stored</a></p>
 
 ## A vector query is two tasks
 
-What we are trying to do here is search a corpus by meaning from one authored
-step, without writing the model call.
+Here we search a corpus by meaning from one authored step, without writing the
+model call.
 {: .goal }
 
 ```yaml
@@ -368,8 +366,8 @@ three search modes</a> ·
 
 ## `agent` steps, sessions and declared shapes
 
-What we are trying to do here is have a model answer with a shape we can put in
-a column, and have two agents share one conversation.
+Here we have a model answer with a shape we can put in a column, and have two
+agents share one conversation.
 {: .goal }
 
 ```yaml
@@ -433,8 +431,8 @@ did not produce.
 
 ## `matrix` — the work to do is a query result
 
-What we are trying to do here is turn one authored step into N tasks, with
-nothing outside the database deciding how many.
+Here we turn one authored step into N tasks, with nothing outside the database
+deciding how many.
 {: .goal }
 
 ```yaml
@@ -499,8 +497,8 @@ depth</a> ·
 
 ## Control steps — waiting for a clock, a person, or a child
 
-What we are trying to do here is hold a run open until a harbourmaster signs
-off, with a cooling-off period first and no process doing the waiting.
+Here we hold a run open until a harbourmaster signs off, with a cooling-off
+period first and no process doing the waiting.
 {: .goal }
 
 ```yaml
@@ -596,8 +594,8 @@ wanted, rather than resolving to nothing and failing three tasks later.
 
 ## Getting this page from your own database
 
-What we are trying to do here is read the vocabulary out of the installed
-compiler rather than out of a document.
+Here we read the vocabulary out of the installed compiler rather than out of a
+document.
 {: .goal }
 
 <!-- run: sql -->

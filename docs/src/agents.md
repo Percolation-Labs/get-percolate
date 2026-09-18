@@ -51,8 +51,8 @@ An agent definition is a **JSON Schema document**. There is no `prompt` key: the
 agent's system instructions are the schema's `description`, and the structured
 output is its `properties`.
 
-What we are trying to do here is write an agent as a file we can commit, review
-in a diff, and hand to anything that reads JSON Schema.
+Here we write an agent as a file we can commit, review in a diff, and hand to
+anything that reads JSON Schema.
 {: .goal }
 
 ```yaml
@@ -160,8 +160,8 @@ mandatory for some agents</a></p>
 
 Applying an agent is a migration, not a deploy.
 
-What we are trying to do here is get that file into the database, from `psql`
-or from anything that can make an HTTP request.
+Here we get that file into the database, from `psql` or from anything that can
+make an HTTP request.
 {: .goal }
 
 There is one function underneath this, so a migration, a script or PostgREST
@@ -264,8 +264,8 @@ rule for tool servers</a> ·
 The runtime has two HTTP endpoints. One runs a turn and streams it; the other
 relays a stream to somebody who did not start it.
 
-What we are trying to do here is talk to the agent we just saved, with an
-ordinary HTTP client and no bespoke fields.
+Here we talk to the agent we just saved, with an ordinary HTTP client and no
+bespoke fields.
 {: .goal }
 
 Two things have to be true before this returns anything but an error, and
@@ -413,8 +413,7 @@ The runtime has no tool code of its own — not one, not even a trivial one. Eve
 tool an agent can call is a reference to an independently deployed,
 independently versioned service.
 
-What we are trying to do here is give an agent a tool without deploying any
-code.
+Here we give an agent a tool without deploying any code.
 {: .goal }
 
 <!-- run: sql -->
@@ -501,8 +500,8 @@ that makes a re-sync safe</a></p>
 An agent that may call other agents does so through the same mechanism it uses
 for everything else, because there is no second mechanism.
 
-What we are trying to do here is let a researcher agent hand work to an analyst,
-without either of them knowing anything the other does not.
+Here we let a researcher agent hand work to an analyst, without either of them
+knowing anything the other does not.
 {: .goal }
 
 The runtime serves its own agents as MCP tools at `/mcp`, on the port that
@@ -613,8 +612,8 @@ thread</a></p>
 Everything above is the loop. These are the columns you reach for once one agent
 is running and you want it to behave differently.
 
-What we are trying to do here is bound a long conversation, fire an action on
-the structured output, and keep the table usable at a thousand rows.
+Here we bound a long conversation, fire an action on the structured output, and
+keep the table usable at a thousand rows.
 {: .goal }
 
 <!-- run: sql -->
@@ -691,8 +690,7 @@ context_policy</a> ·
 
 ## Citations are derived, not asked for
 
-What we are trying to do here is know what an agent actually had in front of it
-when it answered.
+Here we know what an agent actually had in front of it when it answered.
 {: .goal }
 
 ```sql
@@ -732,8 +730,8 @@ The agents you talk to will be a rounding error. Turning prose into structured
 data is a cost-ordered cascade whose last tier is a specialist extractor per
 (source, document type), and that population is `sources × doctypes`.
 
-What we are trying to do here is register one specialist and have the database
-refuse it if the shape is missing.
+Here we register one specialist and have the database refuse it if the shape is
+missing.
 {: .goal }
 
 <!-- run: sql -->
@@ -772,8 +770,8 @@ fan-in has to parse a string</a></p>
 An agent is also a step kind, which is how a pipeline gets one without knowing
 any of the above.
 
-What we are trying to do here is have two agents work in sequence and share one
-conversation between them.
+Here we have two agents work in sequence and share one conversation between
+them.
 {: .goal }
 
 ```yaml
@@ -841,8 +839,8 @@ nobody is waiting on, such as a nightly check, the step posts to the runtime's
 `/internal/run` instead: the runtime answers `202` at once and completes the
 task itself when the turn ends.
 
-What we are trying to do here is run the harbourmaster every night, and have
-the workflow finish when the agent does.
+Here we run the harbourmaster every night, and have the workflow finish when the
+agent does.
 {: .goal }
 
 <!-- run: sql -->

@@ -25,8 +25,7 @@ on the Compose installation, `percolate auth token` issues one, as
 The workbench does not provide a password login or create an account for you.
 An enabled local development workspace also offers **Continue to workspace**.
 
-What we are trying to do here is connect a locally served UI to an existing
-Percolate deployment.
+Here we connect a locally served UI to an existing Percolate deployment.
 {: .goal }
 
 On the machine running the Compose installation, install the CLI with the UI
@@ -120,8 +119,8 @@ workflow → Design with AI** considers the visible sources, agents, plugins,
 skills, tool servers and saved workflows. **Browse workspace components** lets
 you search that catalogue and select components to steer the design.
 
-What we are trying to do here is keep a news feed current, select useful
-evidence and produce a sourced brief that can run again.
+Here we keep a news feed current, select useful evidence and produce a sourced
+brief that can run again.
 {: .goal }
 
 1. Describe the job. For example:

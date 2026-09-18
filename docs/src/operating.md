@@ -14,8 +14,8 @@ one worker pool per queue is how a slow model endpoint stops starving a fast
 ingestion queue. The [ingest queue](ingest.html) is usually the one to watch
 first, since a batch of uploads arrives all at once and then stops.
 
-What we are trying to do here is size each pool to the work that is actually
-waiting for it, and scale to zero when there is none.
+Here we size each pool to the work that is actually waiting for it, and scale to
+zero when there is none.
 {: .goal }
 
 ```yaml
@@ -71,8 +71,8 @@ holding</a> ·
 
 ## Rate limits
 
-What we are trying to do here is throttle a source in a way that works with any
-worker, including one somebody else wrote.
+Here we throttle a source in a way that works with any worker, including one
+somebody else wrote.
 {: .goal }
 
 <!-- run: sql -->
@@ -352,7 +352,7 @@ is what you wanted from a percolate dashboard anyway. Revisit at a stable 19.
 Some failures produce no error anywhere, and this is the one to know about
 because the engine gives no other signal.
 
-What we are trying to do here is find tasks that no worker will ever pick up.
+Here we find tasks that no worker will ever pick up.
 {: .goal }
 
 <!-- run: sql -->
@@ -405,8 +405,7 @@ That is not only a disk question: the autoscaler's own probe changes plan on the
 ratio of live rows to total rows, so an unbounded table degrades the thing that
 decides how many workers you get.
 
-What we are trying to do here is drop runs that finished long enough ago to stop
-mattering.
+Here we drop runs that finished long enough ago to stop mattering.
 {: .goal }
 
 <!-- run: sql -->
@@ -454,8 +453,8 @@ backups</a></p>
 
 ## Version skew
 
-What we are trying to do here is find out whether the compiled parser and the
-SQL schema still agree, without comparing version strings.
+Here we find out whether the compiled parser and the SQL schema still agree,
+without comparing version strings.
 {: .goal }
 
 <!-- run: sql -->
@@ -593,8 +592,8 @@ rather than assume:
 
 ## Upgrading
 
-What we are trying to do here is move the schema forward and then check that the
-two release trains still agree.
+Here we move the schema forward and then check that the two release trains still
+agree.
 {: .goal }
 
 <!-- run: sql -->

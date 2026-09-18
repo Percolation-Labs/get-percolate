@@ -7,8 +7,7 @@ goes with its answer.
 
 ## Terminal or retryable
 
-What we are trying to do here is tell the engine whether another attempt could
-possibly help.
+Here we tell the engine whether another attempt could possibly help.
 {: .goal }
 
 ```python
@@ -62,8 +61,8 @@ getting them wrong for every protocol that is not HTTP.
 A matrix over real data will hit a missing value, a rate limit or an oversized
 response on more or less every run.
 
-What we are trying to do here is let a child failure be a result rather than an
-outage, while still refusing to aggregate over too little.
+Here we let a child failure be a result rather than an outage, while still
+refusing to aggregate over too little.
 {: .goal }
 
 ```yaml
@@ -109,8 +108,7 @@ backlog that uses both</a></p>
 
 ## Crash recovery
 
-What we are trying to do here is get work back when the process holding it stops
-existing.
+Here we get work back when the process holding it stops existing.
 {: .goal }
 
 <!-- run: sql -->
@@ -149,8 +147,7 @@ stop.
 
 ## Saga compensation
 
-What we are trying to do here is give back the things that already succeeded,
-when a later step fails.
+Here we give back the things that already succeeded, when a later step fails.
 {: .goal }
 
 ```yaml

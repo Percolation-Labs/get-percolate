@@ -16,8 +16,8 @@ them. Only `rest` and `agent` leave the machine, and only `work` runs code you
 wrote — so a pipeline made of queries and graph updates completes with nothing
 running anywhere.
 
-What we are trying to do here is retrieve from a corpus and have a model
-classify what came back, in a document short enough to read at a glance.
+Here we retrieve from a corpus and have a model classify what came back, in a
+document short enough to read at a glance.
 {: .goal }
 
 ```yaml
@@ -129,7 +129,7 @@ site much faster to skim.
 
 <ol class="steps" markdown="1">
 <li markdown="1">**The lesson** — a heading and a sentence or two saying what you are about to learn.</li>
-<li markdown="1">**The example** — one line beginning *what we are trying to do here is …*, then the SQL or the YAML, then the output where we captured it.</li>
+<li markdown="1">**The example** — one line beginning *here we …*, then the SQL or the YAML, then the output where we captured it.</li>
 <li markdown="1">**Why it works** — the mechanism and the trade-off, collapsed. Open it when you want the reasoning; skip it when you want the next example.</li>
 </ol>
 

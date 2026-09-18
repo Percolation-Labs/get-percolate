@@ -12,8 +12,8 @@ as well as findable.
 registers a resource, and starts the ingestion workflow named by the channel you
 uploaded to. That workflow has to exist first.
 
-What we are trying to do here is install the pipeline that turns any arriving
-file into searchable chunks.
+Here we install the pipeline that turns any arriving file into searchable
+chunks.
 {: .goal }
 
 The model has to be registered before the pipeline can name it, so this is two
@@ -85,8 +85,7 @@ the model first</a> ·
 
 ## Uploading one
 
-What we are trying to do here is put a file in and get chunks out, with nothing
-to run afterwards.
+Here we put a file in and get chunks out, with nothing to run afterwards.
 {: .goal }
 
 `POST /files` takes the bytes as the body — the Content-Type is what picks the
@@ -199,8 +198,7 @@ citation</a></p>
 
 ## A table is not prose
 
-What we are trying to do here is make a spreadsheet answerable by query rather
-than by retrieval.
+Here we make a spreadsheet answerable by query rather than by retrieval.
 {: .goal }
 
 ```sql
@@ -240,8 +238,7 @@ storage</a></p>
 
 ## Changing the policy without changing the code
 
-What we are trying to do here is make every file on one channel chunk small,
-without touching the worker.
+Here we make every file on one channel chunk small, without touching the worker.
 {: .goal }
 
 ```sql
@@ -281,8 +278,7 @@ fifth attempt either.
 
 ## Embedding a corpus is one call, not one per chunk
 
-What we are trying to do here is embed four hundred chunks without four hundred
-task rows.
+Here we embed four hundred chunks without four hundred task rows.
 {: .goal }
 
 ```json
@@ -321,8 +317,7 @@ Chunks and vectors make an upload findable. The other thing we can do with the
 same parse is make it *connected*: read what each passage names and how those
 things relate, and land that as nodes and edges in the graph.
 
-What we are trying to do here is turn the graph index on, which is a flag on the
-same install call.
+Here we turn the graph index on, which is a flag on the same install call.
 {: .goal }
 
 <!-- run: sql -->

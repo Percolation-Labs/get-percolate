@@ -7,8 +7,7 @@ need anything running in order to define one.
 
 ## The smallest one that does something
 
-What we are trying to do here is define and run a workflow with nothing deployed
-anywhere.
+Here we define and run a workflow with nothing deployed anywhere.
 {: .goal }
 
 <!-- run: sql -->
@@ -46,8 +45,8 @@ with its task table</a></p>
 
 ## A four-step one
 
-What we are trying to do here is fetch a rate table, project it into typed rows,
-fan out over the currencies it produced, and aggregate the children.
+Here we fetch a rate table, project it into typed rows, fan out over the
+currencies it produced, and aggregate the children.
 {: .goal }
 
 The three functions the document calls are yours rather than the engine's, so
@@ -207,8 +206,7 @@ captured</a></p>
 
 ## Watching a run
 
-What we are trying to do here is find out where a run has got to, from SQL or
-over HTTP.
+Here we find out where a run has got to, from SQL or over HTTP.
 {: .goal }
 
 <!-- run: sql -->

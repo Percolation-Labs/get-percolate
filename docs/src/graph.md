@@ -25,8 +25,7 @@ bottom of the page.
 They install with the extension and are granted to nobody. A fresh database has
 the functions present, inert, and unreachable through PostgREST.
 
-What we are trying to do here is turn them on for the role your API calls
-arrive as.
+Here we turn them on for the role your API calls arrive as.
 {: .goal }
 
 <!-- run: sql -->
@@ -80,7 +79,7 @@ returns, because that role is a superuser and a superuser bypasses RLS
 unconditionally. You get more rows, different scores, and no error to tell you
 which you are looking at.
 
-What we are trying to do here is become the caller these outputs belong to.
+Here we become the caller these outputs belong to.
 {: .goal }
 
 ```sql
@@ -134,8 +133,8 @@ failing — a
 depth-capped walk returns the right rows in the wrong order and nothing says
 so.
 
-What we are trying to do here is ask the ranked question through the same REST
-endpoint as every other query.
+Here we ask the ranked question through the same REST endpoint as every other
+query.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -195,8 +194,8 @@ A depth cap answers "everything within two hops", which for a hub is thousands
 of rows in no order and leaves the ranking to a caller who has no way to do it.
 This returns the ranking, and the ranking is the answer.
 
-What we are trying to do here is ask what a ship is connected to, and get the
-six things that matter most rather than the whole neighbourhood.
+Here we ask what a ship is connected to, and get the six things that matter most
+rather than the whole neighbourhood.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -255,8 +254,8 @@ two hops</a> ·
 Not one route — the best few, cheapest first, so a reader can see that the
 obvious answer had an alternative.
 
-What we are trying to do here is find how a ship reaches its ultimate parent,
-and see the second-best route as well as the first.
+Here we find how a ship reaches its ultimate parent, and see the second-best
+route as well as the first.
 {: .goal }
 
 `graph_paths` answers in node ids, because ids are what a caller joins on. The
@@ -335,8 +334,7 @@ Row-level security applies, because these run as the caller. A node the caller
 cannot see is not a node they can walk to — and the answer says which of the
 two names failed rather than coming back empty.
 
-What we are trying to do here is ask for a route to a competitor that belongs
-to another tenant.
+Here we ask for a route to a competitor that belongs to another tenant.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -381,8 +379,8 @@ Edge weights are not decoration: a rivalry asserted by one trade paper sits at
 0.4 next to a registry-backed 1.0. After two hops nothing else in the system
 can tell you which kind of claim you are standing on.
 
-What we are trying to do here is see the confidence of a route, first along one
-relation and then with the whole graph available.
+Here we see the confidence of a route, first along one relation and then with
+the whole graph available.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -457,8 +455,7 @@ The follow-up to a retrieval that returned eight entities is not "which
 is most relevant" but "what connects them", and no amount of ranking answers
 it.
 
-What we are trying to do here is find the smallest structure joining a ship, a
-port and an operator.
+Here we find the smallest structure joining a ship, a port and an operator.
 {: .goal }
 
 ```sql
@@ -509,8 +506,8 @@ terminal.
 Before anything decides what a cluster *means*, there is a cheaper question:
 which nodes are transitively connected at all.
 
-What we are trying to do here is find the clusters in the graph, and then the
-edges inside one of them without a query per cluster.
+Here we find the clusters in the graph, and then the edges inside one of them
+without a query per cluster.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -591,8 +588,7 @@ The reason a three-hop question falls over is not that three hops is hard. It
 is that nobody knows the frontier is four hundred thousand nodes until they are
 holding it.
 
-What we are trying to do here is find out how big a neighbourhood is without
-enumerating it.
+Here we find out how big a neighbourhood is without enumerating it.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -646,8 +642,7 @@ never fire.
 Everything on this page crosses that line, and so does a good deal that is not
 on this page.
 
-What we are trying to do here is find out whether the two halves of this
-database are in step.
+Here we find out whether the two halves of this database are in step.
 {: .goal }
 
 <!-- run: sql -->

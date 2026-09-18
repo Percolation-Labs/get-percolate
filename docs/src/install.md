@@ -6,8 +6,8 @@ them later.
 
 ## Docker Compose
 
-What we are trying to do here is get a working database and services with
-nothing to compile and no ordering to get right.
+Here we get a working database and services with nothing to compile and no
+ordering to get right.
 {: .goal }
 
 <!-- run: shell -->
@@ -165,8 +165,8 @@ came from rather than leaving it to be inferred.
 
 ## Helm
 
-What we are trying to do here is install the whole stack into a cluster, with
-passwords we generate ourselves.
+Here we install the whole stack into a cluster, with passwords we generate
+ourselves.
 {: .goal }
 
 ```bash
@@ -222,8 +222,8 @@ underneath a running StatefulSet.
 
 ## Into a Postgres 19 you already run
 
-What we are trying to do here is add the extensions to a database that already
-exists, without a service anywhere.
+Here we add the extensions to a database that already exists, without a service
+anywhere.
 {: .goal }
 
 pgvector first, from your platform's packages (`apt install
@@ -301,8 +301,7 @@ looks like when it goes wrong</a></p>
 This one is optional and its absence is quiet, so it is worth setting up
 consciously.
 
-What we are trying to do here is give the engine a clock, which it needs for
-three separate things.
+Here we give the engine a clock, which it needs for three separate things.
 {: .goal }
 
 Install the package (`apt install postgresql-19-cron`), then in
@@ -353,8 +352,8 @@ known password. Nothing over HTTP works until you create one: PostgREST answers
 `permission denied for function upsert_agent` with a 401, and the agent runtime
 answers `a verified bearer token is required`.
 
-What we are trying to do here is get from an empty `rbac` to a bearer token that
-the REST interface and the agent runtime both accept.
+Here we get from an empty `rbac` to a bearer token that the REST interface and
+the agent runtime both accept.
 {: .goal }
 
 <!-- run: sql -->
@@ -490,8 +489,8 @@ A fresh install is **empty**, and every worked example in these pages
 reads data. There is a sample for that, and loading it is a step you take
 rather than something a container did while you were not looking.
 
-What we are trying to do here is get the domain the rest of this documentation
-queries, and be able to tell it apart from our own data afterwards.
+Here we get the domain the rest of this documentation queries, and be able to
+tell it apart from our own data afterwards.
 {: .goal }
 
 The sample needs the `percolate` CLI, installed [with the

@@ -21,8 +21,8 @@ rather than after the Postgres features that implement them. Resolve a name,
 walk out from a thing, find things that mean the same, find things that say the
 same, ask what exists at all.
 
-What we are trying to do here is find an operator from a name somebody typed
-badly, and compare that against writing the same intent in SQL.
+Here we find an operator from a name somebody typed badly, and compare that
+against writing the same intent in SQL.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -126,8 +126,7 @@ this over MCP</a></p>
 
 ## Start by asking what can be asked
 
-What we are trying to do here is find out what this database holds, before
-writing a query against it.
+Here we find out what this database holds, before writing a query against it.
 {: .goal }
 
 <!-- run: sql -->
@@ -164,7 +163,7 @@ A row becomes a node if you can find it with `LOOKUP`, or if it is the endpoint
 of an edge. A document is both, since you name it and events reference it. A
 chunk is neither.
 
-What we are trying to do here is get a table into the graph without copying it.
+Here we get a table into the graph without copying it.
 {: .goal }
 
 <!-- run: sql -->
@@ -218,8 +217,7 @@ visible</a></p>
 
 ## The property graph costs no migration
 
-What we are trying to do here is query a graph without having adopted a graph
-database.
+Here we query a graph without having adopted a graph database.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -249,8 +247,7 @@ quantifiers are not supported, so variable-length paths use `DEPTH` rather than
 
 ## Over REST, and the two things that look like bugs
 
-What we are trying to do here is query as a real caller, with their own identity
-attached.
+Here we query as a real caller, with their own identity attached.
 {: .goal }
 
 ```bash

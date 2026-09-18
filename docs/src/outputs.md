@@ -18,7 +18,7 @@ that nobody can query.
 
 ## 1. The inline payload
 
-What we are trying to do here is pass a small value from one step to the next.
+Here we pass a small value from one step to the next.
 {: .goal }
 
 ```yaml
@@ -61,8 +61,8 @@ versus embedded references</a> ·
 
 ## 2. The database is the state
 
-What we are trying to do here is have a step write rows and hand the next step a
-receipt rather than the data.
+Here we have a step write rows and hand the next step a receipt rather than the
+data.
 {: .goal }
 
 ```json
@@ -95,8 +95,8 @@ handle</a></p>
 
 ## 3. A model produced a shape
 
-What we are trying to do here is get an answer from a model that the next step
-can treat as an object rather than as prose.
+Here we get an answer from a model that the next step can treat as an object
+rather than as prose.
 {: .goal }
 
 ```yaml
@@ -137,8 +137,8 @@ the shape check supports and what it does not</a> ·
 A rendered report, a scraped page kept verbatim, a model response too large to
 inline. It goes to object storage and comes back as a ref.
 
-What we are trying to do here is hand the next step something too big to carry,
-and resolve it without a worker.
+Here we hand the next step something too big to carry, and resolve it without a
+worker.
 {: .goal }
 
 ```json

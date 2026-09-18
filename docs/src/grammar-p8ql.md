@@ -62,8 +62,8 @@ rather than in SQL, and the two that ship switched off.
 Looking something up by a name a person typed is the first query an agent makes,
 and it is almost never spelled the way the database has it.
 
-What we are trying to do here is find a vessel from a half-remembered name, and
-fall back to fuzzy matching when the exact spelling misses.
+Here we find a vessel from a half-remembered name, and fall back to fuzzy
+matching when the exact spelling misses.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -96,8 +96,8 @@ error, which is the reason it is worth a paragraph.
 
 ## Walking out from a node
 
-What we are trying to do here is find who ultimately operates a ship, and what
-else was in the same port, from one walk.
+Here we find who ultimately operates a ship, and what else was in the same port,
+from one walk.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -130,8 +130,8 @@ hops out, and it is the wrong shape for "what matters most about this", because
 a depth cap returns everything at that distance in no particular order and
 leaves the ranking to a caller who cannot do it.
 
-What we are trying to do here is ask what is most related to two entities at
-once, without picking a depth.
+Here we ask what is most related to two entities at once, without picking a
+depth.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -189,8 +189,8 @@ Two names is a route. Three or more is the smallest structure joining all of
 them — and that is the same mode rather than a second one, because a shortest
 path *is* the Steiner tree of two terminals.
 
-What we are trying to do here is find how a ship reaches its ultimate parent,
-and then what joins three things at once.
+Here we find how a ship reaches its ultimate parent, and then what joins three
+things at once.
 {: .goal }
 
 <!-- run: sql as:tenant-a -->
@@ -242,8 +242,7 @@ A corpus where lexical and semantic search agree cannot show you why both exist.
 The interesting case is a document that uses a rare exact token, beside another
 that says the same thing in entirely different words.
 
-What we are trying to do here is find the same page three ways, and see the
-ranking each mode produces.
+Here we find the same page three ways, and see the ranking each mode produces.
 {: .goal }
 
 ```sql
@@ -296,8 +295,8 @@ desugaring</a> ·
 
 ## Asking the database what it is
 
-What we are trying to do here is find out what this deployment accepts, before
-writing a query against it.
+Here we find out what this deployment accepts, before writing a query against
+it.
 {: .goal }
 
 <!-- run: sql -->
@@ -329,8 +328,8 @@ page can go stale; `SCHEMA` cannot.
 
 ## Plain SQL is a mode
 
-What we are trying to do here is run an ordinary read-only query through the
-same endpoint as everything else.
+Here we run an ordinary read-only query through the same endpoint as everything
+else.
 {: .goal }
 
 <!-- run: sql -->
@@ -402,8 +401,8 @@ what to write instead, rather than with "unknown mode".
 The grammar above is version @@extension@@ of the parser. Your deployment is the
 authority on its own version, and it will tell you:
 
-What we are trying to do here is read the grammar out of the installed parser
-rather than out of a document.
+Here we read the grammar out of the installed parser rather than out of a
+document.
 {: .goal }
 
 <!-- run: sql -->

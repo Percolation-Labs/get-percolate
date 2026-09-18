@@ -15,8 +15,8 @@ Every worker runs it on every task, so its cost is multiplied by worker count
 and
 by backlog depth at the same time. Nothing else in the engine is.
 
-What we are trying to do here is check that claiming a task from a deep queue
-uses an index rather than sorting the backlog.
+Here we check that claiming a task from a deep queue uses an index rather than
+sorting the backlog.
 {: .goal }
 
 <!-- run: sql -->
@@ -95,7 +95,7 @@ backwards; that would reverse both keys.
 Workers do not wait to be told about work. Each one claims on a loop, and sleeps
 for `P8_POLL_SECONDS` (default 2) only when it found nothing.
 
-What we are trying to do here is see what an idle worker costs the database.
+Here we see what an idle worker costs the database.
 {: .goal }
 
 <div class="evidence" markdown="1">
@@ -144,8 +144,7 @@ no worker at all</a></p>
 The layer that actually scales is not how attentive one worker is. It is how
 many there are, and that is a query the autoscaler runs.
 
-What we are trying to do here is let the pool size follow the work that is
-actually waiting.
+Here we let the pool size follow the work that is actually waiting.
 {: .goal }
 
 <!-- run: sql -->
@@ -200,7 +199,7 @@ instead of 30,733 on a million-row table with a 300k backlog.
 A `matrix` step expands into N children and a successor waits on all of them.
 Completing those children is the one place an accidental quadratic would hide.
 
-What we are trying to do here is confirm that a wide fan-in costs N and not N².
+Here we confirm that a wide fan-in costs N and not N².
 {: .goal }
 
 <div class="evidence" markdown="1">
@@ -241,9 +240,8 @@ A pod is evicted, a node drains, a process is OOM-killed. The task it had
 claimed
 is sitting in `running` with a lease nobody is refreshing.
 
-What we are trying to do here is get that work back without ever taking it from
-a
-worker that is merely slow.
+Here we get that work back without ever taking it from a worker that is merely
+slow.
 {: .goal }
 
 <!-- run: sql -->
@@ -289,8 +287,8 @@ refusal in `v_lease_violations` rather than discarding it.
 
 Throughput is not what you run out of first. Connections are.
 
-What we are trying to do here is size a worker pool against the database's
-connection limit rather than against its throughput.
+Here we size a worker pool against the database's connection limit rather than
+against its throughput.
 {: .goal }
 
 <div class="evidence" markdown="1">

@@ -11,8 +11,8 @@ sequence of them rather than an essay with code in it.
 
 1. **The lesson.** What you are about to learn, in a heading and a sentence or
    two of prose. Written for somebody who does not yet know they need it.
-2. **The example.** One sentence in the same voice on every page — *what we are
-   trying to do here is …* — marked `{: .goal }`, and then the SQL or the YAML.
+2. **The example.** One sentence in the same voice on every page — *here we …*
+   — marked `{: .goal }`, and then the SQL or the YAML.
    Captured output follows in an `.evidence` block where we have it.
 3. **Why it works.** The mechanism, the trade-off, and the failure the design
    prevents, inside a collapsed `<details class="why">`.
@@ -29,8 +29,8 @@ where it is, and it is one click away rather than on another page.
 One authored step becomes N tasks, and nothing outside the database decides how
 many.
 
-What we are trying to do here is run the same extraction over every document in
-a backlog, without writing the fan-out by hand.
+Here we run the same extraction over every document in a backlog, without
+writing the fan-out by hand.
 {: .goal }
 
 ```yaml
@@ -66,10 +66,11 @@ setup, the setup belongs in a general page or in the `why` block, and the
 example should link to it. Preamble is the single most common way a page becomes
 unskimmable, and it is what this format exists to prevent.
 
-**Every example opens the same way.** *What we are trying to do here is …* every
-time, in `{: .goal }`. It reads as a formula, and that is deliberate: a formula
-is recognisable at a glance, so a reader can find the examples on a page without
-reading it.
+**Every example opens the same way.** *Here we …* every time, in `{: .goal }`.
+It is a formula, and a formula is recognisable at a glance, so a reader can find
+the examples on a page without reading it. It was *What we are trying to do
+here is …* until 18 September 2026, when the house list named that opener a
+tell (REM-439): it walks the reader to the verb instead of starting with it.
 
 **Backlinks are part of the format, not a courtesy.** Every `why` block ends with
 a `<p class="related">` line. Link sideways to the page that owns the concept,

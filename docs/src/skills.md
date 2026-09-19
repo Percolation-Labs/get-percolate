@@ -506,9 +506,11 @@ directly rather than from the generated listing.
 
 ## A plugin is the bundle, and the bundle is removable
 
-Servers, skills and agents arrive together and leave together. That is what a
-plugin is here: not a new kind of thing, but **provenance on the things that
-already exist**.
+Servers, skills and agents arrive together and leave together, and the
+plugin's own row stays behind as the record of what was installed. That is what
+a plugin is here: not a new kind of thing, but **provenance on the things that
+already exist**. An empty manifest under a plugin's name uninstalls it; the row
+in `agentic.plugins_api` then has nothing under it.
 
 Here we install a capability — the tools, the prose and the agent that uses both
 — from one document, and be able to take it back out later.

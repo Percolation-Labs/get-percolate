@@ -230,6 +230,13 @@ queryMcp:
 # `autoscaling.enabled` emits a ScaledObject whose trigger is a SQL query
 # against workflow.tasks, which is the honest measure of "is there work".
 # ---------------------------------------------------------------------------
+# Each pool may also set `args` (the command after `percolate`); the default is
+# ["worker", "--queue", <queue>]. A resolver pool, for example:
+#   - name: resolve
+#     queue: resolve
+#     args: ["resolve", "serve", "--queue", "resolve"]
+#     env: [{name: JEV_API_KEY, valueFrom: {secretKeyRef: {name: percolate-secrets, key: jev-api-key}}}]
+# with JEV_API_KEY: ["https://api.typesafe.ai"] added to credentialOrigins.
 workers:
   - name: http
     queue: http

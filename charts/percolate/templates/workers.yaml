@@ -55,7 +55,13 @@ spec:
           image: {{ include "percolate.image" $root | quote }}
           imagePullPolicy: {{ $root.Values.image.pullPolicy }}
           securityContext: {{- toYaml $root.Values.securityContext | nindent 12 }}
-          args: ["worker", "--queue", {{ $w.queue | quote }}]
+          # A pool may name its own command (`args`), for a worker whose
+          # handler registers only under its own `serve`: `resolve serve` is
+          # the one today. Without it every pool runs `worker --queue <q>`, and
+          # the only `work` handler such a process has is ingest's, registered
+          # when the CLI imports it -- so a resolve step was refused as "no op
+          # named 'resolve'". The default is unchanged.
+          args: {{ $w.args | default (list "worker" "--queue" $w.queue) | toJson }}
           env:
             - name: P8_WORKER_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" $root }}, key: worker-password}}

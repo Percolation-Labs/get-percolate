@@ -453,7 +453,9 @@ Here we run a three-step pipeline that has already finished by the time
 `start_workflow` returns.
 {: .goal }
 
-```yaml
+<!-- run: sql -->
+```sql
+select workflow.define_yaml($$
 name: fleet_brief
 steps:
   - id: operator
@@ -464,6 +466,9 @@ steps:
   - id: reports
     needs: [operator]
     p8ql: 'TEXT "PSC-441" FROM chunks LIMIT 3'
+$$);
+
+select workflow.start_workflow('fleet_brief', '{}'::jsonb);
 ```
 
 `worker` and `rows_out` are not columns — `claimed_by` carries the worker and

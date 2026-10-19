@@ -70,7 +70,7 @@ matching when the exact spelling misses.
 ```sql
 select aiq.query('LOOKUP "meridien dawn"');            -- 0 rows
 select aiq.query('FUZZY LOOKUP "meridien dawn" LIMIT 3');
-select aiq.query('FUZZY LOOKUP "acme", "globex" LIMIT 5');
+select aiq.query('FUZZY LOOKUP "kestrel shiping", "nordvik" LIMIT 5');
 ```
 
 <details class="why" markdown="1">

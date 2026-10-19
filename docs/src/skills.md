@@ -25,10 +25,10 @@ transaction.
 
 Before reading on, know which half of this ships. Skills, attachment, plugins
 and the checks on them are installed, and every statement below runs against
-them. The Agent Runtime in percolate-core @@core@@ does not yet read
-`agents.skills` or `context_policy.skills`: the system instructions it sends are
-the agent's own `system_prompt` and the request's context block, and nothing
-else. So the three ways a body reaches a prompt
+them. The Agent Runtime in percolate-core @@core@@ carries an agent's pinned
+skills (`agents.skills`) into the system instructions, after its `system_prompt`,
+read as the caller; it does not read `context_policy.skills`, so the matched and
+fetched paths are not in it. So two of the three ways a body reaches a prompt
 are described from the reference implementation they were measured on, and
 [where this page stands](#where-this-page-stands) says which is which.
 
@@ -698,17 +698,18 @@ audit passing. The lost-update comparison, the assembled-prompt accounting, the
 retrieval scores and the behaviour probe are all captured output from a live
 database and a live model, not illustrations.
 
-What the Agent Runtime does with those rows is the gap. The runtime in
+What the Agent Runtime does with those rows is half built. The runtime in
 percolate-core @@core@@ builds the system instructions from the agent's
-`system_prompt` and a context block, and reads neither `agents.skills` nor `context_policy.skills`.
+`system_prompt`, its pinned skills (`agents.skills`, the composed path) and a
+context block, and does not read `context_policy.skills`.
 The three paths in [what the prompt becomes](#what-the-prompt-becomes-and-who-decides)
 are built as reference implementations beside the specification: composed and
 matched expansion as one script, and the fetched path as another, which does
 use pydantic-ai's `defer_loading()` for the fragments an agent may reach but not
 list. The assembled-prompt accounting, the fetched-path trace and the behaviour
-probe were captured from those. Until the runtime carries them, an attached
-skill is a row the database validates and you can query, not text your agent
-receives.
+probe were captured from those. A pinned skill is text your agent receives on
+every turn; a skill an agent would match or fetch is, until the runtime carries
+those paths, a row the database validates and you can query.
 
 Two further gaps. The behaviour probe is four procedures against one model,
 which is enough to separate 2/20 from 16/20 and nowhere near enough to separate

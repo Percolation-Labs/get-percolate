@@ -463,18 +463,25 @@ services:
       P8_TOOL_AUTH_ORIGINS: ${P8_TOOL_AUTH_ORIGINS:-http://agent:8080,http://query-mcp:8090}
     ports: ["${P8_AGENT_PORT:-8080}:8080"]
 
-  # THE QUERY TOOL SERVER: one MCP tool, `query`, over the p8ql dialect. The
-  # sample's `harbourmaster` is bound to it (samples/harbour/plugin.yaml as
-  # `harbour-query`), and without it that agent answered questions about the
-  # sample with "I don't have access to live databases". It holds no
-  # credential: each call carries the caller's Authorization to PostgREST, so
-  # row-level security sees the person asking. Not published on a host port;
-  # only the agent runtime calls it.
+  # THE QUERY TOOL SERVER: `query`, over the p8ql dialect, and the memory tools
+  # a person's own agent uses (read_session, land_message_facts, and list,
+  # claim, decide and release a judgement; REM-1056). The sample's
+  # `harbourmaster` is bound to it (samples/harbour/plugin.yaml as
+  # `harbour-query`). It holds no credential: each call carries the caller's
+  # Authorization to PostgREST, so row-level security sees the person asking,
+  # and a call without a token is refused there.
+  #
+  # PUBLISHED ON 127.0.0.1 ONLY, so the person's own Claude can connect to it
+  # from this machine with their token (`percolate auth token`), and nothing
+  # else on the network can reach it:
+  #   claude mcp add --transport http percolate http://localhost:8090 \
+  #     --header "Authorization: Bearer $TOKEN"
   query-mcp:
     image: percolationlabs/percolate-core:0.2.7
     restart: unless-stopped
     depends_on: [postgrest]
     command: ["query", "mcp", "--port", "8090", "--postgrest", "http://postgrest:3000"]
+    ports: ["127.0.0.1:${P8_QUERY_MCP_PORT:-8090}:8090"]
 
   minio:
     # RUSTFS, NOT MINIO, under the old service name. MinIO's community images

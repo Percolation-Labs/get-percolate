@@ -23,6 +23,8 @@ cd "$(dirname "$0")/.."
 ROOT=$PWD
 WORK=$(mktemp -d)
 PROJECT=p8examples
+# The compose file reads the db image from P8_DB_IMAGE; IMAGE is this script's name for it.
+if [ -n "${IMAGE:-}" ]; then export P8_DB_IMAGE=$IMAGE; fi
 trap 'docker compose -f "$ROOT/compose/docker-compose.yml" -p "$PROJECT" down -v >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 
 say() { printf '\n=== %s\n' "$*"; }

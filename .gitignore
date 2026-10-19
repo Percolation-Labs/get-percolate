@@ -19,3 +19,6 @@ __pycache__/
 # pinned ref. Their repository, not ours -- vendoring it would mean owning
 # their upgrade path.
 compose/observability/.signoz/
+
+# Holds the values a workflow step uses (compose/docker-compose.yml, worker).
+compose/worker.env

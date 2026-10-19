@@ -226,8 +226,12 @@ Here we add the extensions to a database that already exists, without a service
 anywhere.
 {: .goal }
 
-pgvector first, from your platform's packages (`apt install
-postgresql-19-pgvector` from the PGDG repository). Then the extension files,
+pgvector first, from your platform's packages, **upgraded together with the
+server**: `apt install postgresql-19 postgresql-19-pgvector` from the PGDG
+repository. While Postgres 19 is pre-release, PGDG builds pgvector against its
+newest beta or rc, and a pgvector built for one does not load into another:
+`create extension vector` fails with `did not return an IndexAmRoutine struct`.
+CI runs this path on `postgres:19rc1-bookworm`. Then the extension files,
 and then `bootstrap.sql`, which `install.sh` downloads into the current
 directory — run it as a superuser, in the database that will hold Percolate:
 

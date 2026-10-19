@@ -738,6 +738,15 @@ CPU**, and it arrives at single digits.
 <summary>Why it works — the failure at eight clients was not a slow query, and
 what now happens instead</summary>
 
+**A write on a connection is seen by that connection's next read.** The
+snapshot is reused while the graph's modification counters are unchanged, and
+those come from the stats collector, which never shows a connection its own
+open transaction's writes. So before @@extension@@ an `aiq.related()` call straight
+after an upsert answered from before it. A write to `aiq.nodes`, `aiq.edges` or
+`rbac.org_members` now marks the writer's snapshot stale, and the next read
+rebuilds with the same build filter. Other connections still see the write once
+the counters move, which is what `stale` in a result reports.
+
 The adjacency snapshot is **per backend**: 225 MB at four million edges, and
 roughly twice that at the peak of a build. Eight concurrent callers on a
 7.65 GiB machine did not produce a slow query — the OOM killer took a backend

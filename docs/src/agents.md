@@ -327,21 +327,6 @@ neither is about the agent:
   fails inside the stream, as a `RUN_ERROR` event. The sample already needs an
   OpenAI key, so the statement below points the row at an OpenAI model;
   `OPENAI_BASE_URL` aims the same client at any OpenAI-shaped gateway.
-- **A key the provider refuses is final, and says which key.** Asked for the
-  whole answer (`"stream": false`, which is how an `agent:` workflow step calls
-  it), the runtime answers with the provider's own status rather than a 502:
-  `401` or `403` for a refused key, with a detail naming the model and the
-  variable it is read from, and `429` with code `insufficient_quota` for an
-  account with no credit. A workflow step reads either as final and fails once,
-  where it used to retry five times on "the provider failed; worth retrying".
-  An outage or a plain rate limit is still a 502, and is still retried
-  (REM-987):
-
-  ```
-  {"detail": "run …: the model provider answered HTTP 401 for model openai:gpt-4o-mini:
-   the provider refused the credential; check the key and its permissions;
-   the key is read from OPENAI_API_KEY", …}
-  ```
 
 <!-- run: sql -->
 ```sql

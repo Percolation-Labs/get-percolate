@@ -42,7 +42,8 @@ docker compose up -d
 ```
 
 Brings up Postgres 19 with the extensions, PostgREST, the outbound and
-ingestion workers, the Content Server, the Agent Runtime and MinIO.
+ingestion workers, the Content Server, the Agent Runtime, the query MCP server and an S3 store
+(RustFS).
 
 ### Helm
 

@@ -3,7 +3,7 @@
 #   docker compose up -d
 #   psql postgres://p8:p8@localhost:5432/percolate -c "select workflow.compiler_capabilities()"
 #
-# Two images and nothing to build. The database installs itself at first start
+# Four images and nothing to build. The database installs itself at first start
 # -- the extension bootstrap is baked into the image, so there is no init
 # directory to fetch alongside this file.
 #
@@ -12,15 +12,17 @@
 # privileges of its own and SET ROLEs per request so RLS sees the caller rather
 # than the service.
 #
-# SIX SERVICES BECAUSE THERE ARE SIX ROLES, NOT BECAUSE YOU NEED SIX PROCESSES.
-# This file is spelled out so that each thing the system does has somewhere
-# obvious to look: the REST surface is postgrest, outbound HTTP is worker,
-# reading uploaded files is ingest-worker, uploads are content, model turns are
-# agent, bytes are minio (RustFS, under that name). Read it as the list of
+# SEVEN LONG-RUNNING SERVICES BECAUSE THERE ARE SEVEN ROLES, NOT BECAUSE YOU
+# NEED SEVEN PROCESSES (plus the database, and minio-perms, a one-shot that
+# fixes a volume's owner and exits). This file is spelled out so that each
+# thing the system does has somewhere obvious to look: the REST surface is
+# postgrest, outbound HTTP is worker, reading uploaded files is ingest-worker,
+# uploads are content, model turns are agent, the query tool for MCP clients is
+# query-mcp, bytes are minio (RustFS, under that name). Read it as the list of
 # roles, not as a deployment target.
 #
-# In practice one or two processes cover all of it. The three
-# percolate-core services are ONE IMAGE under three commands, so a small
+# In practice one or two processes cover all of it. The five
+# percolate-core services are ONE IMAGE under five commands, so a small
 # deployment runs the image once per thing it actually does -- often just a
 # worker, since `sql` and `p8ql` steps need no process at all -- and a large one
 # splits further than this file does, a pool per queue. What must NOT be
@@ -45,7 +47,7 @@ services:
     #
     # pg_stat_statements AND auto_explain are preloaded beside it, and the
     # deferral they overturn is written down rather than quietly dropped.
-    # p8-subsystems meta/postgres-manifest.md:44 held pg_stat_statements back
+    # the project's internal notes, meta/postgres-manifest.md:44 held pg_stat_statements back
     # until "there's something to tune, not ahead of time". What overturns it:
     #
     #   * NO STATEMENT IN THIS DEPLOYMENT IS TIMED. The signals that exist
@@ -58,14 +60,14 @@ services:
     #     That is a fact about the tree rather than a projection, and it is
     #     the argument.
     #   * TWO CORRECT PREDICATES CAN DIFFER BY 58x AND THE PLAN SAYS NOTHING.
-    #     p8-subsystems meta/postmortems/2026-09-04-resource-scoping.md:81-82:
+    #     the project's internal notes, meta/postmortems/2026-09-04-resource-scoping.md:81-82:
     #     360.574 ms against 6.205 ms for the same RLS read, measured over
     #     52,000 rows in one session on a development PG19. Both predicates
     #     were right; one was hoistable. Without a timing signal the slow one
     #     ships and nobody knows for a release.
     #
     # WHAT IS DELIBERATELY NOT CITED HERE, because an earlier draft of this
-    # comment did cite it: the figures in p8-subsystems
+    # comment did cite it: the figures in the project's internal
     # specs/ai-query-layer/graph-algorithms.md -- the 4,527 ms depth-3 p95 and
     # the concurrency table. That document is a research article. Its own
     # header says every figure comes from dev/scale/graph/, a heavy-tailed
@@ -80,7 +82,7 @@ services:
     # give it: the VIEW exists only in a database that ran CREATE EXTENSION,
     # and preloading without it buys the collection overhead and `relation
     # "pg_stat_statements" does not exist`. That statement is in the image's
-    # superuser step (p8-subsystems dev/image-init/00-superuser.sql) as of the
+    # superuser step (Percolation-Labs/percolate dev/image-init/00-superuser.sql) as of the
     # change this file ships with -- so an image built BEFORE it, pointed at
     # this compose file, collects into a view its database has not got.
     # auto_explain needs no extension; it only writes to the log.
@@ -113,7 +115,7 @@ services:
       # max_connections, no work_mem. A query from an agent could run until
       # somebody noticed the bill. The per-role timeouts are in the image's own
       # bootstrap; these are the ones that have to be process flags.
-      # p8-subsystems meta/postgres-manifest.md §"What the database refuses"
+      # the project's internal notes, meta/postgres-manifest.md §"What the database refuses"
       # argues the values.
       - -c
       - max_connections=200
@@ -131,7 +133,7 @@ services:
     #     could not resize shared memory segment ... No space left on device
     #
     # The dev stack has carried this fix since the incident that produced it
-    # (p8-subsystems dev/docker-compose.yml) and the shipped compose did not,
+    # (Percolation-Labs/percolate dev/docker-compose.yml) and the shipped compose did not,
     # which means it was fixed for us and not for anybody who installs.
     shm_size: 1gb
     environment:
@@ -480,7 +482,7 @@ services:
     # quay.io/minio/minio refuses anonymous pulls, so a stranger's
     # `docker compose up` failed here (REM-981). RustFS (Apache-2.0) passed the
     # same checks as MinIO against percolate-core's own storage and lake code
-    # (p8-subsystems research-notes/object-store-2026-10-19/). The fallback is
+    # (internal research notes, research-notes/object-store-2026-10-19/). The fallback is
     # chrislusf/seaweedfs:4.48 (`server -s3`, port 8333, probe /healthz), which
     # passed them too.
     #

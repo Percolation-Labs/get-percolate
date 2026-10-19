@@ -33,11 +33,12 @@ without it. The same `.env` moves ports that are already taken, most often
 5432 by a local Postgres: `P8_PG_PORT=5433`, and `P8_REST_PORT`,
 `P8_AGENT_PORT` and `P8_CONTENT_PORT` for the others.
 
-Six services come up, and that is a list of **roles rather than a recommended
-process count**: PostgREST for the REST surface, a `worker` for steps that leave
-the machine, an `ingest-worker` for reading uploaded files, the Content Server
-for uploads, the Agent Runtime for model turns, and an S3 store for bytes. Three of
-those are one image under three commands, so a real deployment usually runs
+Seven services come up beside the database, and that is a list of **roles
+rather than a recommended process count**: PostgREST for the REST surface, a
+`worker` for steps that leave the machine, an `ingest-worker` for reading
+uploaded files, the Content Server for uploads, the Agent Runtime for model
+turns, `query-mcp` for MCP clients, and an S3 store for bytes. Five of those are
+one image under five commands, so a real deployment usually runs
 fewer — often just a worker, since `sql` and `p8ql` steps need no process at
 all — or many more, a pool per queue. The one pairing not to collapse is the two
 workers: `--queue` takes a single queue, so merging them means choosing which of
@@ -131,8 +132,8 @@ select * from percolate_build();
 ```
  component | version | installed_version | commit_sha | artifact                              | built_at             | stamp_current
 -----------+---------+-------------------+------------+---------------------------------------+----------------------+---------------
- parser    | @@extension@@   | @@extension@@   |            | v0.1.6, amd64 .so sha256:9c2f…, arm64 .so sha256:4be1… | 2026-09-03 16:04:00Z | t
- schema    | @@extension@@   | @@extension@@   | 9f832b1    |                                       | 2026-09-03 19:52:00Z | t
+ parser    | 0.1.6   | 0.1.6   |            | v0.1.6, amd64 .so sha256:9c2f…, arm64 .so sha256:4be1… | 2026-09-03 16:04:00Z | t
+ schema    | 0.1.6   | 0.1.6   | 9f832b1    |                                       | 2026-09-03 19:52:00Z | t
 ```
 
 **The two rows answer differently, because the two halves are made

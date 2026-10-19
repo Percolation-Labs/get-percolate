@@ -36,8 +36,8 @@ PG_CONFIG="${PG_CONFIG:-$(command -v pg_config || true)}"
 
 PG_MAJOR=$("$PG_CONFIG" --version | sed -n 's/^PostgreSQL \([0-9][0-9]*\).*/\1/p')
 [ "$PG_MAJOR" = "19" ] || die "this build targets PostgreSQL 19, and $PG_CONFIG reports ${PG_MAJOR:-an unknown version}.
-  SQL/PGQ property graphs are a PG19 feature and the parser is compiled against
-  its ABI, so there is no fallback to an earlier major.
+  The published query parser is compiled against PG19's ABI, so these
+  release files load into 19 and no other major.
   A PG19 installed elsewhere:  PG_CONFIG=/path/to/19/bin/pg_config sh install.sh
   No PG19 at all:              the compose install carries everything,
                                https://github.com/$REPO#docker-compose"

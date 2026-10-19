@@ -3,8 +3,7 @@
 # added here cannot be missing from one of the three.
 #
 # There is no status field. These pages describe what is shipped and running --
-# if something is not built, it does not get a page here, it gets a spec in
-# p8-subsystems. A per-page status chip was the old answer and it was the wrong
+# if something is not built, it does not get a page here. A per-page status chip was the old answer and it was the wrong
 # one: it let an unbuilt thing sit on the site behind a label most readers do
 # not parse, and "designed" is indistinguishable from "works" to somebody
 # skimming. Gaps inside an otherwise-shipped feature stay, named in place.

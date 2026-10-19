@@ -408,7 +408,9 @@ alternates the budget bought.
 `as_of` is accepted here and applied while the search is running rather than to
 the result — the only correct placement, since filtering afterwards returns the
 k best paths *including* expired edges, minus the ones that happened to be
-expired. This is the one read path in Percolate that honours `valid_to`.
+expired. Every read through `aiq.edges_current` honours `valid_to` as well, and
+`GRAPH … AS OF` reads `aiq.edge_periods`; what is particular here is that the
+filter is applied inside the search.
 
 <p class="related"><strong>Related</strong>
 <a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">why an
@@ -833,7 +835,7 @@ what now happens instead</summary>
 **A write on a connection is seen by that connection's next read.** The
 snapshot is reused while the graph's modification counters are unchanged, and
 those come from the stats collector, which never shows a connection its own
-open transaction's writes. So before @@extension@@ an `aiq.related()` call straight
+open transaction's writes. So before 0.2.23 an `aiq.related()` call straight
 after an upsert answered from before it. A write to `aiq.nodes`, `aiq.edges` or
 `rbac.org_members` now marks the writer's snapshot stale, and the next read
 rebuilds with the same build filter. Other connections still see the write once

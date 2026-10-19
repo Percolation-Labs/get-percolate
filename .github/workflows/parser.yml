@@ -9,7 +9,7 @@ name: extension
 
 # The run NAMES ITSELF after the version it is publishing, because the caller
 # has to find it. `gh workflow run` returns nothing -- there is no run id yet --
-# so p8-subsystems' release.yml dispatches this and then goes looking. It used
+# so percolate's release.yml dispatches this and then goes looking. It used
 # to look for "the newest run created after I dispatched", which is a guess
 # about a clock: two releases in flight, or a queued runner, and it watches the
 # wrong one and reports its result. Matching on this name cannot pick the wrong
@@ -55,10 +55,10 @@ on:
       source_repo:
         description: >-
           repository the extension is built from; empty means vars.EXTENSION_REPO,
-          then vars.SPECS_REPO (the source moves to Percolation-Labs/percolate, REM-958)
+          then vars.SPECS_REPO (EXTENSION_REPO is Percolation-Labs/percolate, REM-958)
         default: ""
       ref:
-        description: p8-subsystems ref to build from
+        description: ref of the source repository to build from
         default: main
       version:
         description: >-
@@ -72,18 +72,18 @@ on:
         default: true
 
 # THE VERSION IS AN INPUT, NOT A TAG ON THIS REPO. The extension's source is
-# p8-subsystems and so is its version -- `percolate.control`'s default_version.
+# Percolation-Labs/percolate and so is its version -- `percolate.control`'s default_version.
 # This used to fire on a `v*` tag pushed HERE, which put the tag on the repo
 # that does not hold the source and left every release asset named 0.1.0
-# forever. p8-subsystems' release.yml bumps, tags and dispatches this with the
+# forever. percolate's release.yml bumps, tags and dispatches this with the
 # number it just wrote; the job below verifies the ref actually carries it.
 
-# THE SOURCE REPOSITORY IS PRIVATE, so it is named by a repository variable
-# rather than hardcoded here: this repo is public, and a public workflow should
-# not publish the layout of a private one. Set them once, per repo:
+# THE SOURCE REPOSITORY IS A REPOSITORY VARIABLE, not hardcoded, so a fork or a
+# rehearsal can point it elsewhere. It is Percolation-Labs/percolate, which is
+# public; SPECS_REPO and SOURCE_TOKEN date from when the source was private and
+# remain the fallback. Set once, per repo:
 #
-#   gh variable set SPECS_REPO  --body '<owner>/<specs-repo>'
-#   gh secret   set SOURCE_TOKEN --body '<PAT with read access to it>'
+#   gh variable set EXTENSION_REPO --body 'Percolation-Labs/percolate'
 #
 # Without them these jobs do not run, which is the correct behaviour for a fork:
 # a fork cannot build the extension and should fail saying so rather than
@@ -503,8 +503,9 @@ jobs:
           files: out/*
           generate_release_notes: true
           body: |
-            The Percolate Postgres extensions, built from p8-subsystems
-            `${{ inputs.ref }}`.
+            The Percolate Postgres extensions, built from
+            ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
+            at `${{ inputs.ref }}`.
 
             ```sh
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
@@ -522,7 +523,7 @@ jobs:
   # The image comes last and only after the assets exist, because it fetches
   # the .so files FROM this release -- the same bytes install.sh hands out.
   # Order is the whole point: publish what the image needs, then the image,
-  # then (in p8-subsystems' release.yml) the docs that reference both.
+  # then (docs-version, below) the docs that reference both.
   image:
     needs: release
     if: inputs.version != ''
@@ -541,7 +542,7 @@ jobs:
   # ---------------------------------------------------------------------
   # THE DOCS CATCH THEMSELVES UP.
   #
-  # This used to be a GitHub issue, opened by p8-subsystems' release.yml,
+  # This used to be a GitHub issue, opened by the extension's release.yml,
   # asking @claude to find every version quoted in prose and open a PR. It did
   # not work -- three pages still said the dialect was 0.1.0 after the
   # extension went to 0.1.1, and nothing reported it, because stale prose reads
@@ -596,7 +597,7 @@ jobs:
       # person dispatched it. A workflow_dispatch is the one event GITHUB_TOKEN
       # may start, so this job starts it, and then waits for the index to list
       # the chart: a release whose chart nobody can install is not finished, and
-      # p8-subsystems' release.yml watches this run with --exit-status.
+      # percolate's release.yml watches this run with --exit-status.
       # It also runs when the bump was already committed, which is the retry path
       # after exactly this failure.
       - name: Publish the chart it names, and wait for the index to list it

@@ -106,23 +106,23 @@ jobs:
         run: ci/ownpg.sh
 
   # TWO FILES DO THE SUPERUSER STEP, and a fix made to one missed the other:
-  # REM-113's per-role timeouts went into p8-subsystems'
+  # REM-113's per-role timeouts went into the image's
   # dev/image-init/00-superuser.sql and not into bootstrap.sql. bootstrap.sql
   # is downloaded on its own, so it cannot include that file and carries a copy
   # instead. Here because the daily schedule above runs it, and a change made
-  # only in p8-subsystems arrives as no commit to this repository.
+  # only in the source repository arrives as no commit to this repository.
   superuser-step:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      # The pair docs.yml and parser.yml use: the specs repo is private, so the
-      # default job token cannot read it.
+      # The source repository the image is built from (Percolation-Labs/percolate,
+      # public). It used to be p8-subsystems, private and now frozen, where this
+      # gate would no longer see a change.
       - name: Check out the image's superuser step
         uses: actions/checkout@v7
         with:
-          repository: ${{ vars.SPECS_REPO || 'Percolation-Labs/p8-subsystems' }}
-          token: ${{ secrets.SOURCE_TOKEN }}
+          repository: ${{ vars.EXTENSION_REPO || 'Percolation-Labs/percolate' }}
           path: .specs
           sparse-checkout: dev/image-init/00-superuser.sql
           sparse-checkout-cone-mode: false

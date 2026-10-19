@@ -30,7 +30,7 @@
 # The inner development loop is neither of these and does not build an image at
 # all: regenerate the SQL and load it into a running database
 # (`extension/percolate/build-sql.py`, then psql). Seconds. An image is what
-# other people pull, not what you iterate against -- p8-subsystems PACKAGING.md
+# other people pull, not what you iterate against -- the project's internal PACKAGING.md
 # has that end of it.
 #
 # Reusable rather than copied, because it has two callers with the same job:
@@ -49,7 +49,7 @@ on:
         type: string
         default: ''
       ref:
-        description: p8-subsystems ref to build the extension SQL from
+        description: ref of the extension's source repository to build the SQL from
         type: string
         default: main
       version:
@@ -83,7 +83,7 @@ on:
       # (parser.yml) and the rebuild (images.yml) are unchanged byte for byte.
       #
       # On, it differs in exactly what a candidate needs: the tree is bumped to
-      # `version` the way p8-subsystems' release.yml bumps it, the build is
+      # `version` the way percolate's release.yml bumps it, the build is
       # linux/amd64 only (the one platform a runner can start, and the
       # portability gate is push-only anyway), and the image and the
       # release-shaped assets leave as run artifacts instead of a registry.
@@ -119,7 +119,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Rehearsal only -- bump the tree to the candidate, as release.yml would
-        # The same script p8-subsystems' release.yml runs, so the candidate
+        # The same script percolate's release.yml runs, so the candidate
         # carries the same five files the release commits -- including the
         # upgrade scripts, which build-sql.py names from the tags, and which is
         # why the tags are fetched first: this checkout is shallow and tagless.
@@ -268,7 +268,7 @@ jobs:
           done
           # And the parser's, by the same argument (REM-192): without them `percolate`
           # moves and `percolate_parser` stays at the version that installed it, over
-          # this image's .so. Committed in p8-subsystems by write-upgrades.py; the
+          # this image's .so. Committed in the source repository by write-upgrades.py; the
           # Dockerfile's dist/percolate_parser--*.sql glob ships them.
           for up in extension/percolate_parser/sql/percolate_parser--*--"${{ inputs.version }}".sql; do
             [ -e "$up" ] && cp "$up" dev/dist/ && echo "ships: $(basename "$up")"

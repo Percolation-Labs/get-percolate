@@ -226,9 +226,9 @@ tool evidence. Configure the agent's model, instructions and tools in
 
 AI suggestions require a reachable Agent Runtime, a configured provider and
 the `percolate_help` agent with its guide and read-only query tool. No
-published command creates that agent: the script that does,
-`dev/ui_assistant.py`, is in the percolate-core source repository, which is not
-public. A suggestion
+published command creates that agent: the script that does is
+[`core/dev/ui_assistant.py`](https://github.com/Percolation-Labs/percolate/blob/main/core/dev/ui_assistant.py)
+in the source repository. A suggestion
 produces a draft for review; applying it to an editor does not execute a query,
 pull an API or start a workflow.
 

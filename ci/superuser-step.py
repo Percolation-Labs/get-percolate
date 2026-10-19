@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """bootstrap.sql sets the same per-role timeouts as the image's superuser step.
 
-Two files do the superuser's half of an install. p8-subsystems'
+Two files do the superuser's half of an install. Percolation-Labs/percolate's
 `dev/image-init/00-superuser.sql` runs at the image's initdb, and this
 repository's `bootstrap.sql` is what an own-Postgres install downloads and runs
 by hand. REM-113 put four timeouts per login role into the first and nothing
@@ -9,13 +9,13 @@ into the second, so an own-Postgres database ran every query unbounded, and no
 check existed that could have noticed.
 
 bootstrap.sql cannot include the other file: it is fetched on its own by
-`install.sh`, with no p8-subsystems checkout beside it. So it carries a copy,
+`install.sh`, with no source checkout beside it. So it carries a copy,
 and this compares the copies. It does not interpret SQL. It reads the one
 `values` table each file drives its `alter role ... set` loop from, maps each
 row's columns onto the setting names that loop writes, and requires the two
 results to be equal.
 
-    python3 ci/superuser-step.py path/to/p8-subsystems/dev/image-init/00-superuser.sql
+    python3 ci/superuser-step.py path/to/percolate/dev/image-init/00-superuser.sql
 """
 import pathlib
 import re

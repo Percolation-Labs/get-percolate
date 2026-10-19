@@ -1,6 +1,6 @@
 # Querying
 
-One dialect over a property graph, a vector index and a lexical index. This page
+One dialect over a graph of ordinary tables, a vector index and a lexical index. This page
 is about what gets into the graph in the first place, and what a caller sees
 when they ask.
 {: .lede }
@@ -10,7 +10,7 @@ every modifier, and [Graph algorithms](graph.html) is the page for the
 questions a walk cannot answer at all — ranked relatedness, the best routes
 between two things, what connects a result set, and what all of that costs. The
 four things a reference cannot tell you are who the dialect
-is written for, which rows become nodes, why the property graph costs no
+is written for, which rows become nodes, why the graph costs no
 migration, and why a query can look empty when it is working correctly.
 
 ## Written for a model to write
@@ -96,7 +96,7 @@ name that is spelled correctly is a way to get a worse answer slowly, and that
 ordering is the sort of thing you write once rather than in every prompt.
 
 Each mode stands over a different Postgres feature — `pg_trgm` here, `pgvector`
-under `SEMANTIC`, `tsvector` under `TEXT`, SQL/PGQ `GRAPH_TABLE` under `GRAPH` —
+under `SEMANTIC`, `tsvector` under `TEXT`, joins and `WITH RECURSIVE` over `aiq.edges_current` under `GRAPH` —
 and a model writing raw SQL has to pick the right one, with the operator that
 matches the index, and an embedding from the same model the column was written
 with. The failures there are quiet ones: a distance operator that does not match
@@ -229,7 +229,7 @@ select r->>'key' as key, r->>'match_kind' as match_kind
 visible</a></p>
 </details>
 
-## The property graph costs no migration
+## The graph costs no migration
 
 Here we query a graph without having adopted a graph database.
 {: .goal }
@@ -241,21 +241,20 @@ select aiq.query('GRAPH "Bulk Harmony" DEPTH 2');       -- the same rows, walked
 ```
 
 <details class="why" markdown="1">
-<summary>Why it works — SQL/PGQ defines a property graph as a view over ordinary
-tables</summary>
+<summary>Why it works — the graph is `aiq.nodes` and `aiq.edges`, walked with
+joins</summary>
 
-`CREATE PROPERTY GRAPH` in PG19 is read-only catalog metadata over
-`nodes`, `edges` and hard-link junctions, compiled to ordinary joins at query
-time. There is no separate graph store, no migration to adopt it, and no second
-copy of anything to keep in step — which is the whole reason this collection
-targets PG19 rather than bolting a graph layer on.
+`GRAPH` at depth 1 is a join over `aiq.edges_current` in both directions, and at
+depth 2 or more a `WITH RECURSIVE` over it, capped by depth and degree. There is
+no separate graph store, no migration to adopt it, and no second copy of
+anything to keep in step. Earlier releases walked it through SQL/PGQ's
+`GRAPH_TABLE`; SQL/PGQ was withdrawn from PostgreSQL 19 before GA, so the walk
+now uses nothing newer than 18.
 
-One PG19 limitation to know before you run into it: element pattern
-quantifiers are not supported, so variable-length paths use `DEPTH` rather than
-`{1,3}` syntax.
+A path length is written with `DEPTH n`.
 
 <p class="related"><strong>Related</strong>
-<a href="index.html#what-it-costs">why this pins you to PG19</a> ·
+<a href="index.html#what-it-costs">what pins you to PG19</a> ·
 <a href="grammar-p8ql.html#walking-out-from-a-node">the `GRAPH` mode</a></p>
 </details>
 

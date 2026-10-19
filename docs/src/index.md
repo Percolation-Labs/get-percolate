@@ -117,10 +117,10 @@ The pitch above is one-sided, so:
 
 | | |
 |---|---|
-| **PostgreSQL 19** | SQL/PGQ property graphs are a PG19 feature and the query parser is compiled against its ABI, so there is no graceful fallback to 18. PG19 is in beta. |
+| **PostgreSQL 19** | The published query parser is compiled against PG19's ABI, so the release files and the image need 19; the SQL itself needs 18 or later. PG19 is pre-release. |
 | **A compiled extension** | `percolate_parser` is Rust. We publish builds for linux/amd64, linux/arm64 and macos/arm64; anything else you build yourself. |
 | **Your database is in the path** | Workflow state in Postgres means workflow throughput is bounded by your Postgres. At this scale that is usually the right trade, but it is a real one. |
-| **Not a hosted product** | There is no dashboard and no SaaS. The management surface is the same RPC set a worker uses, over PostgREST. |
+| **Not a hosted product** | There is no SaaS, and the only UI is a local [workbench](ui.html). The management surface is the same RPC set a worker uses, over PostgREST. |
 
 ## How to read these pages
 
@@ -141,8 +141,9 @@ live database before it is written down. Where something does not survive that,
 the page changes rather than the claim.
 
 There is no status label on a page, because every page is about something that
-is built. A thing that is not built does not get a page here — it gets a spec in
-`p8-subsystems`, which is a private repository. Gaps inside
+is built. A thing that is not built does not get a page here. The source and the
+specs of what is built are public, in
+[Percolation-Labs/percolate](https://github.com/Percolation-Labs/percolate). Gaps inside
 a feature that *is* shipped are named where they bite, in the section they
 belong to, rather than collected behind a label at the top.
 

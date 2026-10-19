@@ -152,7 +152,7 @@ grant authenticated to api_viewer;
 -- app_owner is unbounded for the reason an upgrade needs to be: it replays the
 -- whole schema, and a migration cut off half way is worse than a slow one.
 --
--- THE VALUES ARE p8-subsystems' dev/image-init/00-superuser.sql §2, which the
+-- THE VALUES ARE Percolation-Labs/percolate's dev/image-init/00-superuser.sql §2, which the
 -- image runs at initdb; the reasoning for each number is there. This copy exists
 -- because this file is downloaded on its own, and `ci/superuser-step.py` fails
 -- the build when the two tables disagree. The image's copy shipped and this one

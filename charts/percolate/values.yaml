@@ -97,7 +97,7 @@ postgres:
   # cron.database_name is added by the template, from `database` above.
   # pg_stat_statements and auto_explain are preloaded beside pg_cron, for the
   # reasons the shipped compose file states at length. In short: the deferral
-  # in p8-subsystems meta/postgres-manifest.md:44 -- "enable when there's
+  # in the project's internal notes, meta/postgres-manifest.md:44 -- "enable when there's
   # something to tune" -- is overturned by the fact that no statement in this
   # deployment is timed at all (what exists measures the workload: completed_at,
   # oldest_wait, and a plan-shape check on the claim path), and by

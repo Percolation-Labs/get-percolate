@@ -362,7 +362,7 @@ down</a></p>
 
 | | |
 |---|---|
-| PostgreSQL | 19beta3, `percolate @@extension@@` |
+| PostgreSQL | 19beta3, `percolate 0.1.0` (measured 2 September 2026) |
 | Host | 10 cores, Docker Desktop on macOS |
 | `shared_buffers` | 128 MB (the image default) |
 | `work_mem` | 4 MB (the image default) |

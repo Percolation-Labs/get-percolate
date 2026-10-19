@@ -1,6 +1,6 @@
 # Run the install guide against a RELEASE CANDIDATE, before anything is published.
 #
-# Both dry runs stopped one step short of the question a release is for. p8-subsystems'
+# Both dry runs stopped one step short of the question a release is for. percolate's
 # release.yml with `publish: false` compiles the parser and builds the image;
 # percolate-core's builds the wheel and the image. Neither ran the install guide
 # against what it built, so "clean for a reader" was measured only by publishing:
@@ -17,7 +17,7 @@
 #     also how the test jobs get them -- nothing is pulled by a candidate tag;
 #   - `versions.py --set` writes to the runner's checkout, which is never committed;
 #   - the token is `contents: read`, and the only `actions: write` is the job that
-#     dispatches parser.yml build-only (empty version), the door p8-subsystems'
+#     dispatches parser.yml build-only (empty version), the door percolate's
 #     dry run already uses.
 name: rehearse
 run-name: >-
@@ -30,10 +30,10 @@ on:
       source_repo:
         description: >-
           repository the extension is built from; empty means vars.EXTENSION_REPO,
-          then vars.SPECS_REPO (the source moves to Percolation-Labs/percolate, REM-958)
+          then vars.SPECS_REPO (EXTENSION_REPO is Percolation-Labs/percolate, REM-958)
         default: ""
       p8_ref:
-        description: p8-subsystems ref (full or short sha, branch or tag) the extension candidate is built from
+        description: ref (full or short sha, branch or tag) of the source repository the extension candidate is built from
         default: main
       core_ref:
         description: percolate-core ref (full or short sha, branch or tag) the core candidate is built from
@@ -154,7 +154,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Only when the parser source moved: parser.yml, build-only, the way
-  # p8-subsystems' dry run dispatches it -- the real compiler matrix, nothing
+  # percolate's dry run dispatches it -- the real compiler matrix, nothing
   # released. Dispatched and watched rather than copied.
   # ---------------------------------------------------------------------------
   parser:
@@ -457,7 +457,7 @@ jobs:
             echo
             echo "| | ref | commit | candidate |"
             echo "|---|---|---|---|"
-            echo "| p8-subsystems | \`$P8_REF\` | \`$P8_SHA\` | extension $EXT |"
+            echo "| $P8_REPO | \`$P8_REF\` | \`$P8_SHA\` | extension $EXT |"
             echo "| percolate-core | \`$CORE_REF\` | \`$CORE_SHA\` | core $CORE |"
             echo
             echo "- parser: $parser"

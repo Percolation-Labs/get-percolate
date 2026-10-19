@@ -20,7 +20,7 @@ on:
           that release and the image is tagged :19 and :19-<version>
         required: true
       ref:
-        description: p8-subsystems ref to build the extension SQL from
+        description: ref of the extension's source repository to build the SQL from
         default: main
       push:
         description: push to Docker Hub

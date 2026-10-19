@@ -355,14 +355,14 @@ because the engine gives no other signal.
 Here we find tasks that no worker will ever pick up.
 {: .goal }
 
-<!-- run: sql -->
+<!-- run: sql rows:0 -->
 ```sql
 select reason, count(*), min(waiting) from workflow.v_unclaimable group by 1;
 select remedy from workflow.v_unclaimable limit 1;
 ```
 
 <div class="evidence" markdown="1">
-<div class="label">workflow.v_unclaimable</div>
+<div class="label">workflow.v_unclaimable, on a stack whose steps name a rate_key with no bucket (the sample has none, so it returns no rows)</div>
 
 ```
                       reason                      | count |  waiting

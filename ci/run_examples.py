@@ -50,8 +50,8 @@ ORG_A = "d0000000-0000-0000-0000-00000000000a"
 HARBOUR_READER = "e0000000-0000-0000-0000-00000000000a"
 
 # ONE DEFINITION OF THE SEAT, and it is a function rather than two format
-# strings because the two format strings is what went wrong. `wrap` and
-# `returns_empty` both open a tenant-a session; when the seat moved from the
+# strings because the two format strings is what went wrong. `wrap` and the
+# old standalone emptiness re-run both opened a tenant-a session; when the seat moved from the
 # bootstrapped administrator to the sample's own reader, only `wrap` was
 # changed. So every page RAN correctly and was then re-checked for emptiness
 # from a seat that could see nothing, and three pages were reported as
@@ -104,7 +104,7 @@ def leave(settings) -> str:
             + "end $$;\n")
 
 
-def wrap(kind: str, context: str | None, body: str) -> str:
+def wrap(kind: str, context: str | None, body: str, after: str = "") -> str:
     """One block, ready to run inside the page's transaction.
 
     The whole page runs in one `begin; ... rollback;` (see run_page), so nothing
@@ -116,7 +116,7 @@ def wrap(kind: str, context: str | None, body: str) -> str:
     if kind != "sql":
         return ""  # only sql blocks are executed here; shell/pip are coldstart's
     if context is None:
-        return body + "\n"
+        return body + "\n" + after
     if context == "tenant-a":
         # THE SAMPLE'S READER, not the administrator this run bootstrapped.
         # From 0.1.4 an `orgs` claim is intersected with real membership, so a
@@ -126,7 +126,7 @@ def wrap(kind: str, context: str | None, body: str) -> str:
         # the same subject, so the harness and the reader are in one seat.
         # Everything it switches, and why switching back is generated rather
         # than written, is at TENANT_A.
-        return enter(TENANT_A) + body + "\n" + leave(TENANT_A)
+        return enter(TENANT_A) + body + "\n" + after + leave(TENANT_A)
     raise SystemExit(f"unknown run context 'as:{context}' -- "
                      f"this runner knows: tenant-a")
 
@@ -177,12 +177,16 @@ def run_page(dsn: str, page: pathlib.Path) -> tuple[bool, str]:
     script = ["\\set ON_ERROR_STOP on", "begin;"]
     spans: list[tuple[int, int, str]] = []
     labels = []
+    # AFTER EACH BODY, ITS ROW COUNT, before a tenant block's `leave` resets
+    # anything: psql's ROW_COUNT is the last statement's, which is the answer the
+    # page shows. Counted in place, in the page's own session, because a block
+    # re-run alone loses the state the blocks before it made.
     for n, (ln, k, c, e, b) in enumerate(marked, 1):
         label = f"block {n}, {page.name}:{ln} (as:{c or 'owner'})"
         labels.append(label)
         script.append(f"\\echo '### {label}'")
         first = len(script) + 1
-        script.extend(wrap(k, c, b).splitlines())
+        script.extend(wrap(k, c, b, f"\\echo '{END} {n}' :ROW_COUNT\n").splitlines())
         spans.append((first, len(script), label))
     script.append("rollback;")
     # `-f -`, not a bare pipe: psql puts `psql:<stdin>:N:` in front of a message
@@ -193,42 +197,77 @@ def run_page(dsn: str, page: pathlib.Path) -> tuple[bool, str]:
     if r.returncode != 0:
         where, err = stopped_by(r.stderr, spans)
         return False, f"stopped at {where}: {err}"
-    # A tenant read that shows rows must not come back empty -- that is the
-    # `acme` failure, a query against a fixture nobody loaded, which errors
-    # nowhere. `aiq.query` always returns its one envelope even when it matched
-    # nothing, so an empty `rows` array inside counts as empty too.
-    for label, (ln, k, c, e, b) in zip(labels, marked):
-        if c != "tenant-a" or e:
+    # AN EXAMPLE THAT SHOWS AN ANSWER MUST NOT COME BACK EMPTY, whoever runs it.
+    # That is the `acme` failure -- a query against a fixture nobody loaded,
+    # which errors nowhere -- and, in the owner's seat, a run read back inside
+    # the statement that started it, under that statement's snapshot. Both
+    # showed the reader a table and returned none. `aiq.query` always returns its
+    # one envelope even when it matched nothing, so an empty `rows` array inside
+    # counts as empty too. A tenant read is held to it even with no output shown,
+    # because there the empty answer is the RLS failure.
+    out = split_output(r.stdout)
+    for n, (label, (ln, k, c, e, b)) in enumerate(zip(labels, marked), 1):
+        if e or not (c == "tenant-a" or shows_output(text, ln)):
             continue
-        empty, detail = returns_empty(dsn, b)
+        empty, detail = is_empty(*out.get(n, (0, [])))
         if empty:
+            seat = "as:tenant-a " if c == "tenant-a" else ""
             return False, (f"{label} returned no rows ({detail}) -- if that is "
-                           f"correct, mark it `as:tenant-a rows:0`")
+                           f"correct, mark it `<!-- run: sql {seat}rows:0 -->`")
     return True, f"{len(marked)} blocks ran"
 
 
-def returns_empty(dsn: str, body: str) -> tuple[bool, str]:
-    """Run one tenant read standalone (rolled back) and say whether it is empty.
+END = "@@@ end of block"
+FOOTER = re.compile(r"^\((\d+) rows?\)$")
 
-    Empty means: no output rows at all, or a lone `aiq.query`/graph envelope whose
-    `rows` array is []. Anything else -- a scalar, a JSON object with no `rows`
-    key, one or more table rows -- is a non-empty answer.
-    """
-    # Its own transaction, rolled back, so nothing here needs `leave`.
-    script = "begin;\n" + enter(TENANT_A) + body + "\nrollback;\n"
-    r = subprocess.run(["psql", dsn, "-tAq", "-v", "ON_ERROR_STOP=1"],
-                       input=script, capture_output=True, text=True)
-    lines = [l for l in r.stdout.splitlines() if l.strip()]
-    if not lines:
+
+def split_output(stdout: str) -> dict[int, tuple[int, list[str]]]:
+    """Block number -> (its last statement's row count, the lines it printed)."""
+    out, lines = {}, []
+    for line in stdout.splitlines():
+        if line.startswith("### "):
+            lines = []
+        elif line.startswith(END + " "):
+            n, count = line[len(END) + 1:].split()
+            out[int(n)] = (int(count), lines)
+        else:
+            lines.append(line)
+    return out
+
+
+def is_empty(count: int, lines: list[str]) -> tuple[bool, str]:
+    """No rows, or one row that is a lone envelope whose `rows` array is []."""
+    # ROW_COUNT is 0 after EXPLAIN, which prints a plan, so a zero with a
+    # positive `(N rows)` footer as the last one printed is still an answer.
+    footers = [int(m.group(1)) for l in lines if (m := FOOTER.match(l.strip()))]
+    if count == 0 and not (footers and footers[-1] > 0):
         return True, "no rows"
-    if len(lines) == 1 and lines[0].lstrip().startswith("{"):
+    # The LAST envelope printed, because that is the last statement's: a block
+    # may show a deliberate miss first (`LOOKUP "meridien dawn"; -- 0 rows`).
+    envelopes = [l.strip() for l in lines if l.strip().startswith("{")]
+    if count == 1 and envelopes:
         try:
-            doc = json.loads(lines[0])
-            if isinstance(doc.get("rows"), list) and not doc["rows"]:
-                return True, "envelope with empty rows[]"
-        except (ValueError, AttributeError):
-            pass
-    return False, f"{len(lines)} row(s)"
+            doc = json.loads(envelopes[-1])
+        except ValueError:
+            doc = None
+        if isinstance(doc, dict) and isinstance(doc.get("rows"), list) and not doc["rows"]:
+            return True, "envelope with empty rows[]"
+    return False, f"{count} row(s)"
+
+
+def shows_output(text: str, fence_line: int) -> bool:
+    """Whether the page prints an answer under the block whose fence opens at
+    1-based `fence_line`: the next non-blank line after its closing fence opens
+    another fence or an evidence box."""
+    lines = text.splitlines()
+    j = fence_line  # 0-based index of the first body line
+    while j < len(lines) and not lines[j].startswith("```"):
+        j += 1
+    j += 1
+    while j < len(lines) and not lines[j].strip():
+        j += 1
+    return j < len(lines) and (lines[j].startswith("```")
+                               or lines[j].lstrip().startswith('<div class="evidence"'))
 
 
 def main() -> int:

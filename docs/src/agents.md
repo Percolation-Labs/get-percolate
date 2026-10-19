@@ -297,7 +297,7 @@ written whoever made the change, and nobody can write one by hand: the table
 has no insert grant. A version is readable exactly when its agent is: the
 policy asks `agentic.agents`, so a private agent's history is its owner's.
 The runtime reading the row per turn is what makes "no redeploy" true: measured
-on percolate-core 0.2.5, a turn sent the old prompt, an `UPDATE` followed, and
+by sending turns to a stub model, a turn sent the old prompt, an `UPDATE` followed, and
 the next turn on the same process sent the new one.
 </details>
 

@@ -37,7 +37,7 @@ services:
     # file does not pin yet -- without editing this line. The default is the
     # pin ci/versions.py enforces, so an unset .env still gets the documented
     # extension. ci/examples.sh and ci/coldstart.sh pass IMAGE through it.
-    image: ${P8_DB_IMAGE:-percolationlabs/percolate-postgres:19-0.2.24}
+    image: ${P8_DB_IMAGE:-percolationlabs/percolate-postgres:19-0.2.25}
     restart: unless-stopped
     # pg_cron is a background worker, so it must be preloaded at startup --
     # there is no CREATE EXTENSION that can add it later. cron.database_name

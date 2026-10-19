@@ -475,15 +475,6 @@ services:
     restart: unless-stopped
     depends_on: [postgrest]
     command: ["query", "mcp", "--port", "8090", "--postgrest", "http://postgrest:3000"]
-    # ON A HOST PORT so the reader's own agent -- Claude Code, Claude Desktop --
-    # can connect, not only the Agent Runtime inside this network. The server
-    # holds no credential: it forwards the caller's Authorization header to
-    # PostgREST, so a tool call runs as whoever's token it carries, under that
-    # person's row policies, exactly as the agent runtime's calls do. A call
-    # with no token is refused by PostgREST (401, no grant on aiq).
-    # Core 0.2.7's judgement and session tools live here (install.md, "Your
-    # own agent").
-    ports: ["${P8_QUERY_MCP_PORT:-8090}:8090"]
 
   minio:
     # RUSTFS, NOT MINIO, under the old service name. MinIO's community images

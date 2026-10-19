@@ -537,7 +537,10 @@ select workflow.signal_task(
 The subquery finds the newest run waiting on `approve`. From `psql` it needs the
 identity claim that [your first workflow](first-workflow.html#watching-a-run)
 sets, because `signal_task` checks who is signing and refuses a session that
-carries nobody.
+carries nobody. It returns how many waiting steps it resolved: `1` here, and `0`
+for a signal sent before the step is `waiting_external`, a second answer, or a
+misspelled name, none of which changes anything. Send a signal once `waiting`
+says the step needs you, and read the count.
 
 <details class="why" markdown="1">
 <summary>Why it works — waiting is a row state, so nothing holds a process open

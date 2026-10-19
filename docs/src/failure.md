@@ -116,7 +116,7 @@ it.
 | `succeeded` | it ran and returned | are released |
 | `skipped` | its [`when:`](grammar-workflow.html#when-a-step-that-runs-only-if) did not hold, so it did nothing | are released, and read its result as null |
 | `failed` | it ran out of attempts, or failed terminally | are cancelled, unless `continue_on: failed` says otherwise |
-| `cancelled` | something before it failed, or the run was cancelled | are cancelled |
+| `cancelled` | something before it failed, the run failed on another branch, or the run was cancelled | are cancelled |
 
 Here we see what happens when a step's condition cannot be evaluated at all,
 because it compares a number with a word.
@@ -176,6 +176,12 @@ is released, a run of successes and skips has succeeded, and
 `workflow.v_run_progress` counts it as done. On a page or in a trace it is
 still told apart from `succeeded`, and a skipped step has no output, so the
 difference between "nothing to do" and "did it" survives in the record.
+
+A failed run is over. Its other branches stop with it: a step that was still
+waiting or ready is cancelled, a running one is asked to stop (its heartbeat
+says so) and its late answer is not kept, and a running child workflow is
+cancelled. The one exception is compensation, which is the work a failed saga
+still owes, so it runs and finishes under the failed run.
 
 A `signal` step that was skipped never reaches `waiting_external`, so nobody is
 asked to sign it. Whoever drives the run should read the step's status before

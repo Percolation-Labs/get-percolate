@@ -454,6 +454,11 @@ reusing somebody else's. It is asserted by behaviour rather than by reading the
 code: one backend, two identities, and the second must get a different
 snapshot.
 
+Names resolve through `LOOKUP`'s own cascade, so what resolves here is what
+resolves there: a typed node by its key, and a node an extractor named by its
+bare name — `harbour rewrite` for the soft node `project/harbour rewrite` —
+when no typed node holds that name (REM-995).
+
 <p class="related"><strong>Related</strong>
 <a href="cookbook.html">the same query asked twice with different claims</a> ·
 <a href="query.html#over-rest-and-the-two-things-that-look-like-bugs">querying

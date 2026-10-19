@@ -21,12 +21,19 @@
 # installed first, into a database of its own, and updated in place at the end.
 #
 #     ci/ownpg.sh
-#     PG_IMAGE=postgres:19beta3-bookworm ci/ownpg.sh
+#     PG_IMAGE=postgres:19rc1-bookworm ci/ownpg.sh
+#
+# THE SERVER IS THE ONE PGDG's pgvector WAS BUILT FOR. While 19 is pre-release,
+# PGDG rebuilds postgresql-19-pgvector against its newest beta or rc, and an
+# extension built for one pre-release does not load into another: on
+# 19beta3, PGDG's 0.8.7 fails `create extension vector` with "index access
+# method handler function ... did not return an IndexAmRoutine struct". So the
+# default follows PGDG's current postgresql-19, and moves when it does.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 NAME=p8ownpg-$$
-PG_IMAGE=${PG_IMAGE:-postgres:19beta3-bookworm}
+PG_IMAGE=${PG_IMAGE:-postgres:19rc1-bookworm}
 REPO=${REPO:-Percolation-Labs/get-percolate}
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 
@@ -67,9 +74,12 @@ echo "    v$PREV"
 in_pg env GITHUB_TOKEN="${GITHUB_TOKEN:-}" VERSION="v$PREV" \
     bash -c 'mkdir -p /tmp/prev && cd /tmp/prev && sh /tmp/install.sh' | tail -1
 in_pg psql -U postgres -qc "create database olddb"
-in_pg psql -U postgres -d olddb -v ON_ERROR_STOP=1 \
-    -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" -f /tmp/prev/bootstrap.sql >/dev/null 2>&1 \
-    || fail "the v$PREV bootstrap into olddb exited non-zero"
+# Output kept, and printed on failure: discarded, a pgvector that would not load
+# reached CI as only "exited non-zero", and the cause took a session to find.
+out=$(in_pg psql -U postgres -d olddb -v ON_ERROR_STOP=1 \
+    -v auth_pw="$AUTH_PW" -v worker_pw="$WORKER_PW" -f /tmp/prev/bootstrap.sql 2>&1) \
+    || { grep -E 'ERROR|FATAL|psql:' <<<"$out" | grep -v "$WORKER_PW" | tail -5 >&2
+         fail "the v$PREV bootstrap into olddb exited non-zero"; }
 [ "$(in_pg psql -U postgres -d olddb -tAc "select extversion from pg_extension where extname = 'percolate'")" = "$PREV" ] \
     || fail "olddb does not have percolate $PREV"
 

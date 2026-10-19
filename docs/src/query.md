@@ -88,8 +88,8 @@ actually asked, so it returns the operator once and reports which key matched,
 and nothing is hidden by the deduplication.
 
 The mode is also a cascade rather than a query: exact canonical first, then
-short and alias, and only then trigram, each stage short-circuiting if it found
-anything. You can watch it short-circuit — `FUZZY LOOKUP "meridian"` comes back
+short and alias, then a soft node by its bare name, and only then trigram, each
+stage short-circuiting if it found anything. You can watch it short-circuit — `FUZZY LOOKUP "meridian"` comes back
 with `"match_kind": "short"` and `"score": 1`, having never reached the trigram
 stage, because the string it was given is a key that exists. Fuzzy matching a
 name that is spelled correctly is a way to get a worse answer slowly, and that
@@ -208,6 +208,20 @@ your documents *mention* sit in the graph beside the things your tables *hold*.
 That is a flag on the ingestion pipeline and it is off by default, because an
 embedding per chunk is cheap and a completion per window is a different order of
 money.
+
+A node an extractor named is a **soft node**, keyed by its kind and name —
+`project/harbour rewrite` — because the same word can name two kinds of thing.
+`LOOKUP` finds it by the name alone once no typed node of that name exists, and
+the key it returns tells you which kind it was found under (REM-995):
+
+<!-- run: sql -->
+```sql
+select aiq.upsert_graph('{"nodes":[{"k":"project","n":"Harbour Rewrite"}],"edges":[]}',
+                        '{"agent":"docs"}');
+select r->>'key' as key, r->>'match_kind' as match_kind
+  from jsonb_array_elements(aiq.query('LOOKUP "Harbour Rewrite"')->'rows') r;
+-- project/harbour rewrite | soft
+```
 
 <p class="related"><strong>Related</strong>
 <a href="ingest.html">the extraction path</a> ·

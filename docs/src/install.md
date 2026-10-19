@@ -31,7 +31,7 @@ to it. A key exported in some other shell after the stack is up reaches neither.
 Nothing else needs one — the database, workflows, graph and text search all run
 without it. The same `.env` moves ports that are already taken, most often
 5432 by a local Postgres: `P8_PG_PORT=5433`, and `P8_REST_PORT`,
-`P8_AGENT_PORT` and `P8_CONTENT_PORT` for the others.
+`P8_AGENT_PORT`, `P8_CONTENT_PORT` and `P8_QUERY_MCP_PORT` for the others.
 
 Seven services come up beside the database, and that is a list of **roles
 rather than a recommended process count**: PostgREST for the REST surface, a
@@ -467,6 +467,39 @@ print((head + b"." + body + b"." + sig).decode())
 ```
 
 That is the `$TOKEN` every `curl` in these docs wants.
+
+### Your own agent, over MCP
+
+Here we connect the agent you already use, such as Claude Code, to Percolate as
+yourself.
+{: .goal }
+
+The query MCP server is on port 8090 of this machine only (127.0.0.1). It holds
+no credential of its own: it
+forwards your token to PostgREST, so every tool call runs as you, under your
+row policies. Beside `query` it offers the tools a connected agent judges and
+remembers with: `list_judgements`, `claim_judgement`, `decide_judgement` and
+`release_judgement` for what dream left for a judge, and `read_session` and
+`land_message_facts` for a conversation's facts.
+
+```bash
+claude mcp add --transport http percolate http://localhost:8090 \
+  --header "Authorization: Bearer $TOKEN"
+```
+
+Claude Desktop reaches a local HTTP server through a bridge, configured in
+`claude_desktop_config.json`:
+
+```json
+{"mcpServers": {"percolate": {"command": "npx",
+  "args": ["mcp-remote", "http://localhost:8090",
+           "--header", "Authorization: Bearer <your token>"]}}}
+```
+
+The token expires (`exp`), and an expired one makes every call fail at
+PostgREST; mint a new one and update the header. A call with no token is
+refused (`401`, `permission denied for schema aiq`). `P8_QUERY_MCP_PORT` in
+`.env` moves the port if 8090 is taken.
 
 <div class="evidence" markdown="1">
 <div class="label">the same call, before and after</div>

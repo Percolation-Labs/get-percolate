@@ -31,7 +31,11 @@ name: percolate
 
 services:
   db:
-    image: percolationlabs/percolate-postgres:19-0.2.23
+    # P8_DB_IMAGE in .env runs another build -- a local one, or a release this
+    # file does not pin yet -- without editing this line. The default is the
+    # pin ci/versions.py enforces, so an unset .env still gets the documented
+    # extension. ci/examples.sh and ci/coldstart.sh pass IMAGE through it.
+    image: ${P8_DB_IMAGE:-percolationlabs/percolate-postgres:19-0.2.23}
     restart: unless-stopped
     # pg_cron is a background worker, so it must be preloaded at startup --
     # there is no CREATE EXTENSION that can add it later. cron.database_name
@@ -197,6 +201,18 @@ services:
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
     command: ["worker", "--queue", "http"]
+    # THE VALUES A WORKFLOW USES, kept out of .env on purpose. .env holds the
+    # policy -- P8_TEMPLATE_ENV says what a template may read and
+    # P8_CREDENTIAL_ORIGINS where a credential may go -- and worker.env, beside
+    # this file, holds what they name: `BANK_API=https://...`, `BANK_TOKEN=...`.
+    # Handing the worker all of .env instead would put P8_JWT_SECRET and the
+    # database passwords in the one process whose environment a workflow can
+    # ask about, the oracle the signing-key comment below exists to refuse.
+    # Optional, so a stack with no such step needs no file. An entry under
+    # `environment:` wins over the same name here.
+    env_file:
+      - path: worker.env
+        required: false
     environment:
       P8_DSN: postgres://worker:${P8_WORKER_PASSWORD:-workerpass}@db:5432/percolate
       P8_WORKER_ID: worker-1
@@ -224,6 +240,10 @@ services:
       # Add a provider's origin here when LLM_API_KEY is meant for it. Read by
       # nothing before 0.1.9, so it is harmless on the image pinned above.
       P8_CREDENTIAL_ORIGINS: ${P8_CREDENTIAL_ORIGINS:-{"LLM_API_KEY":["https://api.openai.com"]}}
+      # WHICH VARIABLES `{{env.X}}` MAY READ beyond P8_AGENT_URL and LLM_URL,
+      # comma-separated, from .env. Unset, `url: '{{env.BANK_API}}/x'` fails
+      # with `template {{env.BANK_API}} is not readable by a workflow`.
+      P8_TEMPLATE_ENV: ${P8_TEMPLATE_ENV:-}
       # WHERE AN `agent:` STEP SENDS ITS CALL. The compiler emits
       # `POST {{env.P8_AGENT_URL}}/v1/chat/completions` rather than making the
       # author write a deployment fact into a document that outlives it -- so

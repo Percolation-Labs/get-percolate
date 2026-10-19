@@ -106,6 +106,89 @@ matrix key</a> ·
 backlog that uses both</a></p>
 </details>
 
+## A step that did not need to run
+
+A step has four ways to finish, and only two of them hold up the steps after
+it.
+
+| Status | Means | The steps after it |
+|---|---|---|
+| `succeeded` | it ran and returned | are released |
+| `skipped` | its [`when:`](grammar-workflow.html#when-a-step-that-runs-only-if) did not hold, so it did nothing | are released, and read its result as null |
+| `failed` | it ran out of attempts, or failed terminally | are cancelled, unless `continue_on: failed` says otherwise |
+| `cancelled` | something before it failed, or the run was cancelled | are cancelled |
+
+Here we see what happens when a step's condition cannot be evaluated at all,
+because it compares a number with a word.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select workflow.define_yaml($y$
+name: bad_gate
+steps:
+  - id: score
+    sql: "select 0.7 as v"
+  - id: review
+    needs: [score]
+    when: "{{steps.score.result.0.v}} > 'high'"
+    sql: "select 'reviewed' as r"
+  - id: pay
+    needs: [review]
+    sql: "select 'paid' as p"
+$y$);
+
+select workflow.start_workflow('bad_gate', '{}');
+
+select t.step_key, t.status, left(t.error->>'error', 60) as error, r.status as run
+  from workflow.runs r
+  join workflow.definitions d on d.id = r.workflow_def_id
+  join workflow.tasks t on t.run_id = r.id
+ where d.name = 'bad_gate'
+ order by t.id;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">one run of bad_gate</div>
+
+```
+ step_key |  status   |                        error                        |  run
+----------+-----------+-----------------------------------------------------+--------
+ score    | succeeded |                                                     | failed
+ review   | failed    | when: invalid input syntax for type numeric: "high" | failed
+ pay      | cancelled |                                                     | failed
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — a condition that cannot be answered is an error, not a
+no</summary>
+
+A predicate that is false or null skips its step, and that is the design: a
+condition over a step that was itself skipped is null, and skipping is the right
+answer to it. A predicate that raises is different. Reading it as false would
+pay a claim nobody reviewed because of a typo, so the step fails, with `when:`
+and the error as its error, and the run fails with it. The step before it had
+already finished, and stays finished.
+
+`skipped` counts as success everywhere success is asked: a step waiting on it
+is released, a run of successes and skips has succeeded, and
+`workflow.v_run_progress` counts it as done. On a page or in a trace it is
+still told apart from `succeeded`, and a skipped step has no output, so the
+difference between "nothing to do" and "did it" survives in the record.
+
+A `signal` step that was skipped never reaches `waiting_external`, so nobody is
+asked to sign it. Whoever drives the run should read the step's status before
+calling `signal_task`: `skipped` means there is nothing to sign, and
+`cancelled` means a step before it failed, which the run's tasks name.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-workflow.html#when-a-step-that-runs-only-if">the `when:`
+key</a> ·
+<a href="#fan-out-and-partial-failure">when a failed step does not cancel what
+follows</a></p>
+</details>
+
 ## Crash recovery
 
 Here we get work back when the process holding it stops existing.

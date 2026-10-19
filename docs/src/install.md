@@ -36,21 +36,40 @@ without it. The same `.env` moves ports that are already taken, most often
 Six services come up, and that is a list of **roles rather than a recommended
 process count**: PostgREST for the REST surface, a `worker` for steps that leave
 the machine, an `ingest-worker` for reading uploaded files, the Content Server
-for uploads, the Agent Runtime for model turns, and MinIO for bytes. Three of
+for uploads, the Agent Runtime for model turns, and an S3 store for bytes. Three of
 those are one image under three commands, so a real deployment usually runs
 fewer — often just a worker, since `sql` and `p8ql` steps need no process at
 all — or many more, a pool per queue. The one pairing not to collapse is the two
 workers: `--queue` takes a single queue, so merging them means choosing which of
 outbound calls and ingestion stops happening, with nothing to say so.
 
+The S3 store is **RustFS**, under the service name `minio`, so endpoints and
+`MINIO_*` variables in an older `.env` keep working. MinIO's free images no
+longer pull from Docker Hub or quay.io. A volume an earlier MinIO install wrote
+is readable by RustFS: the one-shot `minio-perms` service hands its files to
+RustFS's user before the store starts, and does nothing on a fresh volume.
+
+**A second install needs a project name of its own.** The compose file is
+project `percolate`, so `docker compose up` in a new directory reattaches the
+last install's volumes, database included. Put a name in the `.env` beside the
+file to keep them apart:
+
+```bash
+echo 'COMPOSE_PROJECT_NAME=my-second' >> .env
+docker compose up -d                     # volumes are now my-second_pgdata, my-second_miniodata
+```
+
 The db image is **pinned to a version**, so `docker compose up -d` gives every
 reader the same database rather than whatever their machine last pulled.
 Updating therefore means changing the tag, not pulling a moving one:
 
 ```bash
-# edit compose/docker-compose.yml: percolate-postgres:19-<old> -> :19-<new>
+echo 'P8_DB_IMAGE=percolationlabs/percolate-postgres:19-<new>' >> .env
 docker compose up -d
 ```
+
+`P8_DB_IMAGE` also runs a local build (`P8_DB_IMAGE=percolate-postgres:local`).
+Unset, the file's pin applies.
 
 That is the chosen half of a trade. A floating `:19` makes "works on my
 machine" literally true and unfalsifiable: a stale local copy serves an older
@@ -134,6 +153,19 @@ catching, because everything else in the row is then about the wrong build.
 It answers from the image and the Helm chart; an install from the release files
 returns no rows, because the build is recorded when the image is built and the
 files carry no such record.
+
+**A database you did not just create says so here.** Compose reattaches the
+volume of an earlier install that used the same project name, and the new image
+then starts on the old database without a word. Compare the two versions:
+
+```bash
+docker compose exec db psql -U p8 -d percolate -tAc "select extversion from pg_extension where extname='percolate'"
+docker compose images db              # the image tag this file started
+```
+
+On a fresh install they match. An older `extversion` means the database
+predates the image: update it as above, or start clean with
+`docker compose down -v`, which deletes that database and its uploads.
 
 <details class="why" markdown="1">
 <summary>Why it works — the database installs itself, and `missing` is the field

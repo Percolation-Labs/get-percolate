@@ -125,6 +125,93 @@ lists both. [Two tenants, one
 table](cookbook.html#4-two-tenants-one-table) is the same mechanism shown from
 the other side.
 
+## A fact is no more visible than the memory it came from
+
+A fact an extractor reads out of a private note stays as private as the note,
+even when the things it names are ones everybody may see.
+
+Here we record, from a captain's private notes, that Rotterdam is preferred
+over Gothenburg, and check that a Meridian member who can see both ports cannot
+read it.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+insert into content.channels (name, kind, org_id, visibility)
+values ('notes', 'manual', rbac.shared_org_id(), 'public') on conflict do nothing;
+
+insert into content.resources (id, channel_id, external_id, uri, title, status,
+                               org_id, visibility, owner_id)
+select '00000000-0000-4000-8000-00000000f001', c.id, 'captain', 'memo://notes/captain',
+       'The captain''s notes', 'ready', rbac.shared_org_id(), 'private',
+       (select id from rbac.users where email = 'me@example.com')
+  from content.channels c where c.name = 'notes';
+
+select aiq.register_graph_vocabulary('[{"relation": "preferred_over"}]');
+
+select aiq.upsert_graph(
+  '{"nodes": [{"k": "port", "n": "Rotterdam"}, {"k": "port", "n": "Gothenburg"}],
+    "edges": [{"s": 0, "t": 1, "r": "preferred_over"}]}',
+  '{"agent": "reader", "resource_id": "00000000-0000-4000-8000-00000000f001"}');
+```
+
+Both ports are public, so a Meridian member reads both, and still reads no fact
+between them, because the only memory it came from is the captain's:
+
+<!-- run: sql -->
+```sql
+select set_config('request.jwt.claims',
+         '{"sub": "e0000000-0000-0000-0000-00000000000a",
+           "orgs": ["d0000000-0000-0000-0000-00000000000a"]}', false) is not null as as_meridian;
+set role authenticated;
+
+select (select count(*) from aiq.nodes where summary like 'Rotterdam%')  as rotterdam,
+       (select count(*) from aiq.nodes where summary like 'Gothenburg%') as gothenburg,
+       (select count(*) from aiq.edges where relation = 'preferred_over') as fact;
+
+reset role;
+reset request.jwt.claims;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">what the Meridian reader counts</div>
+
+```
+ rotterdam | gothenburg | fact
+-----------+------------+------
+         1 |          1 |    0
+(1 row)
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — a fact carries the memories it was read from, and is read
+through them</summary>
+
+`aiq.upsert_graph` takes the owner, organisation and visibility of what it
+writes from the resource its context names, not from the context itself, and it
+refuses a `resource_id` that names no resource rather than guessing. An edge
+keeps the resource it came from as a source, and the read policy on `aiq.edges`
+admits an edge only to a caller who may read at least one of its sources. A fact
+asserted from two memories is readable by anyone who may read either, and a fact
+written with no resource at all, such as a gazetteer's reference data, stays as
+public as before.
+
+Nodes follow the same rule. A thing first named in a private memory is that
+memory owner's node, so two people who each mention "Leeds" in their own notes
+get a node each, and neither person's facts about it hide behind the other's.
+A name in a private memory binds to an existing node only where that cannot
+leak: a public node, like the two ports above, keeps its scope, which is why the
+only gate between the Meridian member and the captain's fact is the fact's own
+source. A name that matches an organisation's node the memory is outside of,
+such as one of Meridian's vessels named in the captain's personal notes, gets a
+node of its own instead, owned with the memory.
+
+<p class="related"><strong>Related</strong>
+<a href="ingest.html">where extracted facts come from</a> ·
+<a href="#every-output-on-this-page-is-a-tenants-view">reading as a tenant</a></p>
+</details>
+
 ## Two of them are dialect modes
 
 Four of the six stay SQL functions. Two are P8QL modes, because they are the
@@ -742,6 +829,15 @@ CPU**, and it arrives at single digits.
 <details class="why" markdown="1">
 <summary>Why it works — the failure at eight clients was not a slow query, and
 what now happens instead</summary>
+
+**A write on a connection is seen by that connection's next read.** The
+snapshot is reused while the graph's modification counters are unchanged, and
+those come from the stats collector, which never shows a connection its own
+open transaction's writes. So before @@extension@@ an `aiq.related()` call straight
+after an upsert answered from before it. A write to `aiq.nodes`, `aiq.edges` or
+`rbac.org_members` now marks the writer's snapshot stale, and the next read
+rebuilds with the same build filter. Other connections still see the write once
+the counters move, which is what `stale` in a result reports.
 
 The adjacency snapshot is **per backend**: 225 MB at four million edges, and
 roughly twice that at the peak of a build. Eight concurrent callers on a

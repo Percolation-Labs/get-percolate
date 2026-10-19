@@ -408,12 +408,11 @@ strong hint rather than a constraint. Both kinds are dropped before landing and
 **counted in the receipt** (`edges_dropped_ordinal`, `edges_dropped_offvocab`),
 which also tells you when the vocabulary is too small for your corpus.
 
-Nothing resolves a soft node yet. Extraction lands names, so `Ravensworth` and
-`Ravensworth Precision` are two nodes until something decides they are one, and
-`aiq.promote_soft_node` is the function that would do it and is called by
-nothing. The graph answers *what did the documents name, and how did they
-connect
-it* rather than *what is out there*.
+Extraction lands names, so `Ravensworth` and `Ravensworth Precision` are two
+nodes until something decides they are one. `aiq.dream()`, below, promotes a
+soft node only when its name is exactly a registered node's key; `Ravensworth
+Precision` is not, so it stays a judge's call. The graph answers *what did the
+documents name, and how did they connect it* rather than *what is out there*.
 
 <p class="related"><strong>Related</strong>
 <a href="recipes.html#a-throttle-has-to-exist-before-a-step-names-it">the
@@ -474,6 +473,68 @@ readable by the org, and one made private again takes its facts with it,
 because every read of an edge asks whether the caller may still read the
 session it came from. Reflecting the same conversation twice adds no second
 source. (REM-969.)
+</details>
+
+## Reconcile what knit landed
+
+Knit writes every session's facts as it hears them, so the graph holds a
+person's old address beside the new one. Dream reconciles the part of that
+which is known by construction, and leaves the rest for a judge.
+{: .lede }
+
+Here we declare that a person lives in one place at a time, write two sessions,
+and let dream end the older fact.
+{: .goal }
+
+```sql
+select aiq.register_graph_vocabulary('[{"relation":"lives_in","single_valued":true}]');
+select aiq.upsert_graph('{"nodes":[{"k":"person","n":"Maya"},{"k":"place","n":"Leeds"}],
+  "edges":[{"s":0,"t":1,"r":"lives_in"}]}', '{"agent":"knit","run_id":"s1"}');
+select aiq.upsert_graph('{"nodes":[{"k":"person","n":"Maya"},{"k":"place","n":"Manchester"}],
+  "edges":[{"s":0,"t":1,"r":"lives_in"}]}', '{"agent":"knit","run_id":"s2"}');
+select aiq.dream() - 'since' - 'until' as receipt;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the receipt, then Maya's lives_in edges</div>
+
+```
+                                          receipt
+--------------------------------------------------------------------------------------------
+ {"superseded": 1, "promoted_exact": 0, "promotion_refused": 0, "soft_left_for_a_judge": 3}
+
+     lives_in     | current
+------------------+---------
+ place/leeds      | f
+ place/manchester | t
+```
+</div>
+
+To run it on the engine's clock instead of by hand,
+`select aiq.schedule_dream('*/15 * * * *');` puts a `dream` workflow on
+`workflow.schedules`. Nothing is scheduled until you do.
+
+<details class="why" markdown="1">
+<summary>Why it works — dream does only what it could show its working for</summary>
+
+**Supersession needs a declaration.** `single_valued` is a property of the
+relation, set through `register_graph_vocabulary`, and null until you say. For a
+relation declared true, every current edge but the newest, per subject and org,
+ends where the next one begins. The older edge keeps its provenance, so an
+as-of read before the move still finds Leeds. `prefers` is not single-valued:
+a person prefers many things, and which preference replaced which is a
+judgement. On a 48-fact benchmark, declaring the four relations that hold one
+value recovered 7 of its 11 supersessions with none invented; treating every
+relation as single-valued recovered 8 and invented 22.
+
+**Promotion needs an exact key.** A soft node is promoted when its name is
+exactly the canonical key of one registered node of the kind it claimed, in its
+org, and the resolution is recorded at tier `registry`. An alias such as
+"P. Raman" is not exact, so dream counts it in `soft_left_for_a_judge` rather
+than guessing.
+
+**A second run does nothing.** Each run is a row in `aiq.dream_runs`, and the
+next starts where the last ended.
 </details>
 
 ## Where it fails loudly

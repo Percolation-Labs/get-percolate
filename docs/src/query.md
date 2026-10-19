@@ -334,5 +334,228 @@ claims</a> ·
 <a href="operating.html">what to watch in production</a></p>
 </details>
 
+## Following a relation you cannot name
+
+`GRAPH` walks a relation you name. Sometimes the question is only "how does
+this reach a port?", and the relation is whatever the data turns out to hold.
+
+Here we start from Meridian's bulk operator and ask for the ports it reaches,
+without saying how.
+{: .goal }
+
+<!-- run: sql as:tenant-a -->
+```sql
+select aiq.sql_passthrough($q$
+  select round, key, entity_type, resolved, path
+    from aiq.iterated_join('merb', 'port', 3)$q$);
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the walk, as the Meridian reader</div>
+
+```
+[{"key": "rotterdam", "round": 2, "resolved": true, "entity_type": "port",
+  "path": [{"from": "merb (operator)", "to": "bulk harmony (vessel)",
+            "via": "operated_by (inverse)", "link": "edge", "score": 1.000},
+           {"from": "bulk harmony (vessel)", "to": "rotterdam (port)",
+            "via": "last_called", "link": "edge", "score": 1.000}]}]
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — every hop says which kind of link it was, and the walk
+has a stated bound</summary>
+
+`aiq.iterated_join(seed, target_type, max_rounds, …)` walks out from one node a
+round at a time until it reaches nodes of the target type. Each hop is one of
+four kinds of link, and `path` names which: a stored edge of any relation,
+walked either way; a key two nodes share; a name similar above a threshold
+(`p_similarity`, never "the nearest k", so a weak match is not promoted for
+being the best of a bad lot); or a judge's verdict. The judged kind needs a
+function named in `percolate.link_judge`, and asking for it without one is
+refused by name, because a model call cannot run inside the statement.
+
+The bound is part of the call. `max_rounds` must be between 1 and 5, a round
+that has more candidates than `p_budget` defers the rest to the next round
+rather than dropping them, and a walk that reaches nothing returns one row
+with `resolved` false saying so, instead of an empty result that looks like a
+missing fixture. The seed must name exactly one node: a key two nodes hold is
+refused, rather than walked from whichever came first.
+
+It is a function, so P8QL reaches it through its SQL mode, which `aiq.query`
+plans and `aiq.sql_passthrough` runs as the caller.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-p8ql.html#plain-sql-is-a-mode">SQL as a mode</a> ·
+<a href="graph.html">graph algorithms</a></p>
+</details>
+
+## Finding a question by what it means
+
+A person rarely asks a question in the words somebody else filed it under, so
+questions are searched by meaning, and each answer comes with the stances of
+the claims that answer it.
+
+Here we file two questions, answer one, and find it from a differently worded
+question. The block signs you in as yourself, a member of Meridian, so the
+questions are yours and the next section can read Meridian's facts.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+insert into rbac.org_members (org_id, user_id)
+select 'd0000000-0000-0000-0000-00000000000a', id from rbac.users where email = 'me@example.com'
+on conflict do nothing;
+
+select set_config('request.jwt.claims', json_build_object(
+         'sub', (select id from rbac.users where email = 'me@example.com'),
+         'orgs', json_build_array('d0000000-0000-0000-0000-00000000000a'))::text, false) is not null as signed_in;
+
+insert into aiq.embedding_models (name, dim, provider, endpoint, is_default, notes)
+values ('tour-3d', 3, 'openai', 'https://example.invalid/v1/embeddings', false,
+        'three dimensions, written by hand, so this page runs without a model');
+select aiq.register_embedding_space('tour-3d') is not null as space_ready;
+
+select (research.submit_package('{"schema_version": "0.1", "title": "Port state control",
+  "visibility": "listed", "edges": [],
+  "claims": [{"id": "C1", "kind": "Inference",
+              "text": "Detentions follow inspections that find structural faults.",
+              "source_ids": ["S1"]}],
+  "sources": [{"id": "S1", "title": "Detention list", "url": "https://example.com/psc",
+               "origin": "Tour"}]}')->>'revision_id') as rev \gset
+
+select claims.pose_question('Does a detention usually follow a structural fault?') as q_detention \gset
+select claims.pose_question('Should pilots board at the outer buoy?') as q_pilots \gset
+select claims.propose_answer(:'rev', 'C1', :'q_detention', 'yes') is not null as answered;
+
+insert into aiq.emb_tour_3d (chunk_id, embedding) values
+  (:'q_detention', '[1, 0, 0]'), (:'q_pilots', '[0, 1, 0]');
+
+select phrasing, round(distance::numeric, 3) as distance, within, yes, no, depends
+  from claims.find_question('[0.9, 0.1, 0]'::vector, 0.5, 2, 'tour-3d');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the nearest questions to the vector [0.9, 0.1, 0]</div>
+
+```
+                      phrasing                       | distance | within | yes | no | depends
+-----------------------------------------------------+----------+--------+-----+----+---------
+ Does a detention usually follow a structural fault? |    0.006 | t      |   1 |  0 |       0
+ Should pilots board at the outer buoy?              |    0.890 | f      |   0 |  0 |       0
+(2 rows)
+```
+</div>
+
+A question's answer can be read as of any date, and `claims.stance_changes`
+says which claims moved it between two:
+
+<!-- run: sql -->
+```sql
+select claim_key, stance_then, stance_now, change
+  from claims.stance_changes(:'q_detention', now() - interval '1 day');
+```
+
+<div class="evidence" markdown="1">
+<div class="label">what changed in the last day</div>
+
+```
+ claim_key | stance_then | stance_now | change
+-----------+-------------+------------+--------
+ C1        |             | yes        | added
+(1 row)
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — a question is a corpus like any other, and distance ranks
+without deciding</summary>
+
+A question's text, its phrasing or else its frame's subject and outcome, is
+registered as the semantic source `questions`, so its vectors live in a model's
+embedding space keyed by the question's id, beside the chunks and claims.
+`claims.find_question(vector, max_distance, limit, model, at)` returns the
+nearest questions the caller may read, each with `within`, whether it falls
+inside the distance the caller set. The floor has no default, because what
+counts as close depends on the model, and "nothing close enough" is an answer:
+the nearest question is still shown, so the caller sees what it missed.
+
+The vectors above are written by hand so the page runs without a model. On a
+deployment, `claims.install_question_embed_workflow(model)` defines a workflow
+that embeds every question a space lacks, through the model's HTTP endpoint,
+and the query vector is embedded the same way, as for `SEMANTIC`. A question is
+readable only when a work the caller may read answers it, so a question nobody
+has answered is not found at all, by meaning or by words.
+
+<p class="related"><strong>Related</strong>
+<a href="grammar-p8ql.html#the-three-search-modes-and-why-there-are-three">the
+search modes</a> ·
+<a href="#over-rest-and-the-two-things-that-look-like-bugs">sending a vector
+over REST</a></p>
+</details>
+
+## A remembered fact bears on a question
+
+The memory graph holds facts and the questions graph holds arguments, and a link
+between them says that a fact matters to a question, without saying what the
+fact concludes.
+
+Here we propose that a vessel's last port of call bears on the detention
+question, and read the link from both ends.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select e.id as fact from aiq.edges e
+  join aiq.nodes s on s.id = e.src_id
+ where e.relation = 'last_called' and s.summary like 'Bulk Harmony%' \gset
+
+select claims.propose_bears_on(:'fact', :'q_detention', 0.7) is not null as proposed;
+
+select phrasing, status, p from claims.questions_of_fact(:'fact');
+select content, status, p from claims.facts_on_question(:'q_detention');
+
+select set_config('request.jwt.claims', '', false);
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the link, read from the fact and from the question</div>
+
+```
+                      phrasing                       |  status  |  p
+-----------------------------------------------------+----------+-----
+ Does a detention usually follow a structural fault? | proposed | 0.7
+(1 row)
+
+                            content                            |  status  |  p
+---------------------------------------------------------------+----------+-----
+ Bulk Harmony (IMO 9407711) last called Rotterdam, Netherlands | proposed | 0.7
+(1 row)
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — a link, never a verdict, and readable only with both of
+its ends</summary>
+
+`claims.bears_on` records who proposed a link and with what probability, and
+later whether a person confirmed or disputed it, as new rows rather than edits.
+It carries no stance: what the fact says about the question is read from the
+fact by whoever reads it, and a stored stance would be a conclusion the graph
+drew for them. An agent's proposal and a person's both land `proposed`, and only
+a person can confirm one, with `claims.review_bears_on`.
+
+A link is visible only to a caller who may read the fact and the question, so a
+link can never disclose either. On a deployment the proposals come from a
+workflow, `claims.install_fact_question_workflow`, which offers each unlinked
+fact its nearest questions by distance and lets a decider choose among them or
+"none of these": distance says where to look, and never makes the link.
+
+<p class="related"><strong>Related</strong>
+<a href="graph.html#a-fact-is-no-more-visible-than-the-memory-it-came-from">a
+fact's visibility</a> ·
+<a href="#finding-a-question-by-what-it-means">finding a question</a></p>
+</details>
+
 Next: [graph algorithms](graph.html), which asks harder questions of the same
 graph; [the P8QL grammar](grammar-p8ql.html) has the modes themselves.

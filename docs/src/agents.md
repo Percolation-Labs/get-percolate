@@ -27,23 +27,26 @@ when it answered.
 | Conversation state and history | The conversation's recent messages, with a summary of older ones at the oldest end once one has been written | [the rest of what the row carries](#the-rest-of-what-the-row-carries) |
 | Retrieved knowledge | Query results from the world model, fetched by a tool call during the turn | [citations](#citations-are-derived-not-asked-for), [querying](query.html) |
 | Tool definitions and outputs | The tool servers the agent binds, narrowed by its allowlist, and what those calls return | [tools](#tools-are-external-and-they-are-rows), [delegation](#delegation-is-an-ordinary-tool-call) |
-| Memory systems | What earlier sessions wrote back into the world model, found by the same retrieval as knowledge | not shipped yet |
+| Memory systems | What earlier sessions wrote back into the world model, found by the same retrieval as knowledge | [memory from a conversation](ingest.html#memory-from-a-conversation) |
 
 Retrieval is not a step the runtime runs before calling the model. The agent
 asks for it through a tool, the result sits in the context for that turn, and
 afterwards only the citation is kept, so the next turn fetches again against the
-current index. Memory, when it arrives, lives in the same tables as knowledge,
-and the difference between the two is where a row came from: a source you
-ingested, or the system's own use.
+current index. Memory lives in the same tables as knowledge, and the difference
+between the two is where a row came from: a source you ingested, or a
+conversation `reflect_session` read back into the graph, each fact citing the
+message that said it.
 
-Two gaps in what percolate-core @@core@@ assembles. The runtime does not yet
-read an agent's [skills](skills.html), so its system instructions are the
-`system_prompt` and the context block and nothing else. And the summary slot is
-read on every turn, but the `summarize_session_window` workflow that writes it
-is not installed by a stock install, so a long conversation is windowed without
-a summary of what fell out. Nothing shipped writes memory from a conversation
-yet, and the summary is not memory: it belongs to one conversation and is never
-carried into another.
+The system instructions are the agent's `system_prompt`, then its pinned
+[skills](skills.html) as a `<skills>` block, read as the person talking to the
+agent so a skill they cannot read is not composed in, then the context block.
+Skills an agent would match or fetch during a turn are not built. One gap
+remains in what percolate-core @@core@@ assembles: the summary slot is read on
+every turn, but the `summarize_session_window` workflow that writes it is not
+installed by a stock install, so a long conversation is windowed without a
+summary of what fell out. The summary is not memory: it belongs to one
+conversation and is never carried into another. Memory from a conversation is
+`reflect_session`, which you start yourself ([ingest](ingest.html#memory-from-a-conversation)).
 
 ## Write the spec
 
@@ -332,6 +335,21 @@ neither is about the agent:
   and the turn fails with a 404. A runtime with REM-973 sends `openai:` to
   `/chat/completions` on its own whenever the base URL is not OpenAI's, so
   `openai-chat:` is right on every version.
+- **A key the provider refuses is final, and says which key.** Asked for the
+  whole answer (`"stream": false`, which is how an `agent:` workflow step calls
+  it), the runtime answers with the provider's own status rather than a 502:
+  `401` or `403` for a refused key, with a detail naming the model and the
+  variable it is read from, and `429` with code `insufficient_quota` for an
+  account with no credit. A workflow step reads either as final and fails once,
+  where it used to retry five times on "the provider failed; worth retrying".
+  An outage or a plain rate limit is still a 502, and is still retried
+  (REM-987):
+
+  ```
+  {"detail": "run …: the model provider answered HTTP 401 for model openai:gpt-4o-mini:
+   the provider refused the credential; check the key and its permissions;
+   the key is read from OPENAI_API_KEY", …}
+  ```
 
 <!-- run: sql -->
 ```sql
@@ -736,12 +754,10 @@ HINT:  needs agents:invoke, and the agent must be visible to you
 Delegation follows from that. A router's allowlist says which agents it may
 try, and the database says which of those each caller's request may reach, so
 one router shared with a whole office hands a member's request only to agents
-that member could have called directly. One gap remains in the runtime: in
-percolate-core @@core@@ a router's list of agents is built once, when its tool
-server is synced, and shared by every caller, so a router lists only agents
-nobody owns. Building that list per caller is
-[percolate-core #106](https://github.com/Percolation-Labs/percolate-core/pull/106),
-not yet released; the refusal above holds either way, because it is the
+that member could have called directly. The router is offered that same list:
+its catalogue of agents is built per caller, from the agents the caller may
+read, so a member's router names the office's shared agents and their own and
+nothing of anyone else's. The refusal above holds either way, because it is the
 database's.
 
 <p class="related"><strong>Related</strong>

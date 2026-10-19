@@ -229,6 +229,47 @@ select r->>'key' as key, r->>'match_kind' as match_kind
 visible</a></p>
 </details>
 
+## A fact that held then
+
+A fact in the graph holds over a period: from when a writer says it began, until
+a later one closes it. `GRAPH ... AS OF` walks the edges that held at a time
+you name, so "where was it in February" is one line.
+{: .goal }
+
+Here a vessel is berthed at Rotterdam from January, a later report moves it to
+Felixstowe on 1 March, and the walk is asked either side of the move:
+
+<!-- run: sql -->
+```sql
+select aiq.register_graph_vocabulary('[{"relation":"berthed_at"}]');
+select aiq.upsert_graph('{"nodes":[{"k":"vessel","n":"Morrow Lark"},{"k":"port","n":"Rotterdam"}],
+  "edges":[{"s":0,"t":1,"r":"berthed_at"}]}', '{"agent":"docs","valid_from":"2026-01-10T00:00:00Z"}');
+select aiq.close_edge(jsonb_build_object('edge_id', e.id), '2026-03-01T00:00:00Z', '{"agent":"docs"}')
+  from aiq.edges e join aiq.node_keys k on k.node_id = e.dst_id
+ where k.key = 'port/rotterdam' and e.relation = 'berthed_at';
+select aiq.upsert_graph('{"nodes":[{"k":"vessel","n":"Morrow Lark"},{"k":"port","n":"Felixstowe"}],
+  "edges":[{"s":0,"t":1,"r":"berthed_at"}]}', '{"agent":"docs","valid_from":"2026-03-01T00:00:00Z"}');
+
+select (select string_agg(r->>'key', ', ')
+          from jsonb_array_elements(aiq.query('GRAPH "Morrow Lark" AS OF ''2026-02-01''')->'rows') r) as february,
+       (select string_agg(r->>'key', ', ')
+          from jsonb_array_elements(aiq.query('GRAPH "Morrow Lark"')->'rows') r) as now;
+-- port/rotterdam | port/felixstowe
+```
+
+<details class="why" markdown="1">
+<summary>Why it works — a writer states the start, and closes one fact</summary>
+
+`aiq.upsert_graph` takes `valid_from` in its context, so a fact loaded today
+about January holds from January; when two sources state different starts, the
+earliest wins. `aiq.close_edge` ends exactly one current edge at a stated time,
+named by its id or by the memory that asserted it and its relation, and records
+who closed it; a close that names no edge, or several, is refused. Both are the
+worker's calls: run here as the owner, they are what an extractor or a
+reconciler writes. The rows stay, so the history is a query over
+`aiq.edge_periods`, each period with the provenance that began it.
+</details>
+
 ## The property graph costs no migration
 
 Here we query a graph without having adopted a graph database.

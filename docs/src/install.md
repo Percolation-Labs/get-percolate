@@ -474,7 +474,8 @@ Here we connect the agent you already use, such as Claude Code, to Percolate as
 yourself.
 {: .goal }
 
-The query MCP server is on port 8090. It holds no credential of its own: it
+The query MCP server is on port 8090 of this machine only (127.0.0.1). It holds
+no credential of its own: it
 forwards your token to PostgREST, so every tool call runs as you, under your
 row policies. Beside `query` it offers the tools a connected agent judges and
 remembers with: `list_judgements`, `claim_judgement`, `decide_judgement` and
@@ -482,7 +483,7 @@ remembers with: `list_judgements`, `claim_judgement`, `decide_judgement` and
 `land_message_facts` for a conversation's facts.
 
 ```bash
-claude mcp add --transport http percolate http://localhost:8090/mcp \
+claude mcp add --transport http percolate http://localhost:8090 \
   --header "Authorization: Bearer $TOKEN"
 ```
 
@@ -491,14 +492,14 @@ Claude Desktop reaches a local HTTP server through a bridge, configured in
 
 ```json
 {"mcpServers": {"percolate": {"command": "npx",
-  "args": ["mcp-remote", "http://localhost:8090/mcp",
+  "args": ["mcp-remote", "http://localhost:8090",
            "--header", "Authorization: Bearer <your token>"]}}}
 ```
 
 The token expires (`exp`), and an expired one makes every call fail at
 PostgREST; mint a new one and update the header. A call with no token is
-refused (`401`, `permission denied for schema aiq`). On a machine other people
-can reach, set `P8_QUERY_MCP_PORT` to `127.0.0.1:8090` in `.env` all the same.
+refused (`401`, `permission denied for schema aiq`). `P8_QUERY_MCP_PORT` in
+`.env` moves the port if 8090 is taken.
 
 <div class="evidence" markdown="1">
 <div class="label">the same call, before and after</div>

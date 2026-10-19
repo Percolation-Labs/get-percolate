@@ -218,7 +218,7 @@ helm install percolate oci://ghcr.io/percolation-labs/charts/percolate \
 ```
 
 You get the database, PostgREST, the three services, two worker pools — `http`
-and `ingest` — and MinIO.
+and `ingest` — and an S3 store (RustFS, under the name `minio`, as in compose).
 
 **Keep `percolate-values.yaml`.** Upgrades take it with `-f`; generating the
 passwords again writes new ones into the Secret while the database keeps the

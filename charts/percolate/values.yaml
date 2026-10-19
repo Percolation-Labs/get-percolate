@@ -291,16 +291,16 @@ workers:
 # ---------------------------------------------------------------------------
 # Object storage. Required: an oversized step output is offloaded to it and
 # refd from the task, and the Content Server keeps every uploaded byte there.
-# The bundled MinIO is for getting started; point `external` at S3, R2, GCS or
-# your own MinIO for anything you care about.
+# The bundled store (RustFS, under the name `minio`) is for getting started;
+# point `external` at S3, R2, GCS or your own MinIO for anything you care about.
 # ---------------------------------------------------------------------------
 minio:
   enabled: true
-  # Pinned to the release the compose file runs, for the database image's
-  # reason: `latest` moves under an existing install.
-  # MinIO's own registry: `minio/minio` on Docker Hub stopped resolving on
-  # 2026-09-11. Same image, same id.
-  image: {repository: quay.io/minio/minio, tag: RELEASE.2025-09-07T16-13-09Z}
+  # RustFS, the image and digest the compose file runs, for the database
+  # image's reason: a tag moves under an existing install. MinIO's free images
+  # no longer pull: minio/minio stopped resolving on Docker Hub on 2026-09-11,
+  # and quay.io/minio/minio refuses anonymous pulls.
+  image: {repository: rustfs/rustfs, tag: "1.0.3@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b"}
   persistence: {enabled: true, size: 50Gi, storageClass: ""}
 
 # ---------------------------------------------------------------------------

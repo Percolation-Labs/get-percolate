@@ -607,6 +607,102 @@ maintained separately.
 thread</a></p>
 </details>
 
+## Sharing an agent with a team
+
+Who may use an agent is decided by the same row policy that decides who may read
+it, so sharing one with a team is a column on the row rather than a setting in a
+service.
+
+Here we give Meridian's office a dispatcher they can all use, and keep a second
+agent nobody in the office can see.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select (agentic.upsert_agent($j${
+  "name": "harbour_desk",
+  "system_prompt": "Route the request to whoever on the desk handles it.",
+  "org_id": "d0000000-0000-0000-0000-00000000000a", "visibility": "org"
+}$j$::jsonb)).name;
+
+select (agentic.upsert_agent($j${
+  "name": "night_audit",
+  "system_prompt": "Review the day's port calls for anomalies.",
+  "visibility": "private"
+}$j$::jsonb)).name;
+```
+
+A member of Meridian reads the first and not the second, through the same view
+every client lists agents from. Here we ask as the sample's Meridian reader, and
+switch back afterwards:
+
+<!-- run: sql -->
+```sql
+select set_config('request.jwt.claims',
+         '{"sub": "e0000000-0000-0000-0000-00000000000a",
+           "orgs": ["d0000000-0000-0000-0000-00000000000a"]}', false) is not null as as_meridian;
+set role authenticated;
+
+select name, visibility from agentic.agents_api
+ where name in ('harbour_desk', 'night_audit') order by name;
+
+reset role;
+reset request.jwt.claims;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">what the Meridian reader sees</div>
+
+```
+     name     | visibility
+--------------+------------
+ harbour_desk | org
+(1 row)
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — reach is a row policy, so a router hands on only what its
+caller may read</summary>
+
+`visibility` is one of `private`, `org` and `public`, and `org_id` says which
+organisation an `org` row belongs to. The read policy on `agentic.agents` admits
+a row that is public, that the caller owns, or that belongs to an organisation
+the caller is a member of, and nothing else. Membership is a row in
+`rbac.org_members`, so adding a person to the office is how they get the
+office's agents, and removing them takes the agents away at their next request.
+
+Invoking is the same question asked once more. `agentic.may_invoke(name)` is true
+only when the caller may read the agent **and** holds `agents:invoke`, and
+`agentic.start_run` asks it before a run exists, so a request for an agent the
+caller cannot see is refused rather than run:
+
+<div class="evidence" markdown="1">
+<div class="label">the same reader, <code>select agentic.start_run('night_audit')</code></div>
+
+```
+ERROR:  not authorized to invoke agent night_audit
+HINT:  needs agents:invoke, and the agent must be visible to you
+```
+</div>
+
+Delegation follows from that. A router's allowlist says which agents it may
+try, and the database says which of those each caller's request may reach, so
+one router shared with a whole office hands a member's request only to agents
+that member could have called directly. One gap remains in the runtime: in
+percolate-core @@core@@ a router's list of agents is built once, when its tool
+server is synced, and shared by every caller, so a router lists only agents
+nobody owns. Building that list per caller is
+[percolate-core #106](https://github.com/Percolation-Labs/percolate-core/pull/106),
+not yet released; the refusal above holds either way, because it is the
+database's.
+
+<p class="related"><strong>Related</strong>
+<a href="#delegation-is-an-ordinary-tool-call">delegation</a> ·
+<a href="graph.html#every-output-on-this-page-is-a-tenants-view">reading as a
+tenant</a></p>
+</details>
+
 ## The rest of what the row carries
 
 Everything above is the loop. These are the columns you reach for once one agent

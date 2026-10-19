@@ -293,6 +293,73 @@ desugaring</a> ·
 <a href="recipes.html">answering a question from your own corpus</a></p>
 </details>
 
+## When a search has more to say than its rows
+
+`TEXT`, `SEMANTIC` and `SEARCH` return `exceptions` beside `rows`: what the
+result means for whoever reads it, said by the database that counted it, so a
+model reading the answer learns it is partial, empty or too broad instead of
+treating a page of rows as the whole story.
+
+Here we search a small log three ways and read what each answer says about
+itself.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+create table public.pilot_log (id uuid primary key default gen_random_uuid(), body text not null);
+insert into public.pilot_log (body) values
+  ('The pilot boarded at the outer buoy'),
+  ('Pilot launch delayed by fog'),
+  ('A second pilot was requested for the night transit');
+select aiq.register_lexical_source('pilot_log', 'public.pilot_log', 'body', 'english');
+
+select aiq.query('TEXT "pilot" FROM pilot_log LIMIT 2')->'exceptions';
+select aiq.query('TEXT "zeppelin" FROM pilot_log LIMIT 5')->'exceptions';
+select aiq.query('TEXT "pilot" FROM pilot_log LIMIT 5')->'exceptions';
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the three answers, in order</div>
+
+```
+[{"code": "TRUNCATED_AT_LIMIT", "stage": "result", "severity": "warning",
+  "prompt": "The result filled the limit, so more matches exist. The answer may be partial: page further or say so.",
+  "evidence": {"limit": 2, "total": 3, "capped": false, "returned": 2}}]
+
+[{"code": "EMPTY", "stage": "result", "severity": "warning",
+  "prompt": "Nothing matched. Rephrase in the records' own words, widen the filters, or report that the store holds nothing on this.",
+  "evidence": {}}]
+
+[]
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — only the store knows how many rows matched, so the store
+raises it</summary>
+
+There are three codes, from the same catalogue percolate-core's agent runtime
+uses, and they are copied word for word so an agent sees one vocabulary
+wherever an exception comes from:
+
+| Code | When | What it tells the reader |
+|---|---|---|
+| `EMPTY` | nothing matched | say so, rather than answering from nothing |
+| `TRUNCATED_AT_LIMIT` | the limit cut the result | more matches exist; page further or say the answer is partial |
+| `TOO_BROAD` | far more matched than anyone could read | narrow the question before reading any of it |
+
+A client sees only the rows it was sent, so it cannot tell a result that ended
+from one the limit cut short. The database counts the matches in the same scan
+that ranks them, up to a bounded probe of 1,001, and the `evidence` says when it
+stopped counting (`"capped": true`) rather than reporting a number it did not
+reach. A search that returned everything it found raises nothing.
+
+<p class="related"><strong>Related</strong>
+<a href="#the-three-search-modes-and-why-there-are-three">the three search
+modes</a> ·
+<a href="query.html">querying</a></p>
+</details>
+
 ## Asking the database what it is
 
 Here we find out what this deployment accepts, before writing a query against

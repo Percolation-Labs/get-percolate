@@ -52,6 +52,11 @@ on:
       - '.github/workflows/images.yml'
   workflow_dispatch:
     inputs:
+      source_repo:
+        description: >-
+          repository the extension is built from; empty means vars.EXTENSION_REPO,
+          then vars.SPECS_REPO (the source moves to Percolation-Labs/percolate, REM-958)
+        default: ""
       ref:
         description: p8-subsystems ref to build from
         default: main
@@ -94,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: ${{ vars.SPECS_REPO }}
+          repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
       - name: Confirm the ref carries the version being released
@@ -136,7 +141,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          repository: ${{ vars.SPECS_REPO }}
+          repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
 
@@ -523,6 +528,7 @@ jobs:
     if: inputs.version != ''
     uses: ./.github/workflows/image-postgres.yml
     with:
+      source_repo: ${{ inputs.source_repo }}
       ref: ${{ inputs.ref }}
       version: ${{ inputs.version }}
       parser_release: v${{ inputs.version }}

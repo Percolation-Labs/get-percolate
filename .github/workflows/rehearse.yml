@@ -27,6 +27,11 @@ run-name: >-
 on:
   workflow_dispatch:
     inputs:
+      source_repo:
+        description: >-
+          repository the extension is built from; empty means vars.EXTENSION_REPO,
+          then vars.SPECS_REPO (the source moves to Percolation-Labs/percolate, REM-958)
+        default: ""
       p8_ref:
         description: p8-subsystems ref (full or short sha, branch or tag) the extension candidate is built from
         default: main
@@ -76,7 +81,7 @@ jobs:
       - id: refs
         env:
           GH_TOKEN: ${{ secrets.SOURCE_TOKEN }}
-          P8_REPO: ${{ vars.SPECS_REPO }}
+          P8_REPO: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           P8_REF: ${{ inputs.p8_ref }}
           CORE_REF: ${{ inputs.core_ref }}
         run: |
@@ -93,7 +98,7 @@ jobs:
           echo "core=$core" | tee -a "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
-          repository: ${{ vars.SPECS_REPO }}
+          repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ steps.refs.outputs.p8 }}
           path: p8
@@ -170,7 +175,8 @@ jobs:
           set -euo pipefail
           since=$(date -u -d '-2 minutes' +%Y-%m-%dT%H:%M:%SZ)
           gh workflow run parser.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" \
-            -f ref="$SHA" -f version= -f push_image=false
+            -f ref="$SHA" -f version= -f push_image=false \
+            -f source_repo="${{ inputs.source_repo }}"
           # parser.yml names its run `extension <version || ref>`, so a build-only
           # run is found by the SHA it was given, and by having started after this.
           id=""
@@ -200,6 +206,7 @@ jobs:
       actions: read            # the parser run's artifacts, when it compiled
     uses: ./.github/workflows/image-postgres.yml
     with:
+      source_repo: ${{ inputs.source_repo }}
       ref: ${{ needs.plan.outputs.p8_sha }}
       version: ${{ inputs.extension }}
       parser_release: v${{ needs.plan.outputs.published_extension }}
@@ -394,7 +401,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
         with:
-          repository: ${{ vars.SPECS_REPO }}
+          repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ needs.plan.outputs.p8_sha }}
           path: .specs

@@ -64,9 +64,12 @@ reader the same database rather than whatever their machine last pulled.
 Updating therefore means changing the tag, not pulling a moving one:
 
 ```bash
-# edit compose/docker-compose.yml: percolate-postgres:19-<old> -> :19-<new>
+echo 'P8_DB_IMAGE=percolationlabs/percolate-postgres:19-<new>' >> .env
 docker compose up -d
 ```
+
+`P8_DB_IMAGE` also runs a local build (`P8_DB_IMAGE=percolate-postgres:local`).
+Unset, the file's pin applies.
 
 That is the chosen half of a trade. A floating `:19` makes "works on my
 machine" literally true and unfalsifiable: a stale local copy serves an older
@@ -150,6 +153,19 @@ catching, because everything else in the row is then about the wrong build.
 It answers from the image and the Helm chart; an install from the release files
 returns no rows, because the build is recorded when the image is built and the
 files carry no such record.
+
+**A database you did not just create says so here.** Compose reattaches the
+volume of an earlier install that used the same project name, and the new image
+then starts on the old database without a word. Compare the two versions:
+
+```bash
+docker compose exec db psql -U p8 -d percolate -tAc "select extversion from pg_extension where extname='percolate'"
+docker compose images db              # the image tag this file started
+```
+
+On a fresh install they match. An older `extversion` means the database
+predates the image: update it as above, or start clean with
+`docker compose down -v`, which deletes that database and its uploads.
 
 <details class="why" markdown="1">
 <summary>Why it works — the database installs itself, and `missing` is the field

@@ -79,7 +79,7 @@ def rules(v: dict) -> list[tuple[str, re.Pattern, str, str]]:
         # floating was the file being inconsistent about the single thing this
         # script exists to make consistent.
         ("compose/docker-compose.yml",
-         re.compile(r"image: percolationlabs/percolate-postgres:19-([0-9]+\.[0-9]+\.[0-9]+)"),
+         re.compile(r"image: \$\{P8_DB_IMAGE:-percolationlabs/percolate-postgres:19-([0-9]+\.[0-9]+\.[0-9]+)\}"),
          v["extension"], "the compose file pulls this database image"),
         # The chart's database image, for the compose file's reason above. It
         # floated at "19" after compose was pinned, which is the inconsistency

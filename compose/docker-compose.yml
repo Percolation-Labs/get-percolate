@@ -16,8 +16,8 @@
 # This file is spelled out so that each thing the system does has somewhere
 # obvious to look: the REST surface is postgrest, outbound HTTP is worker,
 # reading uploaded files is ingest-worker, uploads are content, model turns are
-# agent, bytes are minio. Read it as the list of roles, not as a deployment
-# target.
+# agent, bytes are minio (RustFS, under that name). Read it as the list of
+# roles, not as a deployment target.
 #
 # In practice one or two processes cover all of it. The three
 # percolate-core services are ONE IMAGE under three commands, so a small
@@ -455,17 +455,38 @@ services:
     command: ["query", "mcp", "--port", "8090", "--postgrest", "http://postgrest:3000"]
 
   minio:
-    # From MinIO's own registry. `minio/minio` on Docker Hub stopped resolving
-    # on 2026-09-11 ("pull access denied ... repository does not exist"), which
-    # broke every `docker compose up`; this is the same image, same id.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # RUSTFS, NOT MINIO, under the old service name. MinIO's community images
+    # are gone: Docker Hub's `minio/minio` stopped resolving on 2026-09-11, and
+    # quay.io/minio/minio refuses anonymous pulls, so a stranger's
+    # `docker compose up` failed here (REM-981). RustFS (Apache-2.0) passed the
+    # same checks as MinIO against percolate-core's own storage and lake code
+    # (p8-subsystems research-notes/object-store-2026-10-19/). The fallback is
+    # chrislusf/seaweedfs:4.48 (`server -s3`, port 8333, probe /healthz), which
+    # passed them too.
+    #
+    # The service name, the MINIO_* variables, the ports and the `miniodata`
+    # volume are kept, so every endpoint and every existing .env still works.
+    #
+    # ROOT, because a returning reader's `miniodata` holds MinIO's files, owned
+    # by root. RustFS reads MinIO's layout (measured: the bucket and the object
+    # MinIO wrote came back), but as its default user, uid 10001, it exits with
+    # "Permission denied". MinIO ran as root here too.
+    #
+    # Pinned by digest: the multi-arch index of rustfs/rustfs:1.0.3.
+    image: rustfs/rustfs:1.0.3@sha256:9ca9559533b537d10482fe923288b676ad08f92a7069d9a17327fbae3cab688b
     restart: unless-stopped
-    command: server /data --console-address ":9001"
+    user: "0:0"
     environment:
-      MINIO_ROOT_USER: ${MINIO_USER:-p8admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-p8password}
+      RUSTFS_ACCESS_KEY: ${MINIO_USER:-p8admin}
+      RUSTFS_SECRET_KEY: ${MINIO_PASSWORD:-p8password}
     ports: ["${P8_MINIO_PORT:-9000}:9000", "${P8_MINIO_CONSOLE_PORT:-9001}:9001"]
     volumes: ["miniodata:/data"]
+    healthcheck:
+      # MinIO's readiness path, which RustFS answers, as the chart's probe does.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
 
 volumes:
   pgdata:

@@ -421,6 +421,61 @@ throttle this branch creates for you</a> ·
 <a href="failure.html#fan-out-and-partial-failure">what a failed window does</a></p>
 </details>
 
+## Memory from a conversation
+
+A file is one way facts arrive. A conversation is the other: what a person
+tells an agent is worth keeping, and the same extractor can read it.
+
+Here we install the workflow that reads a finished conversation into the graph,
+and look at what it leaves behind.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select agentic.install_reflect_workflow('gpt-4o-mini');
+-- reflect_session: each message the user wrote, graph-indexed with structure_null (gpt-4o-mini)
+```
+
+Start it for a session once the conversation is over. It runs as an ordinary
+workflow, so the run is a trace like any upload's:
+
+```sql
+select workflow.start_workflow('reflect_session', '{"session_id": "<the session>"}');
+```
+
+Every fact it writes names the session and the message that said it, and holds
+from when it was said rather than from when it was read. That is enough to put
+the memory, the fact and the words side by side:
+
+<!-- run: sql -->
+```sql
+select m.created_at as said_at, m.content as said, e.relation,
+       src.summary as subject, dst.summary as object, e.valid_from
+  from aiq.edges e
+  cross join lateral jsonb_array_elements(e.provenance->'sources') s
+  join agentic.messages m on s->'message_ids' ? m.id::text
+  join aiq.nodes src on src.id = e.src_id
+  join aiq.nodes dst on dst.id = e.dst_id
+ order by m.created_at;
+```
+
+<details class="why" markdown="1">
+<summary>Why it works — a window per thing the person said, scoped like the session</summary>
+
+`reflect_session` is the upload's graph branch pointed at a conversation: a
+matrix over `agentic.session_windows(session_id)`, the same extractor row, the
+same `land_graph_windows`. A window is one message **the person** wrote; the
+agent's replies are context and are not read, so an agent saying "you live in
+Leeds" never becomes the fact.
+
+The session scopes what lands, the way a document's resource does: a private
+conversation's facts are its owner's, a conversation shared with an org is
+readable by the org, and one made private again takes its facts with it,
+because every read of an edge asks whether the caller may still read the
+session it came from. Reflecting the same conversation twice adds no second
+source. (REM-969.)
+</details>
+
 ## Where it fails loudly
 
 Three of these exist because the alternative is a pipeline that reports success.

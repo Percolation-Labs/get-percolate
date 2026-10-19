@@ -259,6 +259,48 @@ rule for tool servers</a> ·
 <a href="install.html">where PostgREST and the agent runtime come from</a></p>
 </details>
 
+## Every change is kept
+
+An agent's earlier versions are rows you can select.
+{: .goal }
+
+Change the prompt with an ordinary `UPDATE` and ask the agent again: the
+runtime reads the row on every turn, so the next turn uses the new prompt with
+nothing restarted. What the `UPDATE` replaced is not lost:
+
+<!-- run: sql -->
+```sql
+update agentic.agents
+   set system_prompt = 'You answer questions about the fleet, in one sentence.'
+ where name = 'harbourmaster';
+
+select version, system_prompt, held_from, replaced_at, replaced_by, replaced_by_role
+  from agentic.agent_versions_api
+ where name = 'harbourmaster'
+ order by version;
+```
+
+Each row is a version that was replaced: the whole row as it was (in `agent`),
+when it was written, when it was replaced and who replaced it. `replaced_by` is
+the signed-in user, and is empty for an operator at a `psql` prompt;
+`replaced_by_role` is the database login either way. `upsert_agent`,
+`percolate agent push` and a plain `UPDATE` are recorded the same way, and a
+change that changes nothing writes no version. The current prompt is in
+`agents_api`, not here.
+
+<details class="why" markdown="1">
+<summary>Why it works — a trigger, and the agent's own read rule</summary>
+
+An `AFTER UPDATE` trigger on `agentic.agents` writes the row it replaced into
+`agentic.agent_versions`. It runs as the table's owner, so the version is
+written whoever made the change, and nobody can write one by hand: the table
+has no insert grant. A version is readable exactly when its agent is: the
+policy asks `agentic.agents`, so a private agent's history is its owner's.
+The runtime reading the row per turn is what makes "no redeploy" true: measured
+on percolate-core 0.2.5, a turn sent the old prompt, an `UPDATE` followed, and
+the next turn on the same process sent the new one.
+</details>
+
 ## Call it over REST
 
 The runtime has two HTTP endpoints. One runs a turn and streams it; the other
@@ -285,6 +327,21 @@ neither is about the agent:
   fails inside the stream, as a `RUN_ERROR` event. The sample already needs an
   OpenAI key, so the statement below points the row at an OpenAI model;
   `OPENAI_BASE_URL` aims the same client at any OpenAI-shaped gateway.
+- **A key the provider refuses is final, and says which key.** Asked for the
+  whole answer (`"stream": false`, which is how an `agent:` workflow step calls
+  it), the runtime answers with the provider's own status rather than a 502:
+  `401` or `403` for a refused key, with a detail naming the model and the
+  variable it is read from, and `429` with code `insufficient_quota` for an
+  account with no credit. A workflow step reads either as final and fails once,
+  where it used to retry five times on "the provider failed; worth retrying".
+  An outage or a plain rate limit is still a 502, and is still retried
+  (REM-987):
+
+  ```
+  {"detail": "run …: the model provider answered HTTP 401 for model openai:gpt-4o-mini:
+   the provider refused the credential; check the key and its permissions;
+   the key is read from OPENAI_API_KEY", …}
+  ```
 
 <!-- run: sql -->
 ```sql

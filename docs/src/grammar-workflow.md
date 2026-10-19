@@ -24,13 +24,22 @@ steps:
     rate_key: <a shared throttle consumed before the task can be claimed>
     compensate_with: <step id to run in reverse if a saga member fails>
     saga_group: <groups tasks compensated together>
+    when: <a SQL predicate; false or null skips the step>
     <exactly one action, from the table below>
+  - id: <a group of steps tried again until a check passes>
+    needs: [...]
+    repeat: {max: <1 to 20>, until: <a SQL predicate>, steps: [<steps, as above>]}
 ```
 
 Unknown keys are refused by name rather than ignored, which is
 `deny_unknown_fields`
 doing its job and is why a typo in a step key is a compile error rather than a
 missing feature that reports nothing.
+
+`when:` and `repeat:` are [below](#when-a-step-that-runs-only-if). They are
+newer than the rest of this page: an installed compiler that lists both under
+`accepts` in [`compiler_capabilities()`](#getting-this-page-from-your-own-database)
+has them.
 
 ## The nine actions
 
@@ -407,7 +416,11 @@ is one task here and a delegation tree there.
 `session_group` asks the **engine** for a session id, stable for the life of the
 run and bound to `{{run.$session}}`. Steps naming the same group share a
 conversation, two groups are two threads, and declaring neither stays stateless
-— the right default for a classifier.
+— the right default for a classifier. The step sends the id as `session_id`,
+which is the key the Agent Runtime reads, and the engine creates the
+`agentic.sessions` row for it, owned by whoever started the run, the first time
+a step needs it, so the runtime has a conversation to continue rather than an
+id it answers 404 to.
 
 `output_schema` is what makes the answer composable: the engine parses the
 model's JSON-in-a-string reply and checks it *before* storing, so the next step
@@ -533,7 +546,9 @@ to do it</summary>
 A `timer` moves when `workflow.promote_due_timers()` runs on the `pg_cron`
 minute that already ticks the engine. A `signal` step then sits in
 `waiting_external`, which is the status meaning a person is the dependency, and
-only `signal_task` moves it.
+only `signal_task` moves it. Both ask whether the run is finished once they
+have moved a step, as `complete_task` does, so a run whose last step is a
+signal or a timer ends `succeeded` when that step does.
 
 `signal_task` checks who you are, and a run with no owner is not owned by
 everyone: it takes an explicit permission against the run's owner, set from the
@@ -553,6 +568,181 @@ optional for timers</a> ·
 <a href="recipes.html">a pipeline that waits for a person</a></p>
 </details>
 
+## `when:` — a step that runs only if
+
+A step can carry a condition over the run's input and earlier results. When it
+does not hold, the step is skipped and the run carries on.
+
+Here we send a claim to review only when its score is over 0.5, and pay it
+either way.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select workflow.define_yaml($y$
+name: claim_gate
+steps:
+  - id: score
+    sql: "select {{run.score}} as v"
+  - id: review
+    needs: [score]
+    when: "{{steps.score.result.0.v}} > 0.5"
+    sql: "select 'reviewed' as r"
+  - id: pay
+    needs: [review]
+    sql: "select 'paid' as p"
+$y$);
+
+select workflow.start_workflow('claim_gate', '{"score": 0.2}'),
+       workflow.start_workflow('claim_gate', '{"score": 0.9}');
+
+select r.input->>'score' as score, t.step_key, t.status, r.status as run
+  from workflow.runs r
+  join workflow.definitions d on d.id = r.workflow_def_id
+  join workflow.tasks t on t.run_id = r.id
+ where d.name = 'claim_gate'
+ order by score, t.id;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">the two runs</div>
+
+```
+ score | step_key |  status   |    run
+-------+----------+-----------+-----------
+ 0.2   | score    | succeeded | succeeded
+ 0.2   | review   | skipped   | succeeded
+ 0.2   | pay      | succeeded | succeeded
+ 0.9   | score    | succeeded | succeeded
+ 0.9   | review   | succeeded | succeeded
+ 0.9   | pay      | succeeded | succeeded
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — skipped is a terminal success, so nothing after it
+waits or is cancelled</summary>
+
+The engine asks the predicate once, when the step's needs are done and it would
+otherwise become ready. True runs the step. False or null marks it `skipped`,
+which `workflow.lifecycle_states` records as terminal and a success, so the
+steps after it are released as they would be after a success, and a run of
+successes and skips has succeeded. A skipped step is never claimed, a skipped
+`signal` never waits for anybody, and a skipped step is never compensated,
+because it did nothing.
+
+Each `{{template}}` in a predicate is a bound value, as in a `sql:` statement,
+and a step it names must be in `needs`; the definition is refused otherwise. A
+skipped step's result is null, so a template naming it binds `NULL` and a
+comparison with it is null, which skips too. `when: "{{steps.review.result.0.r}}
+is null"` is therefore how a step asks whether `review` was skipped. A gate is
+a `when:` on every step it guards: `pay` above runs after a skipped `review`
+because it has no condition of its own.
+
+The predicate runs through `workflow.run_sql`, as a `sql:` step does: read-only,
+under `percolate.sql_policy`, and as the run's owner, so row policies apply to
+whatever it reads. One that cannot be evaluated fails its step and the run,
+with `when: <the error>` as the step's error
+([failure](failure.html#a-step-that-did-not-need-to-run)).
+
+<p class="related"><strong>Related</strong>
+<a href="failure.html#a-step-that-did-not-need-to-run">skipped, failed and
+cancelled</a> ·
+<a href="#sql-steps-run-sql">how a template binds in SQL</a></p>
+</details>
+
+## `repeat:` — try again until a check passes
+
+A group of steps can run again until a check over its own results holds, up to
+a number of attempts stated in the document.
+
+Here we count up one attempt at a time until the count reaches the run's
+target, at most four times. Each attempt reads the one before it, and the check
+holds at the second.
+{: .goal }
+
+<!-- run: sql -->
+```sql
+select workflow.define_yaml($y$
+name: count_to
+steps:
+  - id: loop
+    repeat:
+      max: 4
+      until: "{{steps.count.result.0.n}} >= {{run.target}}"
+      steps:
+        - id: count
+          sql: "select coalesce({{previous.count.result.0.n}}, 0) + 1 as n"
+$y$);
+
+select workflow.start_workflow('count_to', '{"target": 2}');
+
+select t.step_key, t.status, t.output->'result'->0 as result
+  from workflow.runs r
+  join workflow.definitions d on d.id = r.workflow_def_id
+  join workflow.tasks t on t.run_id = r.id
+ where d.name = 'count_to'
+ order by t.id;
+```
+
+<div class="evidence" markdown="1">
+<div class="label">one run of count_to</div>
+
+```
+ step_key |  status   |                                        result
+----------+-----------+--------------------------------------------------------------------------------------
+ count_1  | succeeded | {"n": 1}
+ count_2  | succeeded | {"n": 2}
+ count_3  | skipped   |
+ count_4  | skipped   |
+ loop     | succeeded | {"last": {"count": [{"n": 2}]}, "attempts": 2, "satisfied": true, "max_attempts": 4}
+```
+</div>
+
+<details class="why" markdown="1">
+<summary>Why it works — the compiler writes the attempts out, so a repeat is
+still a DAG</summary>
+
+Attempt n of `count` is the ordinary step `count_<n>`. The first steps of an
+attempt wait for the last steps of the attempt before, and every step of an
+attempt after the first carries `when: not (<until over the attempt before>)`.
+Once the check holds, the next attempt is skipped, and because a skipped step's
+result is null, so is every attempt after it. Each attempt is a task row a
+trace can read, and the bound is the number of rows written: `max` is required,
+from 1 to 20, and a repeat without it is refused.
+
+Inside the group, `{{steps.<inner>}}` is this attempt's step and
+`{{previous.<inner>}}` the attempt before. On the first attempt there is none:
+in SQL (`sql:`, `p8ql:`, `when:`) the template is `NULL`, quotes around it
+included, which is why `coalesce` starts the count at 0; anywhere else, such as
+an agent's input, it is removed. `until` must name at least one of the
+attempt's steps, and an inner step's own `when:` still applies alongside it.
+
+The repeat's id is a final step that waits for every attempt. The steps after
+the repeat read it rather than the attempts:
+
+| Template | Value |
+|---|---|
+| `{{steps.loop.result.0.attempts}}` | how many attempts ran |
+| `{{steps.loop.result.0.satisfied}}` | whether `until` held after the last of them |
+| `{{steps.loop.result.0.last.<inner>}}` | the last attempt's result for that step |
+
+An attempt can be any steps, agents included: a writer and a critic, with
+`until` over the critic's grade and the writer's input reading
+`{{previous.<critic>.result}}`, is the same document with two inner steps.
+
+`satisfied` false with `attempts` equal to `max` is a repeat that ran out, and a
+step after it can say what to do then with a `when:` of its own. Repeats do not
+nest, the group takes only `id`, `needs` and `repeat`, and an attempt's name
+must not collide with another step's id.
+
+<p class="related"><strong>Related</strong>
+<a href="#when-a-step-that-runs-only-if">the condition each attempt
+carries</a> ·
+<a href="#templates-and-the-one-rule-that-bites">every template
+namespace</a></p>
+</details>
+
 ## Templates, and the one rule that bites
 
 Four namespaces, all resolved at **dispatch** rather than at definition time.
@@ -563,6 +753,7 @@ Four namespaces, all resolved at **dispatch** rather than at definition time.
 | `{{run.$id}}`, `{{run.$trace_id}}`, `{{run.$session}}` | the run's own identity — `$` is reserved so an input key cannot shadow it |
 | `{{steps.<id>.result}}` | a completed step's output, dotted paths supported |
 | `{{item.<key>}}` | one matrix row, bound only on fan-out children |
+| `{{previous.<id>.result}}` | inside a `repeat:`, the attempt before's step; `NULL` in SQL on the first attempt |
 | `{{env.<VAR>}}` | the worker's environment. Never available to a `sql` step |
 
 <details class="why" markdown="1">
@@ -626,7 +817,8 @@ capability report rather than as a syntax error in a document that is not wrong.
 
 ```
  {"accepts": {"matrix": true, "output_schema": true, "continue_on": true,
-              "signal": true, "timer": true, "sub_workflow": true},
+              "signal": true, "timer": true, "sub_workflow": true,
+              "when": true, "repeat": true},
   "missing": []}
 ```
 </div>

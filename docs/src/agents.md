@@ -326,7 +326,12 @@ neither is about the agent:
   read here. A row naming a provider whose key is missing answers 200 and
   fails inside the stream, as a `RUN_ERROR` event. The sample already needs an
   OpenAI key, so the statement below points the row at an OpenAI model;
-  `OPENAI_BASE_URL` aims the same client at any OpenAI-shaped gateway.
+  `OPENAI_BASE_URL` aims the same client at any OpenAI-shaped gateway. Behind
+  a gateway, name the model `openai-chat:<model>`: plain `openai:` calls
+  OpenAI's Responses API, `/v1/responses`, which most gateways do not serve,
+  and the turn fails with a 404. A runtime with REM-973 sends `openai:` to
+  `/chat/completions` on its own whenever the base URL is not OpenAI's, so
+  `openai-chat:` is right on every version.
 
 <!-- run: sql -->
 ```sql

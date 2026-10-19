@@ -1,6 +1,8 @@
 {{- if .Values.minio.enabled }}
 {{- /*
-  Bundled MinIO, for getting started. Object storage is REQUIRED, not optional:
+  Bundled object store, for getting started: RustFS, S3-compatible, under the
+  name `minio` so services and values from earlier charts keep working (the
+  compose file does the same). MinIO's free images no longer pull anonymously. Object storage is REQUIRED, not optional:
   an oversized step output is offloaded to it and refd from the task, and the
   Content Server keeps every uploaded byte there. Point objectStorage.external
   at S3, R2, GCS or your own MinIO for anything you care about, and set
@@ -39,17 +41,32 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
+      # A VOLUME AN EARLIER CHART'S MinIO WROTE is owned by uid 1000, and RustFS
+      # runs as 10001 and cannot write it. This hands such a volume over once,
+      # and does nothing on a fresh one -- compose's `minio-perms`, here.
+      initContainers:
+        - name: hand-volume-to-rustfs
+          image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          securityContext: {runAsUser: 0, runAsNonRoot: false}
+          command: ["sh", "-c"]
+          args:
+            - |
+              if [ -n "$(find /data ! -user 10001 -print -quit)" ]; then
+                echo "data: files not owned by uid 10001 (a MinIO volume?), handing it to 10001"
+                chown -R 10001:10001 /data
+              fi
+          volumeMounts: [{name: data, mountPath: /data}]
       containers:
         - name: minio
           image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
-          args: ["server", "/data", "--console-address", ":9001"]
           env:
-            - name: MINIO_ROOT_USER
+            - name: RUSTFS_ACCESS_KEY
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: s3-key}}
-            - name: MINIO_ROOT_PASSWORD
+            - name: RUSTFS_SECRET_KEY
               valueFrom: {secretKeyRef: {name: {{ include "percolate.secretName" . }}, key: s3-secret}}
           ports:
             - {containerPort: 9000, name: api}

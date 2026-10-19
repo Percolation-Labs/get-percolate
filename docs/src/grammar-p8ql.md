@@ -28,7 +28,7 @@ how to send one.
 | Mode | Syntax | What it is for |
 |---|---|---|
 | `LOOKUP` | `[FUZZY] LOOKUP "<key>" [, "<key>" …] [LIMIT n]` | Resolve names to nodes. Takes a list, because an agent almost never holds exactly one entity |
-| `GRAPH` | `GRAPH "<key>" [DEPTH n] [TYPE <relation>] [LIMIT n]` | Walk relationships out from a named node, to a bounded depth |
+| `GRAPH` | `GRAPH "<key>" [DEPTH n] [TYPE <relation>] [AS OF '<time>'] [LIMIT n]` | Walk relationships out from a named node, to a bounded depth; `AS OF` walks the edges that held at that time |
 | `RELEVANCE` | `RELEVANCE "<key>" [, "<key>" …] [TYPE <relation>] [LIMIT n]` | Rank what is most related to one or more nodes. Not a walk — it returns an order |
 | `PATH` | `PATH "<a>", "<b>" [, "<c>" …] [DEPTH n] [TYPE <relation>] [LIMIT n]` | How are these connected? Two names give the best routes; three or more give the smallest subgraph joining them |
 | `TEXT` | `TEXT "<text>" FROM <source> [LIMIT n]` | Lexical search, needing no embedding anywhere |
@@ -44,6 +44,7 @@ never ignored:
 |---|---|---|
 | `DEPTH` | `GRAPH`, `PATH` | bounds a traversal — hops out, or the longest route worth considering |
 | `TYPE` | `GRAPH`, `RELEVANCE`, `PATH` | filters a relation on an edge |
+| `AS OF '<time>'` | `GRAPH` | walks the edges that held at that time rather than now; the time must start with a date ([a fact that held then](query.html#a-fact-that-held-then)) |
 | `LIMIT` | everywhere but `SCHEMA` | how many answers |
 | `FROM`, `USING` | `TEXT`, `SEMANTIC`, `SEARCH` | which corpus, which embedding space |
 | `FUZZY` | `LOOKUP` | trigram over `node_keys`, and only there |

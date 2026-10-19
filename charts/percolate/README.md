@@ -48,7 +48,7 @@ The CLI's default lifetime is an hour.
 | `Deployment/…-content` | uploads, ingestion, serving bytes back |
 | `Deployment/…-agent` | agents, AG-UI streaming, delegation |
 | `Deployment/…-worker-<name>` | one per entry in `workers`, one per queue |
-| `StatefulSet/…-minio` | object storage, for getting started |
+| `StatefulSet/…-minio` | object storage for getting started: RustFS, under MinIO's old name |
 
 No CRDs, and no operator. The only custom resources are KEDA's, emitted **only**
 if you turn autoscaling on.
@@ -195,9 +195,9 @@ decide whether this works at all:
 | `secrets.*` | the four passwords are required; see above |
 | `secrets.openaiApiKey`, `secrets.llmApiKey` | the model key and the embedding key; empty means agent turns and embedding fail at call time |
 | `secrets.workerApiKey` | the token `agent:` steps present to the Agent Runtime; empty means every agent step fails |
-| `secrets.s3Key`, `secrets.s3Secret` | object-store credentials; empty falls back to MinIO's well-known defaults |
+| `secrets.s3Key`, `secrets.s3Secret` | object-store credentials; empty falls back to `p8admin` / `p8password` |
 | `agent.env` | keys for providers other than OpenAI (`ANTHROPIC_API_KEY`, …) |
 | `postgres.extraArgs` | preloads pg_cron. Emptying it disables scheduling, silently as far as the workflow tables are concerned |
-| `objectStorage.external.endpoint` | real object storage; leave empty for the bundled MinIO |
+| `objectStorage.external.endpoint` | real object storage; leave empty for the bundled store (RustFS, as `…-minio`) |
 | `workers[]` | one entry per queue |
 | `ingress.hosts[].service` | which of the three surfaces a host routes to — they are different audiences |

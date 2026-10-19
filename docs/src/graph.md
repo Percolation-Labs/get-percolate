@@ -331,7 +331,7 @@ answers a depth-2 question in about a millisecond on the same graph. This earns
 its place when you need the order, not the neighbours.
 
 <p class="related"><strong>Related</strong>
-<a href="query.html#the-property-graph-costs-no-migration">`GRAPH`, for one and
+<a href="query.html#the-graph-costs-no-migration">`GRAPH`, for one and
 two hops</a> ·
 <a href="grammar-p8ql.html#walking-out-from-a-node">the `GRAPH` mode</a></p>
 </details>

@@ -75,8 +75,10 @@ The object-storage endpoint: the bundled MinIO, or whatever you pointed at.
 {{- define "percolate.s3Endpoint" -}}
 {{- if .Values.objectStorage.external.endpoint -}}
 {{- .Values.objectStorage.external.endpoint -}}
-{{- else -}}
+{{- else if .Values.minio.enabled -}}
 {{- printf "http://%s-minio:9000" (include "percolate.fullname" .) -}}
+{{- else -}}
+{{- fail "object storage is required: set objectStorage.external.endpoint, or leave minio.enabled on for the bundled store" -}}
 {{- end -}}
 {{- end -}}
 

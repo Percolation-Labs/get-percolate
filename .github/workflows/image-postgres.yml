@@ -329,8 +329,11 @@ jobs:
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
+      # Logged in for every build but a rehearsal, not only a pushing one: the
+      # build cache lives in the registry (below), and a build that does not
+      # push still writes it.
       - uses: docker/login-action@v4
-        if: inputs.push
+        if: ${{ !inputs.rehearse }}
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -462,8 +465,19 @@ jobs:
           # every spec edit, which is constantly, and it is COPY'd near the end
           # on purpose. So the layer ordering was already right and the cache
           # is what lets it pay off.
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          #
+          # IN THE REGISTRY, NOT THE ACTIONS CACHE (REM-1074). The Actions
+          # cache is capped at 10 GB per repository and evicts least-recently
+          # used; this repository held 12.4 GB across 106 entries (parser and
+          # pgrx caches beside these layers), so the buildkit cache was evicted
+          # between releases and 0.2.23 paid the full emulated build again:
+          # 433 s against 20 s, which took that release to 13m39s. A registry
+          # cache is not evicted. The gha source stays as a fallback read, and a
+          # rehearsal (not logged in) keeps writing gha as before.
+          cache-from: |
+            type=registry,ref=percolationlabs/percolate-postgres:buildcache
+            type=gha
+          cache-to: ${{ inputs.rehearse && 'type=gha,mode=max' || 'type=registry,ref=percolationlabs/percolate-postgres:buildcache,mode=max,image-manifest=true,oci-mediatypes=true' }}
           # Recorded ON the image so the fast path above can check its own
           # precondition instead of trusting whoever ticked the box. The
           # parser labels are RESOLVED VALUES: the tag `latest` pointed at

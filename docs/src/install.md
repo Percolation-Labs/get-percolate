@@ -31,13 +31,16 @@ to it. A key exported in some other shell after the stack is up reaches neither.
 Nothing else needs one — the database, workflows, graph and text search all run
 without it. The same `.env` moves ports that are already taken, most often
 5432 by a local Postgres: `P8_PG_PORT=5433`, and `P8_REST_PORT`,
-`P8_AGENT_PORT`, `P8_CONTENT_PORT` and `P8_QUERY_MCP_PORT` for the others.
+`P8_AGENT_PORT`, `P8_CONTENT_PORT`, `P8_QUERY_MCP_PORT`, `P8_MINIO_PORT` and
+`P8_MINIO_CONSOLE_PORT` for the others.
 
 Seven services come up beside the database, and that is a list of **roles
 rather than a recommended process count**: PostgREST for the REST surface, a
 `worker` for steps that leave the machine, an `ingest-worker` for reading
 uploaded files, the Content Server for uploads, the Agent Runtime for model
-turns, `query-mcp` for MCP clients, and an S3 store for bytes. Five of those are
+turns, `query-mcp` for MCP clients, and an S3 store for bytes. (`docker compose ps
+-a` also lists `minio-perms`, a one-shot that hands an existing volume to the
+store and exits.) Five of those are
 one image under five commands, so a real deployment usually runs
 fewer — often just a worker, since `sql` and `p8ql` steps need no process at
 all — or many more, a pool per queue. The one pairing not to collapse is the two
@@ -114,9 +117,10 @@ psql postgres://p8:p8@localhost:5432/percolate -c "select * from workflow.compil
 <div class="label">docker compose exec db psql …, on a fresh volume</div>
 
 ```
-{"accepts": {"sql": true, "p8ql": true, "rest": true, "work": true,
-             "agent": true, "embed": true, "timer": true, "matrix": true,
-             "signal": true, "batching": true, "rate_key": true,
+{"accepts": {"sql": true, "p8ql": true, "rest": true, "when": true,
+             "work": true, "agent": true, "embed": true, "timer": true,
+             "matrix": true, "repeat": true, "signal": true,
+             "batching": true, "rate_key": true,
              "continue_on": true, "sub_workflow": true,
              "output_schema": true, "p8ql_vector_desugar": true},
  "missing": [], "available": true}
@@ -498,7 +502,9 @@ Claude Desktop reaches a local HTTP server through a bridge, configured in
 
 The token expires (`exp`), and an expired one makes every call fail at
 PostgREST; mint a new one and update the header. A call with no token is
-refused (`401`, `permission denied for schema aiq`). `P8_QUERY_MCP_PORT` in
+refused: the MCP response is an HTTP 200 whose tool result is an error carrying
+PostgREST's `401` (`permission denied for schema aiq`), so look in the result,
+not at the status. `P8_QUERY_MCP_PORT` in
 `.env` moves the port if 8090 is taken.
 
 <div class="evidence" markdown="1">
@@ -599,7 +605,7 @@ harbour 1.0.0
   entity port <- harbour.ports
   ...
   edge operator:MERB -subsidiary_of-> operator:MERI
-  plugin harbour (0 servers, 1 skills, 1 agents)
+  plugin harbour (1 servers, 1 skills, 1 agents)
   workflow harbour_deficiencies
 ```
 

@@ -209,18 +209,21 @@ jobs:
               exit 1; }
           fi
           echo "parser release: $PARSER_RELEASE -> $tag"
-          BASE="https://github.com/$repo/releases/download/$tag"
+          # With the token, not the public URL: a release run builds this image
+          # while its release is still a draft (REM-1096), and a draft has no
+          # public download URL. gh finds a draft by its tag name.
+          dl() { gh release download "$tag" --repo "$repo" --pattern "$1" --output "$2" --clobber; }
 
           for a in amd64 arm64; do
-            curl -fsSL -o "dev/dist/percolate_parser-$a.so" "$BASE/percolate_parser-linux-$a.so"
+            dl "percolate_parser-linux-$a.so" "dev/dist/percolate_parser-$a.so"
           done
-          curl -fsSL -o dev/dist/percolate_parser.control "$BASE/percolate_parser.control"
+          dl percolate_parser.control dev/dist/percolate_parser.control
           # Named by the version the CONTROL FILE declares rather than
           # hardcoded: the release asset is percolate_parser--<version>.sql, and
           # pinning 0.1.0 here is what made the old install path a silent 404
           # after the first bump.
           q=$(sed -n "s/^default_version = '\(.*\)'/\1/p" dev/dist/percolate_parser.control)
-          curl -fsSL -o "dev/dist/percolate_parser--$q.sql" "$BASE/percolate_parser--$q.sql"
+          dl "percolate_parser--$q.sql" "dev/dist/percolate_parser--$q.sql"
           fi
 
           # The parser files name the version they were built at, and for a

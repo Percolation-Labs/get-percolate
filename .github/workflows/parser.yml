@@ -504,8 +504,18 @@ jobs:
             [ "$have" = "$V" ] || {
               echo "::error::$c.control says $have, releasing $V" >&2; exit 1; }
           done
+      # A DRAFT, SO NO TAG YET (REM-1096). A release that publishes here tags
+      # the commit this run started from, which pins the PREVIOUS image: until
+      # 20 Oct every tag from v0.2.20 sat one commit before its own pin, and a
+      # compose file downloaded at v0.2.27 ran 0.2.26. A draft carries the
+      # assets and makes no tag; docs-version publishes it on the commit that
+      # pins this version, which is when the tag is made, once, in the right
+      # place. A draft is also absent from releases/latest, which install.sh
+      # reads, so `latest` moves only once the image and the pin exist. A run
+      # that pushes no image has no pin to wait for and publishes here.
       - uses: softprops/action-gh-release@v3
         with:
+          draft: ${{ inputs.push_image }}
           tag_name: v${{ inputs.version }}
           name: Extension v${{ inputs.version }}
           files: out/*
@@ -529,7 +539,12 @@ jobs:
             are what it runs.
 
   # The image comes last and only after the assets exist, because it fetches
-  # the .so files FROM this release -- the same bytes install.sh hands out.
+  # the .so files FROM this release -- the same bytes install.sh hands out. The
+  # release is still a draft here, so image-postgres.yml downloads with the
+  # token (gh release download) rather than the public URL, which a draft lacks.
+  # That token needs contents: write, inherited from this workflow's top level:
+  # only push access sees a draft, so narrowing this job to contents: read makes
+  # the download 404 as if the asset were missing.
   # Order is the whole point: publish what the image needs, then the image,
   # then (docs-version, below) the docs that reference both.
   image:
@@ -597,6 +612,47 @@ jobs:
           done
           echo "::error::could not push the version bump after three rebases" >&2
           exit 1
+
+      # PIN FIRST, THEN TAG (REM-1096; Sirsh, M-20261020-080043-46f0). The
+      # release is a draft with no tag; publishing it with --target makes the
+      # tag on the commit that pins this version. That commit is the oldest one
+      # on main whose versions.toml names it, which is also the answer on a
+      # re-run where the commit step found nothing to do. A release that is
+      # already published is left alone and checked below; nothing here moves
+      # a tag. awk, not head: head stops reading after one line, git log dies
+      # of SIGPIPE, and under pipefail the step exits without a word -- which
+      # it does whenever a later commit also matches, as each pin's removal
+      # does.
+      - name: Publish v${{ inputs.version }} on the commit that pins it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --unshallow origin main 2>/dev/null || git fetch --quiet origin main
+          pin=$(git log origin/main --reverse --format=%H \
+                  -G "^extension *= *\"${V//./\\.}\"" -- versions.toml | awk 'NR == 1')
+          [ -n "$pin" ] || { echo "::error::no commit on main pins extension $V" >&2; exit 1; }
+          draft=$(gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          if [ "$draft" = true ]; then
+            gh release edit "v$V" --repo "$GITHUB_REPOSITORY" --draft=false --target "$pin"
+            echo "published v$V on $pin"
+          else
+            echo "v$V is already published"
+          fi
+
+      # THE CHECK THAT THE TAG IS RIGHT: the compose file a reader downloads at
+      # the tag must run this release's image. Fails the run otherwise.
+      - name: Check that v${{ inputs.version }}'s compose pins 19-${{ inputs.version }}
+        env:
+          V: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet --force origin "refs/tags/v$V:refs/tags/v$V"
+          have=$(git show "v$V:compose/docker-compose.yml" | { grep -oE 'percolate-postgres:19-[0-9.]+' || true; } | sort -u)
+          [ "$have" = "percolate-postgres:19-$V" ] || {
+            echo "::error::compose at v$V pins ${have:-nothing}, not percolate-postgres:19-$V" >&2; exit 1; }
+          echo "v$V ($(git rev-parse --short "v$V^{commit}")) pins $have"
 
       # A STRANGER'S INSTALL OF WHAT WAS JUST PUBLISHED (REM-1014): tour.yml
       # downloads the compose file from main, so it starts only once the pin

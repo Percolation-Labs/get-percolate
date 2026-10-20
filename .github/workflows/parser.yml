@@ -102,6 +102,10 @@ jobs:
           repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
+          # The release tags, which build-sql.py and write-upgrades.py list to know which versions
+          # the upgrade scripts start from, and refuses to run without (percolate
+          # REM-1081). Names only, so the clone stays shallow.
+          fetch-tags: true
       - name: Confirm the ref carries the version being released
         if: inputs.version != ''
         run: |
@@ -144,6 +148,10 @@ jobs:
           repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
+          # The release tags, which build-sql.py and write-upgrades.py list to know which versions
+          # the upgrade scripts start from, and refuses to run without (percolate
+          # REM-1081). Names only, so the clone stays shallow.
+          fetch-tags: true
 
       # THE HEADERS MUST COME FROM THE SERVER THE .so WILL BE LOADED INTO, and
       # three attempts at installing them on a bare runner each failed one step

@@ -1,16 +1,15 @@
 # @claude in an issue or a review comment, and Claude Code picks it up.
 #
-# THIS FILE IS THE SAME IN percolate-core (the Python services, PRIVATE) and
-# get-percolate (the public face, docs and chart, PUBLIC). That is deliberate: a
-# release crosses both, so `@claude` has to work from whichever one you happen
-# to be looking at. Change one, change both. The extension and its specs live
-# in Percolation-Labs/percolate (PUBLIC), which carries no copy of this file;
-# its core/ directory mirrors this repository's tree, this file included.
+# THIS COPY DIFFERS FROM THE PRIVATE ONES (percolate-application, p8-subsystems)
+# in one way: it gets no cross-repository token (REM-1045). This repository is
+# PUBLIC, so the text an agent reads here can be a stranger's even when the
+# mention is a collaborator's: an @claude reply on an outside issue puts that
+# issue's body in front of the run. A run here holds this repository's own
+# GITHUB_TOKEN and nothing else, and cannot dispatch workflows. A release that
+# crosses repositories is asked for from a private repository instead.
 #
-# THE AUTHOR CHECK IS FOR THE PUBLIC REPOSITORIES: without it any GitHub user
-# could spend the owner's Claude subscription by typing four characters in a
-# comment on get-percolate. A private repository keeps it too, because the
-# file is the same everywhere it runs.
+# THE AUTHOR CHECK IS STILL NEEDED: without it any GitHub user could spend the
+# owner's Claude subscription by typing four characters in a comment.
 name: Claude Code
 
 on:
@@ -53,7 +52,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      actions: write         # so Claude can run a release workflow, and read CI
+      actions: read          # read CI; dispatching workflows is for the private repos
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -64,17 +63,9 @@ jobs:
         id: claude
         uses: anthropics/claude-code-action@v1
         env:
-          # The cross-repo reach. GITHUB_TOKEN is scoped to THIS repository, so
-          # with it alone Claude can fix the repo it was mentioned in and
-          # nothing else -- and every interesting request here crosses a
-          # boundary: cut a core release, then update the specs repo, then the
-          # chart. One PAT covering all three is what makes
-          # "@claude release core and bring everything into step" a single ask
-          # instead of three issues opened by hand.
-          #
-          # Falls back to GITHUB_TOKEN when the secret is not set, so a fork or
-          # an unconfigured repo degrades to in-repo work rather than failing.
-          GH_TOKEN: ${{ secrets.P8_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # This repository's token only: no secret that reaches another
+          # repository is ever in scope here (REM-1045, see the header).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # REQUIRED, and the one thing here that is not in this file. Mint it
           # with `claude setup-token` and set it on all three repositories:
@@ -89,8 +80,7 @@ jobs:
           # default list, so without this the GH_TOKEN above is inert. A wiring
           # test got "This command requires approval" for every gh call,
           # `gh --version` included: the binary never ran, so nothing ever
-          # reached the API to test the token against. The cross-repo reach the
-          # comment above describes did not exist until this line.
+          # reached the API to test the token against.
           #
           # `git` is named even though it already worked, because it is not
           # obvious whether declaring an allowlist extends the default one or

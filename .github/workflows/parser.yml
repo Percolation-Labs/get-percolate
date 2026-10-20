@@ -542,6 +542,9 @@ jobs:
   # the .so files FROM this release -- the same bytes install.sh hands out. The
   # release is still a draft here, so image-postgres.yml downloads with the
   # token (gh release download) rather than the public URL, which a draft lacks.
+  # That token needs contents: write, inherited from this workflow's top level:
+  # only push access sees a draft, so narrowing this job to contents: read makes
+  # the download 404 as if the asset were missing.
   # Order is the whole point: publish what the image needs, then the image,
   # then (docs-version, below) the docs that reference both.
   image:

@@ -10,6 +10,14 @@ need anything running in order to define one.
 Here we define and run a workflow with nothing deployed anywhere.
 {: .goal }
 
+Every block on this page runs in one `psql` session, because a later block
+reads a variable an earlier one set with `\gset`. Open it once, on the stack
+install.md started, and paste the blocks into it in order:
+
+```sh
+docker compose exec db psql -U p8 -d percolate
+```
+
 <!-- run: sql -->
 ```sql
 select workflow.define_yaml($$
@@ -244,7 +252,10 @@ endpoint</summary>
 
 Both of those are RLS-filtered views, so a caller sees their own runs and not
 anybody else's. Over REST they are `GET /runs_api?id=eq.<uuid>` and
-`GET /tasks_api?run_id=eq.<uuid>`.
+`GET /tasks_api?run_id=eq.<uuid>`, with the header `Accept-Profile: workflow`:
+PostgREST serves several schemas and answers from `content` unless a request
+names another, so without it the reply is a 404, `relation
+"content.runs_api" does not exist`.
 
 There is no generated SDK, and there is not meant to be. Every function in the
 client API is a PostgREST endpoint already, which makes any HTTP-capable

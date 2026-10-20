@@ -474,6 +474,10 @@ jobs:
           # 433 s against 20 s, which took that release to 13m39s. A registry
           # cache is not evicted. The gha source stays as a fallback read, and a
           # rehearsal (not logged in) keeps writing gha as before.
+          # Any non-rehearsal build writes it, a branch dispatch of images.yml
+          # included. That is safe because buildkit keys each layer by its
+          # inputs, so a branch layer is reused only where its inputs match; and
+          # only someone who can already push images can dispatch one.
           cache-from: |
             type=registry,ref=percolationlabs/percolate-postgres:buildcache
             type=gha

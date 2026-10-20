@@ -207,15 +207,16 @@ select aiq.query('TEXT "PSC-441" FROM chunks LIMIT 3');
 
 `:query_vector` is the embedding of *"a boiler fault"*, and it is an argument
 because the database makes no model calls — which is the whole reason a vector
-query compiles to two tasks. The `\set` line asks the model the corpus was
-embedded with, from `psql`, using the `LLM_API_KEY` that loaded the corpus and
-`curl` and `jq` from your shell; in a workflow the compiler writes that embed
-step for you. Write it `:'query_vector'`, with the quotes, so the array arrives
+query compiles to two tasks. The `\set` line asks the Content Server's `/embed`
+for it, from `psql`, with your `$TOKEN` and `curl` and `jq` from your shell:
+`/embed` answers with the model the corpus was embedded with, so no key and no
+model name appear here. In a workflow the compiler writes that embed step for
+you. Write it `:'query_vector'`, with the quotes, so the array arrives
 as one literal. Do not substitute a short literal to see it run: the wrong width
 is caught, and the wrong *provenance* is not.
 
 ```sql
-\set query_vector `curl -s https://api.openai.com/v1/embeddings -H "Authorization: Bearer $LLM_API_KEY" -H 'Content-Type: application/json' -d '{"model": "text-embedding-3-small", "input": "a boiler fault"}' | jq -c '.data[0].embedding'`
+\set query_vector `curl -s http://localhost:8081/embed -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"texts": ["a boiler fault"]}' | jq -c '.vectors[0]'`
 
 select round((r->>'distance')::numeric,3) as distance,
        left(regexp_replace(c.content, '\s+', ' ', 'g'), 56) as content
@@ -232,9 +233,9 @@ order by 1;
 ```
  distance |                         content
 ----------+----------------------------------------------------------
-    0.599 | # Auxiliary machinery note The secondary steam generator
-    0.626 | # Port state control, Rotterdam Meridian Dawn (IMO 93318
-    0.699 | # Meridian fleet exposure Internal. PSC-441 exposure now
+    0.351 | # Auxiliary machinery note The secondary steam generator
+    0.428 | # Kestrel fleet position Kestrel reports no boiler defic
+    0.429 | # Port state control, Rotterdam Meridian Dawn (IMO 93318
 ```
 </div>
 
@@ -248,8 +249,8 @@ select aiq.query('SEARCH "PSC-441 boiler" FROM chunks LIMIT 3', :'query_vector')
 ```
  lex | sem |   rrf   |                       content
 -----+-----+---------+------------------------------------------------------
- 1   | 2   | 0.03252 | # Port state control, Rotterdam Meridian Dawn (IMO 9
- 2   | 3   | 0.03200 | # Meridian fleet exposure Internal. PSC-441 exposure
+ 1   | 3   | 0.03227 | # Port state control, Rotterdam Meridian Dawn (IMO 9
+ 2   | 4   | 0.03175 | # Meridian fleet exposure Internal. PSC-441 exposure
      | 1   | 0.01639 | # Auxiliary machinery note The secondary steam gener
 ```
 </div>

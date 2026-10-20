@@ -14,18 +14,19 @@ description: |-
   reports, and a graph tying them together. Everything the documentation's
   worked examples query.
 
-# THE CORPUS IS EMBEDDED BY THE REAL PIPELINE, so loading it costs one
-# embedding call per document and needs a key. That is the honest shape: an
-# earlier version of this fixture shipped literal four-dimension vectors so it
-# would load with nothing running, and it taught the wrong thing -- a reader
-# who copied it had a corpus no model produced and rankings that meant nothing.
+# THE CORPUS IS EMBEDDED BY THE REAL PIPELINE, by bge-small-en-v1.5 running
+# inside the stack's ingest worker, so loading it needs no key. That is the
+# honest shape: an earlier version of this fixture shipped literal
+# four-dimension vectors so it would load with nothing running, and it taught
+# the wrong thing -- a reader who copied it had a corpus no model produced and
+# rankings that meant nothing.
 #
-# The name is what the worker resolves at call time, matching the
-# `credential_ref` in sources.yaml. `--skip-documents` loads everything else if
-# you do not have one yet; graph, lookup and lexical queries all work without
-# it, and only SEMANTIC and SEARCH need vectors.
-requires:
-  credentials: [LLM_API_KEY]
+# A sample that embeds with a hosted model declares the variable its
+# `credential_ref` names here, and the loader refuses before it uploads
+# anything if that variable is unset:
+#
+#     requires:
+#       credentials: [LLM_API_KEY]
 
 # In order, because each step needs the one before it. The tables have to exist
 # before a projection can read them; the entity types have to be rebuilt before

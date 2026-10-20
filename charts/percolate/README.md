@@ -198,6 +198,6 @@ decide whether this works at all:
 | `secrets.s3Key`, `secrets.s3Secret` | object-store credentials; empty falls back to `p8admin` / `p8password` |
 | `agent.env` | keys for providers other than OpenAI (`ANTHROPIC_API_KEY`, …) |
 | `postgres.extraArgs` | preloads pg_cron. Emptying it disables scheduling, silently as far as the workflow tables are concerned |
-| `objectStorage.external.endpoint` | real object storage; leave empty for the bundled store (RustFS, as `…-minio`) |
+| `objectStorage.external.endpoint` | real object storage; setting it also stops the bundled store's pod. Leave empty for the bundled store (RustFS, as `…-minio`); with `minio.enabled: false` as well, the chart refuses to render |
 | `workers[]` | one entry per queue |
 | `ingress.hosts[].service` | which of the three surfaces a host routes to — they are different audiences |

@@ -1,12 +1,13 @@
-{{- if .Values.minio.enabled }}
+{{- if and .Values.minio.enabled (not .Values.objectStorage.external.endpoint) }}
 {{- /*
   Bundled object store, for getting started: RustFS, S3-compatible, under the
   name `minio` so services and values from earlier charts keep working (the
   compose file does the same). MinIO's free images no longer pull anonymously. Object storage is REQUIRED, not optional:
   an oversized step output is offloaded to it and refd from the task, and the
   Content Server keeps every uploaded byte there. Point objectStorage.external
-  at S3, R2, GCS or your own MinIO for anything you care about, and set
-  minio.enabled: false.
+  at S3, R2, GCS or your own MinIO for anything you care about. Setting
+  objectStorage.external.endpoint is enough: this pod is then not rendered,
+  because nothing would talk to it (every service reads percolate.s3Endpoint).
 */ -}}
 apiVersion: v1
 kind: Service

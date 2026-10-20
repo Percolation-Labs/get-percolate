@@ -397,6 +397,9 @@ Here we get from an empty `rbac` to a bearer token that the REST interface and
 the agent runtime both accept.
 {: .goal }
 
+Run it in `psql` on the database, `docker compose exec db psql -U p8 -d
+percolate`; `\gset` keeps the id it returns in `:uid` for that session.
+
 <!-- run: sql -->
 ```sql
 select rbac.bootstrap_admin('me@example.com', 'a long passphrase') as uid \gset
@@ -586,6 +589,13 @@ export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
 export LLM_API_KEY=sk-...          # the key in your .env
 percolate sample load samples/harbour --as-email me@example.com
 ```
+
+If `.env` moved `P8_AGENT_PORT` or `P8_CONTENT_PORT`, tell the loader too:
+`--agent-url http://localhost:<agent port>` and `--content-url
+http://localhost:<content port>`. It defaults to 8080 and 8081 and does not read
+`.env`, so with a moved agent port the load still exits 0 but prints `tool
+server harbour-query: not synced, http://localhost:8080 is unreachable`, and the
+plugin's tools are missing from the catalogue.
 
 `P8_JWT_SECRET` is the compose file's default signing secret — use your own if
 you set one in `.env` — and the loader signs the token it uploads the corpus

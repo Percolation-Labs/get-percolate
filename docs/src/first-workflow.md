@@ -160,7 +160,7 @@ select workflow.start_workflow('fx_daily', '{"watch": ["EUR", "GBP", "JPY"]}') a
 </div>
 
 <div class="evidence" markdown="1">
-<div class="label">the volatility task's output, a few seconds later with all seven succeeded</div>
+<div class="label">select output from workflow.tasks where run_id = :'run' and step_key = 'volatility' — a few seconds later, with all seven succeeded</div>
 
 ```
 {"result": {"EUR": 0.0088, "GBP": 0.0095, "JPY": 0.0155}}

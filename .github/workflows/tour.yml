@@ -1,0 +1,45 @@
+# A stranger's first ten minutes, as a gate (REM-1014): an empty directory, a
+# runner with no image cache, the compose file from the URL install.md gives,
+# and the LangGraph tour from its first block, with the worker stubbed so no
+# model or key is needed. ci/tour.sh says what it runs and why.
+#
+# GitHub-hosted on purpose. The self-hosted runner keeps every image it has
+# pulled, and a cached image is how a MinIO tag that answered 401 to anybody
+# without it (REM-981) passed every run there. Do not add a cache step.
+name: tour
+
+on:
+  # parser.yml's docs-version job dispatches this once a release's pin commit is
+  # on main. That commit is pushed with GITHUB_TOKEN, which starts no workflow,
+  # so a push trigger would never see a release.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Extension release to test. Empty means the one versions.toml on main
+          names, which is the one main's compose file pins.
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - 'ci/tour.sh'
+      - '.github/workflows/tour.yml'
+
+jobs:
+  fresh-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Only for ci/tour.sh. The compose file the run uses is downloaded, not
+      # read from here.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: ci/tour.sh
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install from the published compose file and run the tour
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ci/tour.sh

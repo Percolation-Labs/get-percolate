@@ -117,6 +117,10 @@ jobs:
           repository: ${{ inputs.source_repo || vars.EXTENSION_REPO || vars.SPECS_REPO }}
           token: ${{ secrets.SOURCE_TOKEN }}
           ref: ${{ inputs.ref }}
+          # The release tags, which build-sql.py and write-upgrades.py list to know which versions
+          # the upgrade scripts start from, and refuses to run without (percolate
+          # REM-1081). Names only, so the clone stays shallow.
+          fetch-tags: true
 
       - name: Rehearsal only -- bump the tree to the candidate, as release.yml would
         # The same script percolate's release.yml runs, so the candidate

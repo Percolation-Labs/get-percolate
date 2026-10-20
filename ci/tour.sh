@@ -99,8 +99,7 @@ live_block() {
                 printf '%s\n' \
                   '[ -n "$P8_USER_ID" ] || { echo "FAIL: bootstrap_admin left no me@example.com" >&2; exit 1; }' \
                   '[ -n "$TOKEN" ] || { echo "FAIL: percolate auth token printed nothing" >&2; exit 1; }' \
-                  'echo "signed in as $P8_USER_ID"' \
-                  'psql "$P8_DSN" -c "delete from rbac.role_permissions where role = '"'"'member'"'"'" -c "delete from rbac.roles where name = '"'"'member'"'"'"  # MUTATION: REM-993 reintroduced' ;;
+                  'echo "signed in as $P8_USER_ID"' ;;
         esac
     done
     # The SQL half, in the reader's psql, against the stack the blocks above made.

@@ -289,6 +289,29 @@ as a superuser the extension refuses to load, and as anyone else the roles it
 needs do not exist yet — which is what `bootstrap.sql` sequences. It is safe to
 run again.
 
+### Where this works, and where it does not
+
+This path needs two things a managed Postgres service usually withholds:
+**PostgreSQL 19**, the only major the install is tested on, and **a superuser
+for one step**. `bootstrap.sql` creates the roles and installs pgvector and
+`percolate_parser`, a compiled C extension. `percolate` itself then installs as
+an ordinary owner, with pg_trgm and pgcrypto, which are trusted. So it works on a server you run
+yourself: a VM, a container, or bare metal.
+
+Checked against each vendor's own documentation on 21 October 2026, while
+PostgreSQL 19 is a release candidate (GA is planned for 19 November):
+
+| Service | PostgreSQL 19 | A C extension of your own | pgvector, pg_trgm | So |
+|---|---|---|---|---|
+| [Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-extensions.html) | preview only (betas and RC 1) | no. Only its listed extensions, and [pg_tle](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL_trusted_language_extension.html) for trusted languages, which a C extension is not | yes | not yet |
+| [Cloud SQL](https://docs.cloud.google.com/sql/docs/postgres/extensions) | no (lists up to 18) | no: "You cannot create your own extensions in Cloud SQL" | yes | no |
+| [Supabase](https://supabase.com/docs/guides/self-hosting/custom-postgres-extensions) | no | no on the hosted platform; self-hosted only by building an image Supabase calls "unofficial and unsupported" | yes | self-hosted only, on your own image |
+| [Neon](https://neon.com/docs/extensions/pg-extensions) | no (lists 14 to 18) | only by request through Neon support | yes | no |
+
+Every row fails on the same item, the parser, because the dialect and the
+graph algorithms are compiled code. Until a service loads it, run Percolate's
+database yourself and point your application at it.
+
 Updating is the same two commands again, then one statement. `install.sh`
 installs the release's `percolate--<old>--<new>.sql` scripts beside the new
 version and says so when it finds an earlier one, and `bootstrap.sql` makes the

@@ -465,7 +465,7 @@ select s.name, round((r->>'score')::numeric, 3) as score
 </div>
 
 That is the lexical half, which needs no model. The semantic half is the same
-join over `aiq.semantic_in('skills', :'query_vector', 'text-embedding-3-small',
+join over `aiq.semantic_in('skills', :'query_vector', 'bge-small-en-v1.5',
 5)`,
 with the vector set as in [the P8QL
 grammar](grammar-p8ql.html#the-three-search-modes-and-why-there-are-three) — and

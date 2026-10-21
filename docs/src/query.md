@@ -324,14 +324,15 @@ installed. It is there; you asked the wrong schema for it. Reads use
 `aiq.query(p_query, p_embedding)`, and the database makes no model calls, so a
 vector mode sent with `p_query` alone answers `400` with `SEARCH fuses lexical
 and semantic ranks, so it needs p_embedding`. Embed the text with the model the
-corpus was embedded with, and send the array as `p_embedding`, a JSON string, as
-the workbench does:
+corpus was embedded with — the Content Server's `/embed` does that, as the
+signed-in caller — and send the array as `p_embedding`, a JSON string, as the
+workbench does:
 
 ```bash
-VEC=$(curl -s https://api.openai.com/v1/embeddings \
-  -H "Authorization: Bearer $LLM_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"model": "text-embedding-3-small", "input": "PSC-441 boiler"}' \
-  | jq -c '.data[0].embedding')
+VEC=$(curl -s http://localhost:8081/embed \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"texts": ["PSC-441 boiler"]}' \
+  | jq -c '.vectors[0]')
 
 curl -X POST http://localhost:3000/rpc/query \
   -H 'Content-Type: application/json' \
@@ -457,9 +458,8 @@ questions are yours and the next section can read Meridian's facts.
 
 <!-- run: sql -->
 ```sql
-insert into rbac.org_members (org_id, user_id)
-select 'd0000000-0000-0000-0000-00000000000a', id from rbac.users where email = 'me@example.com'
-on conflict do nothing;
+select rbac.add_org_member('d0000000-0000-0000-0000-00000000000a',
+                            (select id from rbac.users where email = 'me@example.com'));
 
 select set_config('request.jwt.claims', json_build_object(
          'sub', (select id from rbac.users where email = 'me@example.com'),

@@ -17,9 +17,9 @@
 # What a reader can actually pull today. These move when a release publishes,
 # never before: docs that name a version ahead of its artifact send people to
 # a `docker pull` that 404s.
-extension = "0.2.28"   # percolate + percolate_parser, and the :19-<v> image tag
-core      = "0.2.8"   # percolate-core on PyPI and Docker Hub
-chart     = "0.1.53"   # the Helm chart's own version, not what it deploys
+extension = "0.2.29"   # percolate + percolate_parser, and the :19-<v> image tag
+core      = "0.2.9"   # percolate-core on PyPI and Docker Hub
+chart     = "0.1.55"   # the Helm chart's own version, not what it deploys
 
 [not_ours]
 # THREE-PART NUMBERS IN docs/src THAT LOOK LIKE OURS AND ARE NOT.
@@ -63,5 +63,7 @@ core      = "0.1.12"  # ci/coldstart.sh sends a scheduled run to `agent serve`,
                       # read the session. 0.1.11 does none of these. And
                       # 0.1.11 was already the floor for `percolate sample load`
                       # against 0.2.0 (REM-147).
-extension = "0.2.0"   # samples/harbour writes agents as JSON Schema documents,
+extension = "0.2.29"  # graph.md and query.md enrol a member with rbac.add_org_member, which
+                      # admits the installer session from 0.2.29 (REM-1082). Before that:
+                      # samples/harbour writes agents as JSON Schema documents,
                       # and only 0.2.0 translates one into a row (REM-70)

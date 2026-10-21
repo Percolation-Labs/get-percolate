@@ -119,9 +119,7 @@ sample creates and enrols in Meridian for this purpose. To use your own account
 instead, put its id in `sub` and give it the membership the claim asserts:
 
 ```sql
-insert into rbac.org_members (org_id, user_id)
-values ('d0000000-0000-0000-0000-00000000000a', '<your user id>')
-on conflict do nothing;
+select rbac.add_org_member('d0000000-0000-0000-0000-00000000000a', '<your user id>');
 ```
 
 The org id above is the one `samples/harbour` loads, and the sample's own

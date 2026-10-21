@@ -551,7 +551,7 @@
   {
    "id": "docs.E5da51",
    "status": "covered",
-   "claim": "from aiq.semantic_in('skills', :query_vector, 'text-embedding-3-small', 5) m"
+   "claim": "from aiq.semantic_in('skills', :query_vector, 'bge-small-en-v1.5', 5) m"
   },
   {
    "id": "docs.E0d072",

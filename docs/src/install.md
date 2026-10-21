@@ -21,15 +21,16 @@ If you have a model key, put it in a `.env` beside the file **before** that
 `up`, because each container reads its environment once, when it starts:
 
 ```bash
-echo 'OPENAI_API_KEY=sk-...' > .env      # agent turns, and the sample's embeddings
+echo 'OPENAI_API_KEY=sk-...' > .env      # agent turns
 docker compose up -d                     # again, if the stack was already running
 ```
 
-One key covers both halves on this path: the Agent Runtime reads
-`OPENAI_API_KEY`, and the workers' embedding credential `LLM_API_KEY` falls back
-to it. A key exported in some other shell after the stack is up reaches neither.
-Nothing else needs one — the database, workflows, graph and text search all run
-without it. The same `.env` moves ports that are already taken, most often
+The Agent Runtime reads `OPENAI_API_KEY`, and the workers' embedding credential
+`LLM_API_KEY` falls back to it for a hosted embedding model, if you register
+one. A key exported in some other shell after the stack is up reaches neither.
+Nothing else needs one. The database, workflows, graph and text search run
+without it, and so does semantic search: the workers carry an embedding model,
+`bge-small-en-v1.5`, which runs on the CPU with no key and no bill. The same `.env` moves ports that are already taken, most often
 5432 by a local Postgres: `P8_PG_PORT=5433`, and `P8_REST_PORT`,
 `P8_AGENT_PORT`, `P8_CONTENT_PORT`, `P8_QUERY_MCP_PORT`, `P8_MINIO_PORT` and
 `P8_MINIO_CONSOLE_PORT` for the others.
@@ -474,7 +475,7 @@ as well as the secret:
 ```bash
 export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
 export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
-TOKEN=$(percolate auth token --email me@example.com \
+export TOKEN=$(percolate auth token --email me@example.com \
           --orgs d0000000-0000-0000-0000-00000000000a)
 ```
 
@@ -609,7 +610,6 @@ git clone https://github.com/Percolation-Labs/get-percolate
 cd get-percolate
 export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
 export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
-export LLM_API_KEY=sk-...          # the key in your .env
 percolate sample load samples/harbour --as-email me@example.com
 ```
 
@@ -622,9 +622,8 @@ plugin's tools are missing from the catalogue.
 
 `P8_JWT_SECRET` is the compose file's default signing secret — use your own if
 you set one in `.env` — and the loader signs the token it uploads the corpus
-with. It checks `LLM_API_KEY` before uploading, but the embedding call is made
-by the stack's ingest worker, which is why the key had to be in `.env` when the
-stack started.
+with. It ends `loaded, and every document is embedded.` once the stack's
+ingest worker has embedded the corpus.
 
 A port-operations company: two tenants, four operators, five vessels, three
 ports, inspections, a corpus of reports and a graph tying them together.
@@ -632,7 +631,7 @@ ports, inspections, a corpus of reports and a graph tying them together.
 ```
 harbour 1.0.0
   sql schema.sql
-  embedding model text-embedding-3-small (1536d)
+  embedding model bge-small-en-v1.5 (384d)
   entity operator <- harbour.operators
   entity vessel <- harbour.vessels
   entity port <- harbour.ports
@@ -650,14 +649,14 @@ percolate auth token --email me@example.com \
   --orgs d0000000-0000-0000-0000-00000000000a     # Meridian; ...000b is Kestrel
 ```
 
-**It needs an embedding key**, in `LLM_API_KEY`, because the corpus goes in
-through `POST /files` and is embedded by the running pipeline. `--dry-run` says
-what a load would need without writing anything; `--skip-documents` loads
-everything else, and `LOOKUP`, `FUZZY`, `GRAPH` and `TEXT` all work without it
-— only `SEMANTIC` and `SEARCH` need vectors. If you loaded before the stack had
-the key, the documents are registered and their embeddings failed; a second
-load uploads them again and those copies fail to parse, so remove the first
-ones before loading again — the statement is in
+**It needs no key.** The corpus goes in through `POST /files` and is embedded
+by the running pipeline with `bge-small-en-v1.5`, the model the workers carry,
+so `SEMANTIC` and `SEARCH` have vectors to rank as soon as the load returns.
+`--dry-run` says what a load would do without writing anything. To embed with a
+hosted model instead, uncomment its entry in `samples/harbour/sources.yaml`,
+point `ingest_pipelines` at it, and put its key in `.env` before the stack
+starts. A second load uploads the documents again and those copies fail to
+parse, so remove the first ones before loading again — the statement is in
 [the sample's
 README](https://github.com/Percolation-Labs/get-percolate/blob/main/samples/harbour/README.md#loading-it-twice).
 
@@ -681,9 +680,8 @@ fixture shipped literal four-dimension vectors so it would load with nothing
 running. It reproduced beautifully and taught the wrong thing: a reader who
 copied the pattern had a corpus no model had ever seen and rankings that meant
 nothing. Here the documents are embedded by the same pipeline yours will be, so
-what you search is what a model produced — and the sample costs one embedding
-call per document, which is the price of retrieval rather than an
-inconvenience.
+what you search is what a model produced. The model runs in the worker, so
+that costs CPU time rather than a key.
 
 Nothing loads on first boot for the same reason. Rows that appear because a
 container started are rows nobody chose, and a demo you cannot tell apart from

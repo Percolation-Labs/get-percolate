@@ -247,7 +247,7 @@ Here we find the same page three ways, and see the ranking each mode produces.
 {: .goal }
 
 ```sql
-\set query_vector `curl -s https://api.openai.com/v1/embeddings -H "Authorization: Bearer $LLM_API_KEY" -H 'Content-Type: application/json' -d '{"model": "text-embedding-3-small", "input": "a boiler fault"}' | jq -c '.data[0].embedding'`
+\set query_vector `curl -s http://localhost:8081/embed -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"texts": ["a boiler fault"]}' | jq -c '.vectors[0]'`
 
 select aiq.query('TEXT "PSC-441" FROM chunks LIMIT 3');
 select aiq.query('SEMANTIC "a boiler fault" FROM chunks LIMIT 3', :'query_vector');
@@ -261,12 +261,13 @@ that is the whole reason a vector query compiles to two tasks rather than one.
 In a workflow you never write it: the compiler emits an `embed` step that calls
 the model the registry names and hands the result to the query step. By hand,
 the `\set` line is that call: `psql` runs it in your shell, with `curl` and
-`jq` and the `LLM_API_KEY` the corpus was embedded with, and `:'query_vector'`
-— with the quotes — hands the array over as one literal.
+`jq` and your `$TOKEN`, against the Content Server's `/embed`, which embeds the
+text with the model the corpus was embedded with. `:'query_vector'` — with the
+quotes — hands the array over as one literal.
 
 Do not paste a short literal in to see it work. A vector of the wrong width is
-caught — `query vector has 4 dimensions but model text-embedding-3-small
-expects 1536` — but one of the *right* width and the wrong provenance is not,
+caught — `query vector has 4 dimensions but model bge-small-en-v1.5
+expects 384` — but one of the *right* width and the wrong provenance is not,
 and it ranks confidently against a space it never came from.
 
 <details class="why" markdown="1">

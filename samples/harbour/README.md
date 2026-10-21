@@ -16,28 +16,33 @@ chose, and a demo you cannot tell apart from a deployment is a bad demo.
 
 ## What it needs
 
-**An embedding key**, in `LLM_API_KEY`. The corpus is uploaded through
-`POST /files` and embedded by the running ingestion pipeline, so loading it
-costs one embedding call per document.
+**No key.** The corpus is uploaded through `POST /files` and embedded by the
+running ingestion pipeline with `bge-small-en-v1.5`, which the stack's ingest
+worker runs in-process on the CPU. The model file is baked into the
+percolate-core image, so the load fetches nothing and bills nothing, and it
+ends `loaded, and every document is embedded.`
 
-The key has to be in two places. The loader checks for it in its own
-environment before it uploads, but the embedding call is made by the stack's
-ingest worker, which reads the key from *its* environment — on compose, the
-`.env` beside `docker-compose.yml` (where `OPENAI_API_KEY` alone is enough) or
-the shell `docker compose up` ran from. A key exported only in the shell you
-load from passes the check, and every embed task then fails on
-`credential_ref 'LLM_API_KEY' is not set`. The loader also needs
-`P8_JWT_SECRET`, the secret the stack verifies tokens with, to sign its upload
-token; on compose with no `.env` of your own that is
+The loader needs `P8_JWT_SECRET`, the secret the stack verifies tokens with, to
+sign its upload token; on compose with no `.env` of your own that is
 `change-me-a-long-random-string-at-least-32-chars`.
 
-That is the honest shape rather than an inconvenience. An earlier version of
-this fixture shipped literal four-dimension vectors so it would load with
-nothing running; it reproduced beautifully and taught the wrong thing, because
-a reader who copied the pattern had a corpus no model had ever seen and
-rankings that meant nothing. What you search here is what a model produced.
+That is the honest shape. An earlier version of this fixture shipped literal
+four-dimension vectors so it would load with nothing running; it reproduced
+beautifully and taught the wrong thing, because a reader who copied the pattern
+had a corpus no model had ever seen and rankings that meant nothing. What you
+search here is what a model produced.
 
-If you do not have a key yet:
+**To embed with a hosted model instead**, uncomment the `text-embedding-3-small`
+entry in `sources.yaml`, make it the one `is_default`, point `ingest_pipelines`
+at it, and declare its key under `requires: credentials:` in `manifest.yaml` so
+the loader refuses before uploading when the key is missing. The key has to be
+in the stack's environment too — on compose, the `.env` beside
+`docker-compose.yml` (where `OPENAI_API_KEY` alone is enough) — because the
+embedding call is made by the ingest worker, not the loader. A key exported only
+in the shell you load from passes the loader's check, and every embed task then
+fails on `credential_ref 'LLM_API_KEY' is not set`.
+
+To load everything except the corpus:
 
 ```bash
 percolate sample load samples/harbour --skip-documents --as-email you@example.com
@@ -112,8 +117,7 @@ DETAIL: Key (org_id, key, entity_type)=(null, rotterdam psc report, document)
 ```
 
 Nothing warns you at upload time; the 201 comes back as usual. This is also
-what happens if you load once before the stack has an embedding key and then
-load again to fix it.
+what happens if a first load's embeddings failed and you load again to fix it.
 
 So use `--skip-documents` when reloading, unless you have removed the corpus
 first. The documents go to the default `uploads` channel, so this names them by

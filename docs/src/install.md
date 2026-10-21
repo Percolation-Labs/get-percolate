@@ -420,59 +420,24 @@ administrator who sees **zero rows** in `workflow.runs_api`, with no way to tell
 that from "my workflow never ran". The vocabulary is derived in one place inside
 the extension for this reason — prose that repeats it can drift away from it.
 
-Then sign a JWT with the same secret the stack was given — `P8_JWT_SECRET`,
-which the compose file defaults to
-`change-me-a-long-random-string-at-least-32-chars`. A CLI does it, with the
-tenant claim the sample's data needs.
+Then the token. The core image the stack runs carries the `percolate` CLI and
+the stack's signing secret, so it signs one for you: nothing to install, and no
+token to build by hand. Run it in the directory with the compose file:
 
-`percolate` is the CLI from `percolate-core`, and nothing you have run so far
-installed it — the compose stack runs that image, it does not put the command on
-your PATH. It needs **Python 3.11 or newer**; on a Mac the system `python3` is
-older than that and `pip` will report the package as simply not existing rather
-than as unsupported.
-
-The extras are not optional decoration: `sample` is the YAML reader and `agent`
-is what turns `plugin.yaml`'s agents — which are JSON Schema documents, not
-prompt strings — into rows. Without them the load refuses before it writes
-anything, which is the right behaviour and still a stop.
-
-It goes in a virtualenv, because a bare `pip install` stops at
-`externally-managed-environment` on Homebrew's Python and on current Debian and
-Ubuntu:
-
-<!-- run: pip -->
+<!-- run: shell -->
 ```bash
-python3 -m venv ~/.percolate && . ~/.percolate/bin/activate   # 3.11 or newer
-pip install 'percolate-core[sample,agent]>=@@core_min@@'
+uid=$(docker compose exec -T db psql -U p8 -d percolate -Atc \
+        "select id from rbac.users where email = 'me@example.com'")
+export TOKEN=$(docker compose exec -T content percolate auth token --sub "$uid" \
+                 --orgs d0000000-0000-0000-0000-00000000000a)
 ```
 
-`--email` looks the user up in the database, so the CLI needs the owner's DSN
-as well as the secret:
-
-```bash
-export P8_ADMIN_DSN=postgres://p8:p8@localhost:5432/percolate   # p8:p8 unless .env changed them
-export P8_JWT_SECRET=change-me-a-long-random-string-at-least-32-chars
-export TOKEN=$(percolate auth token --email me@example.com \
-          --orgs d0000000-0000-0000-0000-00000000000a)
-```
-
-With nothing installed, the same token is a few lines of standard library.
-Two claims are required: `sub` is the user id every RLS policy reads through
-`rbac.current_user_id()`, and `role` is the Postgres role PostgREST switches to;
-`orgs` is the tenant list, without which tenanted rows are invisible.
-
-```python
-import base64, hmac, hashlib, json, time
-b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=")
-secret = b"change-me-a-long-random-string-at-least-32-chars"
-head = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-body = b64(json.dumps({"sub": "<the uid bootstrap_admin returned>",
-                       "role": "authenticated",
-                       "orgs": ["d0000000-0000-0000-0000-00000000000a"],
-                       "exp": int(time.time()) + 3600}).encode())
-sig  = b64(hmac.new(secret, head + b"." + body, hashlib.sha256).digest())
-print((head + b"." + body + b"." + sig).decode())
-```
+`--orgs` names the sample's first tenant: tenanted rows carry an org, and a
+token without it sees only the shared tier: its queries return no tenant rows,
+and no error says why. The token lasts an hour; run the block again for a new
+one. Without the compose stack, `percolate auth token --sub <uid>` from
+`pip install percolate-core`, with `P8_JWT_SECRET` set to your secret, signs
+the same token.
 
 That is the `$TOKEN` every `curl` in these docs wants.
 
@@ -554,7 +519,7 @@ therefore a user, and the permission is checked.
 Passwords are for `rbac.login`, which exchanges them for a refresh token; it
 does not mint the access token, because whatever holds `P8_JWT_SECRET` does.
 There is no HTTP endpoint that hands you one, so a token comes from something
-holding the secret — `percolate auth token`, the snippet above, or your own
+holding the secret — `percolate auth token`, in the image or installed, or your own
 auth provider signing with the same secret and the same claims.
 
 <p class="related"><strong>Related</strong>
@@ -573,9 +538,27 @@ Here we get the domain the rest of this documentation queries, and be able to
 tell it apart from our own data afterwards.
 {: .goal }
 
-The sample needs the `percolate` CLI, installed [with the
-token](#the-first-user-and-a-token); `. ~/.percolate/bin/activate` puts it back on
-your PATH in a new shell.
+The sample needs the `percolate` CLI from `percolate-core` on your own machine.
+The compose stack runs that image; it does not put the command on your PATH. It needs **Python 3.11 or newer**; on a Mac the system `python3` is
+older than that and `pip` will report the package as simply not existing rather
+than as unsupported.
+
+The extras are not optional decoration: `sample` is the YAML reader and `agent`
+is what turns `plugin.yaml`'s agents — which are JSON Schema documents, not
+prompt strings — into rows. Without them the load refuses before it writes
+anything, which is the right behaviour and still a stop.
+
+It goes in a virtualenv, because a bare `pip install` stops at
+`externally-managed-environment` on Homebrew's Python and on current Debian and
+Ubuntu:
+
+<!-- run: pip -->
+```bash
+python3 -m venv ~/.percolate && . ~/.percolate/bin/activate   # 3.11 or newer
+pip install 'percolate-core[sample,agent]>=@@core_min@@'
+```
+
+`. ~/.percolate/bin/activate` puts it back on your PATH in a new shell.
 
 `samples/harbour` is a path **inside this repository**, so it needs to be on
 disk — a compose install has only the one file you curled. The DSN has to be
@@ -618,13 +601,11 @@ harbour 1.0.0
   workflow harbour_deficiencies
 ```
 
-**Most of it is tenanted**, so mint a token that names one of the two
-organisations or you will see only the shared tier and think nothing loaded:
-
-```bash
-percolate auth token --email me@example.com \
-  --orgs d0000000-0000-0000-0000-00000000000a     # Meridian; ...000b is Kestrel
-```
+**Most of it is tenanted.** The token from [the first
+user](#the-first-user-and-a-token) names Meridian (`...000a`); for Kestrel, run
+that block again with `--orgs d0000000-0000-0000-0000-00000000000b`. A token
+that names neither sees only the shared tier, and its queries return no tenant
+rows.
 
 **It needs no key.** The corpus goes in through `POST /files` and is embedded
 by the running pipeline with `bge-small-en-v1.5`, the model the workers carry,

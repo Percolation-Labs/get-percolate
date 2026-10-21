@@ -269,11 +269,15 @@ if len(found) != 1:
 print(found[0])
 EOF
 }
-# The token a reader mints on install.md, signed with the same default secret
-# the sample load read above.
-TOKEN=$(P8_ADMIN_DSN="postgres://p8:p8@localhost:5432/percolate" P8_JWT_SECRET="$SECRET" \
-        "$WORK/cli-venv/bin/percolate" auth token --email me@example.com) \
-    || fail "percolate auth token failed for me@example.com"
+# The token a reader mints on install.md, by running install.md's own block: it
+# signs inside the core image the stack runs, with the stack's secret, so a
+# reader needs no CLI and builds no JWT for it (REM-1086).
+token_block=$(page_block install.md shell "auth token --sub") \
+    || fail "install.md has no '<!-- run: shell -->' block that mints the token"
+TOKEN=$(bash -e -c "$token_block"$'\n''printf %s "$TOKEN"') \
+    || fail "install.md's token block failed"
+[ "$(printf %s "$TOKEN" | tr -cd . | wc -c | tr -d ' ')" = 2 ] \
+    || fail "install.md's token block printed no token: '$TOKEN'"
 sync_via_page() {   # <server>: run agents.md's own sync block for it, while the runtime starts
     local block out=""
     block=$(page_block agents.md shell "/tools/$1/sync") \

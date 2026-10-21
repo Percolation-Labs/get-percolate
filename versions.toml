@@ -63,5 +63,7 @@ core      = "0.1.12"  # ci/coldstart.sh sends a scheduled run to `agent serve`,
                       # read the session. 0.1.11 does none of these. And
                       # 0.1.11 was already the floor for `percolate sample load`
                       # against 0.2.0 (REM-147).
-extension = "0.2.0"   # samples/harbour writes agents as JSON Schema documents,
+extension = "0.2.29"  # graph.md and query.md enrol a member with rbac.add_org_member, which
+                      # admits the installer session from 0.2.29 (REM-1082). Before that:
+                      # samples/harbour writes agents as JSON Schema documents,
                       # and only 0.2.0 translates one into a row (REM-70)

@@ -457,9 +457,8 @@ questions are yours and the next section can read Meridian's facts.
 
 <!-- run: sql -->
 ```sql
-insert into rbac.org_members (org_id, user_id)
-select 'd0000000-0000-0000-0000-00000000000a', id from rbac.users where email = 'me@example.com'
-on conflict do nothing;
+select rbac.add_org_member('d0000000-0000-0000-0000-00000000000a',
+                            (select id from rbac.users where email = 'me@example.com'));
 
 select set_config('request.jwt.claims', json_build_object(
          'sub', (select id from rbac.users where email = 'me@example.com'),

@@ -17,7 +17,11 @@ chunks.
 {: .goal }
 
 The model has to be registered before the pipeline can name it, so this is two
-statements and the first one is not optional. `on conflict` because the harbour
+statements and the first one is not optional. This one is `bge-small-en-v1.5`,
+which the ingest worker runs in-process through fastembed: the endpoint is the
+model id the worker loads, and there is no key to name. A hosted model is the
+same insert with provider `openai`, its url as the endpoint and
+`credential_ref => 'LLM_API_KEY'`. `on conflict` because the harbour
 sample registers this same model — if you followed the install guide it is
 already there, and the insert is then a no-op rather than a duplicate-key error
 on the first line of this page:
@@ -25,13 +29,12 @@ on the first line of this page:
 <!-- run: sql -->
 ```sql
 insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)
-values ('text-embedding-3-small', 1536, 'openai',
-        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true)
+values ('bge-small-en-v1.5', 384, 'fastembed', 'BAAI/bge-small-en-v1.5', null, true)
 on conflict (name) do nothing;
-select aiq.register_embedding_space('text-embedding-3-small');
+select aiq.register_embedding_space('bge-small-en-v1.5');
 
-select content.install_ingest_workflow('text-embedding-3-small');
--- ingest_file: parse, embed with text-embedding-3-small in batches
+select content.install_ingest_workflow('bge-small-en-v1.5');
+-- ingest_file: parse, embed with bge-small-en-v1.5 in batches
 ```
 
 Skip the first two and the third refuses rather than installing something that
@@ -39,7 +42,7 @@ would fail later, which is the behaviour you want but does read as an error on
 a fresh install:
 
 ```
-ERROR:  embedding model 'text-embedding-3-small' is not registered, so an
+ERROR:  embedding model 'bge-small-en-v1.5' is not registered, so an
         ingestion pipeline naming it would fail at every run. Register it
         first, or call this with no argument to install the parse-only pipeline.
 ```
@@ -66,7 +69,7 @@ steps:
     work: true
     queue: ingest
     input: {op: embed, resource_id: '{{run.resource_id}}',
-            model: text-embedding-3-small}
+            model: bge-small-en-v1.5}
 ```
 
 You can read it, edit it or replace it — it is a definition like any other,
@@ -139,9 +142,10 @@ say so:
 The wrong tenant and the missing file are indistinguishable, by design: a
 404 that meant "exists, not yours" would confirm the resource id.
 
-`embed` retrying is what a keyless install looks like: parsing and chunking need
-no model, so the file is chunked and text-searchable, and the vector arrives
-once `LLM_API_KEY` is set on the ingest worker. `x-p8-channel` picks the channel
+`embed` retrying is what a hosted model with no key looks like: parsing and
+chunking need no model, so the file is chunked and text-searchable, and the
+vector arrives once `LLM_API_KEY` is set on the ingest worker. The bundled
+`bge-small-en-v1.5` needs no key, so on the default install `embed` succeeds. `x-p8-channel` picks the channel
 whose workflow runs — omitted, it is the default one — and `$TOKEN` is the one
 from [install](install.html#the-first-user-and-a-token).
 
@@ -295,8 +299,8 @@ the other way: N vectors that have to be kept, keyed by chunk, in the space of
 the model that produced them.
 
 It cannot go through the engine one vector at a time. A step's output is capped
-at 64KB and one 1536-dimension vector is about 31KB of JSON, so two vectors do
-not fit in one task output whatever else you do. The process holding the vectors
+at 64KB and one 1536-dimension vector from a hosted model is about 31KB of
+JSON, so two vectors do not fit in one task output whatever else you do. The process holding the vectors
 is therefore the one that writes them, and what comes back to the engine is a
 receipt.
 
@@ -324,10 +328,10 @@ Here we turn the graph index on, which is a flag on the same install call.
 ```sql
 select aiq.install_structure_null('gpt-4o-mini');
 select content.install_ingest_workflow(
-           p_model       => 'text-embedding-3-small',
+           p_model       => 'bge-small-en-v1.5',
            p_graph_index => true,
            p_graph_model => 'gpt-4o-mini');
--- ingest_file: parse, embed with text-embedding-3-small in batches,
+-- ingest_file: parse, embed with bge-small-en-v1.5 in batches,
 --             graph-index each window with structure_null (gpt-4o-mini)
 ```
 

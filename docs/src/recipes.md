@@ -86,18 +86,17 @@ ERROR:  new row for relation "tool_servers" violates check constraint
 
 ### An embedding model, or `SEARCH` will not compile
 
-Here we register a model so that vector queries have a URL to be compiled
+Here we register a model so that vector queries have a model to be compiled
 against.
 {: .goal }
 
 <!-- run: sql -->
 ```sql
 insert into aiq.embedding_models (name, dim, provider, endpoint, credential_ref, is_default)
-values ('text-embedding-3-small', 1536, 'openai',
-        'https://api.openai.com/v1/embeddings', 'LLM_API_KEY', true)
+values ('bge-small-en-v1.5', 384, 'fastembed', 'BAAI/bge-small-en-v1.5', null, true)
 on conflict (name) do nothing;   -- the harbour sample registers this same model
 
-select aiq.register_embedding_space('text-embedding-3-small');
+select aiq.register_embedding_space('bge-small-en-v1.5');
 ```
 
 <details class="why" markdown="1">
@@ -112,7 +111,9 @@ operator from drifting away from what the model actually returns.
 the
 request body's shape and the path to the vector in the response; `ollama` and
 `openai` ship as rows, and a gateway that differs from either overrides the row
-rather than forking anything.
+rather than forking anything. `fastembed` ships as a third, marked
+`in_process`: there is no request to shape, the endpoint is the model id the
+worker loads, and the worker answers the step itself.
 
 `is_default` is enforced by a partial unique index rather than by a trigger, so
 a deploy that would leave two defaults fails loudly instead of leaving a coin
@@ -420,7 +421,7 @@ vectors and graph nodes, in one call.
 ```sql
 select aiq.install_structure_null('gpt-4o-mini');
 select content.install_ingest_workflow(
-           p_model       => 'text-embedding-3-small',
+           p_model       => 'bge-small-en-v1.5',
            p_graph_index => true,
            p_graph_model => 'gpt-4o-mini');
 
@@ -441,7 +442,7 @@ the pipeline expects a resource. A polled record starts no workflow of its own;
 <div class="label">install_ingest_workflow returns</div>
 
 ```
-ingest_file: parse, embed with text-embedding-3-small in batches,
+ingest_file: parse, embed with bge-small-en-v1.5 in batches,
              graph-index each window with structure_null (gpt-4o-mini)
 ```
 </div>
@@ -483,10 +484,10 @@ because an empty row set releases the successor where a document-level step
 would have had to raise.
 
 The embed step is `work` rather than a matrix of `embed:` children because of
-the
-payload cap: one 1536-dimension vector is about 31KB of JSON and a step's output
-caps at 64KB, so two vectors do not fit in one task output. Any design carrying
-corpus vectors through the engine is limited to batches of one.
+the payload cap: one 1536-dimension vector from a hosted model is about 31KB of
+JSON and a step's output caps at 64KB, so two vectors do not fit in one task
+output. Any design carrying corpus vectors through the engine is limited to
+batches of one.
 
 <p class="related"><strong>Related</strong>
 <a href="ingest.html">every format, and the captured run</a> ·

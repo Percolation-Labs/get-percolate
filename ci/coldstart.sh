@@ -229,15 +229,23 @@ say "install.md: the sample it tells you to load, actually loads"
 # difference between a CLI that can load the sample and one that will stop on
 # its first line.
 #
-# --skip-documents because the corpus step needs a real embedding key and this
-# check must run without one; everything the extras are needed FOR -- the YAML
-# reader and the JSON-Schema agent translation in plugin.yaml -- is on this
-# path. Idempotent by design, so a re-run is not a special case.
-P8_ADMIN_DSN="postgres://p8:p8@localhost:5432/percolate" \
+# THE DOCUMENTS TOO, AND WITH NO KEY. The sample embeds its corpus with
+# bge-small-en-v1.5, which the ingest worker runs in-process, so the whole
+# install guide -- corpus included -- has to work on a machine that has never
+# seen a provider key (REM-1100). The loader signs its uploads, so it needs the
+# compose file's own default secret, read from the file rather than typed here.
+# Idempotent by design, so a re-run is not a special case.
+SECRET=$(sed -n 's/^ *P8_JWT_SECRET: \${P8_JWT_SECRET:-\(.*\)}$/\1/p' docker-compose.yml | head -1)
+[ -n "$SECRET" ] || fail "no P8_JWT_SECRET default in docker-compose.yml -- the file changed shape"
+env -u LLM_API_KEY -u OPENAI_API_KEY \
+    P8_ADMIN_DSN="postgres://p8:p8@localhost:5432/percolate" P8_JWT_SECRET="$SECRET" \
     "$WORK/cli-venv/bin/percolate" sample load "$ROOT/samples/harbour" \
-        --as-email me@example.com --skip-documents > "$WORK/sample.log" 2>&1 || {
+        --as-email me@example.com > "$WORK/sample.log" 2>&1 || {
     sed 's/^/    /' "$WORK/sample.log" >&2
     fail "'percolate sample load' failed -- install.md tells a reader to run this"; }
+grep -q 'every document is embedded' "$WORK/sample.log" || {
+    sed 's/^/    /' "$WORK/sample.log" >&2
+    fail "the sample loaded but its corpus was not embedded -- install.md says it needs no key"; }
 grep -q '^  plugin harbour' "$WORK/sample.log" || {
     sed 's/^/    /' "$WORK/sample.log" >&2
     fail "the sample loaded without applying plugin.yaml -- the agent half is what needs [agent]"; }
@@ -261,10 +269,8 @@ if len(found) != 1:
 print(found[0])
 EOF
 }
-# The token a reader mints on install.md, signed with the compose file's own
-# default secret rather than a copy of it typed here.
-SECRET=$(sed -n 's/^ *P8_JWT_SECRET: \${P8_JWT_SECRET:-\(.*\)}$/\1/p' docker-compose.yml | head -1)
-[ -n "$SECRET" ] || fail "no P8_JWT_SECRET default in docker-compose.yml -- the file changed shape"
+# The token a reader mints on install.md, signed with the same default secret
+# the sample load read above.
 TOKEN=$(P8_ADMIN_DSN="postgres://p8:p8@localhost:5432/percolate" P8_JWT_SECRET="$SECRET" \
         "$WORK/cli-venv/bin/percolate" auth token --email me@example.com) \
     || fail "percolate auth token failed for me@example.com"

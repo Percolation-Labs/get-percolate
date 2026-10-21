@@ -22,8 +22,11 @@ bottom of the page.
 
 ## Nothing is callable until you say so
 
-They install with the extension and are granted to nobody. A fresh database has
-the functions present, inert, and unreachable through PostgREST.
+They install with the extension, switched off: the compiled half is granted to
+nobody, so a fresh database has them present and inert. A signed-in caller who
+reaches one anyway, through p8ql or by calling a wrapper such as `aiq.related`
+directly, is told they are off for their role and given the call that turns
+them on.
 
 Here we turn them on for the role your API calls arrive as.
 {: .goal }
@@ -52,9 +55,11 @@ reconnects and says how many functions it moved.
 is half a grant</summary>
 
 The wrappers in `aiq` are `SECURITY INVOKER`, so they run as the caller and the
-compiled functions underneath them have to be callable by that caller too.
-Granting the wrapper alone produces a permission error at the first call, from
-a function name the caller has never heard of, so one call grants both halves.
+compiled functions underneath them have to be callable by that caller too. The
+switch is the grant on that compiled half. The wrappers are open to the
+signed-in roles only so that a caller with the switch off meets a sentence
+naming it, not a permission error about a function name they have never heard
+of.
 
 They are off by default because the first call in a backend builds an adjacency
 snapshot of the graph, and that is the largest allocation this extension makes

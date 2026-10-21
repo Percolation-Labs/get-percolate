@@ -451,6 +451,25 @@ it would be retention on when somebody last looked at the run.
 backups</a></p>
 </details>
 
+## What ships switched off
+
+Here we list what a fresh install has present but not running, and what you
+meet before you turn each on.
+{: .goal }
+
+| Feature | Turn it on (as the database owner) | What you meet while it is off |
+|---|---|---|
+| Graph algorithms: `RELEVANCE`, `PATH`, `aiq.related` and the rest of [graph](graph.html) | `select aiq.enable_graph_algorithms('<role>')` | A refusal saying they are off for your role, with that call as its hint, through p8ql and through a direct call |
+| This database's own schema as graph nodes | `select aiq.refresh_catalogue()` | Nothing refuses. `aiq.db_objects` is empty, and a lookup of a table or function finds nothing |
+| Dream on a schedule | `select aiq.schedule_dream()`, every 15 minutes unless you pass a cron | Dream runs only when called: `select aiq.dream()` |
+| Embedding on a schedule | `select aiq.schedule_source_embedding()`, every 10 minutes unless you pass a cron | Nothing missing day to day. Each save already queues its own embedding, and the schedule is the net for a run that failed or a model registered later |
+
+The two schedules fire on the engine's clock, `workflow.tick`, so they also need
+[pg_cron](install.html#pg_cron-if-you-want-schedules) to run it. The catalogue and the schedules refuse nothing because
+nothing asks for them: a missing schedule is work that does not happen, and an
+empty catalogue is a lookup that finds nothing. That is why they are listed
+here.
+
 ## Version skew
 
 Here we find out whether the compiled parser and the SQL schema still agree,

@@ -10,36 +10,19 @@ on:
   # why this list grew one. `versions.py --check` and the prose check below both
   # answer questions about a page BEFORE it is worth deploying, and a gate that
   # only runs after merge cannot stop the page it is about. The deploy job stays
-  # `push`-only -- see `if:` on it -- so a pull request checks and does not
+  # dispatch-only -- see `if:` on it -- so a pull request checks and does not
   # publish.
   pull_request:
     paths: ["docs/**", "README.md", "versions.toml", "ci/versions.py",
             ".github/workflows/docs.yml"]
-  push:
-    branches: [main]
-    # README.md is here because this job runs `ci/versions.py --check`, and one
-    # of the literals that check verifies -- the documented pip floor -- lives
-    # in the README. Scoping the job without it would have left the only gate on
-    # that literal unreachable by the edit that breaks it.
-    paths: ["docs/**", "charts/**", "README.md", "versions.toml", "ci/versions.py",
-            ".github/workflows/docs.yml"]
+  # A MERGE PUBLISHES NOTHING (REM-1098). This used to run on `push` to main
+  # and on a quarter-hourly schedule that published any committed chart the
+  # index lacked, so chart 0.1.51 went out the moment #74 merged, behind the
+  # release train. Now only a dispatch publishes: parser.yml's docs-version
+  # job and percolate-core's release.yml each dispatch this after committing
+  # the numbers they move, and anything else is the train conductor's
+  # `gh workflow run docs.yml` or an emergency by hand.
   workflow_dispatch:
-  # A COMMITTED CHART NOBODY PUBLISHED IS PUBLISHED WITHIN THE HOUR (REM-241, REM-253).
-  # Both releases renumber the chart with a push that starts no workflow (a
-  # GITHUB_TOKEN push in parser.yml; percolate-core's 0.1.14 push at 08:08Z on
-  # 2026-09-14 started none either), so `push` alone left chart 0.1.15 committed
-  # and unpublished. The `stale` job below makes a scheduled run cost one curl
-  # unless versions.toml names a chart the index does not list.
-  #
-  # OFF THE QUARTER HOURS, because GitHub runs a schedule when it has capacity,
-  # not at the minute written, and the top of each quarter hour is when every
-  # other repository's schedule is due. As `*/15` this never fired: merged at
-  # 12:34Z on 2026-09-14, it had no scheduled run by 15:13Z, while coldstart's
-  # daily `0 7 * * *` in this repository started at 13:44Z that day and 12:36Z
-  # the day before. Four chances an hour at uncrowded minutes is the backstop;
-  # parser.yml's dispatch is what publishes an extension release's chart on time.
-  schedule:
-    - cron: "7,22,37,52 * * * *"
 
 permissions:
   contents: read
@@ -54,34 +37,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  stale:
-    runs-on: ubuntu-latest
-    outputs:
-      publish: ${{ steps.s.outputs.publish }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: versions.toml
-          sparse-checkout-cone-mode: false
-      - id: s
-        name: Is there anything to publish?
-        run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          CHART=$(sed -n 's/^chart *= *"\([0-9.]*\)".*/\1/p' versions.toml | head -1)
-          INDEX=https://percolation-labs.github.io/get-percolate/charts/index.yaml
-          if curl -fsSL "$INDEX" | grep -q "^    version: $CHART$"; then
-            echo "chart $CHART is published; nothing to do"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::chart $CHART is committed in versions.toml and missing from $INDEX; publishing it"
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
-    needs: stale
-    if: needs.stale.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

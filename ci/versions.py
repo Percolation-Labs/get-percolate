@@ -313,7 +313,11 @@ def main() -> int:
         #
         # This was the coupling stated in the comment that used to be here and
         # implemented for whichever key prompted it -- one rule, half enforced.
-        if (table, name) in (("published", "core"), ("published", "extension")):
+        # Only when the number MOVED: parser.yml re-runs this pin step on a
+        # retry, expecting "nothing to commit", and a bump on a no-op set gave
+        # it a commit renumbering a chart whose contents had not changed.
+        if (table, name) in (("published", "core"), ("published", "extension")) \
+                and before[name] != value:
             text = path.read_text()
             cur = re.search(r'^chart\s*=\s*"([0-9]+)\.([0-9]+)\.([0-9]+)"',
                             text, re.M)

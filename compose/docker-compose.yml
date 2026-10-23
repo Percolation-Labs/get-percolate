@@ -37,7 +37,7 @@ services:
     # file does not pin yet -- without editing this line. The default is the
     # pin ci/versions.py enforces, so an unset .env still gets the documented
     # extension. ci/examples.sh and ci/coldstart.sh pass IMAGE through it.
-    image: ${P8_DB_IMAGE:-percolationlabs/percolate-postgres:19-0.2.29}
+    image: ${P8_DB_IMAGE:-percolationlabs/percolate-postgres:19-0.2.30}
     restart: unless-stopped
     # pg_cron is a background worker, so it must be preloaded at startup --
     # there is no CREATE EXTENSION that can add it later. cron.database_name
@@ -199,7 +199,7 @@ services:
   # The only process a workflow needs, and only for steps that leave the
   # machine. p8ql and sql steps run inside Postgres with nothing running here.
   worker:
-    image: percolationlabs/percolate-core:0.2.9
+    image: percolationlabs/percolate-core:0.2.10
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
     command: ["worker", "--queue", "http"]
@@ -310,7 +310,7 @@ services:
   # cannot starve a fast one), so the answer is another process rather than
   # another flag.
   ingest-worker:
-    image: percolationlabs/percolate-core:0.2.9
+    image: percolationlabs/percolate-core:0.2.10
     restart: unless-stopped
     depends_on:
       db: {condition: service_healthy}
@@ -336,7 +336,7 @@ services:
       P8_CREDENTIAL_ORIGINS: ${P8_CREDENTIAL_ORIGINS:-{"LLM_API_KEY":["https://api.openai.com"]}}
 
   content:
-    image: percolationlabs/percolate-core:0.2.9
+    image: percolationlabs/percolate-core:0.2.10
     restart: unless-stopped
     depends_on:
       db: {condition: service_healthy}
@@ -365,7 +365,7 @@ services:
     ports: ["${P8_CONTENT_PORT:-8081}:8081"]
 
   agent:
-    image: percolationlabs/percolate-core:0.2.9
+    image: percolationlabs/percolate-core:0.2.10
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
     # --host is no longer passed: percolate-core#1 made `agent serve` default to
@@ -477,7 +477,7 @@ services:
   #   claude mcp add --transport http percolate http://localhost:8090 \
   #     --header "Authorization: Bearer $TOKEN"
   query-mcp:
-    image: percolationlabs/percolate-core:0.2.9
+    image: percolationlabs/percolate-core:0.2.10
     restart: unless-stopped
     depends_on: [postgrest]
     command: ["query", "mcp", "--port", "8090", "--postgrest", "http://postgrest:3000"]

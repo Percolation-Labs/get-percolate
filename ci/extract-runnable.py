@@ -55,8 +55,8 @@ def substitute(text: str) -> str:
     Two readers of one file is the shape this whole mechanism exists to remove.
     """
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from versions import load
-    table = load()
+    from versions import placeholders
+    table = placeholders()
 
     def one(m):
         if m.group(1) not in table:

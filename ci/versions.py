@@ -87,6 +87,16 @@ def released_table() -> str:
     return "\n".join(out)
 
 
+def placeholders() -> dict:
+    """Every @@name@@ a page may ask for: the numbers, and @@released@@, a table.
+
+    The one list, for both readers that substitute -- docs/build.py and
+    ci/extract-runnable.py. Each built its own from load(), and the first
+    placeholder that was not a number reached one of them and not the other.
+    """
+    return {**load(), "released": released_table()}
+
+
 # Each rule is (file, regex with one capture group, which version it must equal).
 # The regex is the contract: it names the exact shape of the literal, so a rule
 # that stops matching is a file that changed shape and needs a human, not a

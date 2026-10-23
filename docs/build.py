@@ -113,9 +113,8 @@ def load_versions() -> dict:
     """
     import sys
     sys.path.insert(0, str(HERE.parent / "ci"))
-    from versions import load, released_table
-    # @@released@@ is the one placeholder that is a table, not a number.
-    return {**load(), "released": released_table()}
+    from versions import placeholders
+    return placeholders()
 
 
 # @@name@@, NOT {{name}}. `{{...}}` is the workflow engine's own template

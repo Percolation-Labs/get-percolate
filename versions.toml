@@ -135,4 +135,6 @@ released = [
   { on = "2026-10-20", extension = "0.2.28", core = "0.2.8", chart = "0.1.53" },
   { on = "2026-10-21", extension = "0.2.28", core = "0.2.9", chart = "0.1.54" },
   { on = "2026-10-21", extension = "0.2.29", core = "0.2.9", chart = "0.1.55" },
+  { on = "2026-10-23", extension = "0.2.29", core = "0.2.10", chart = "0.1.56" },
+  { on = "2026-10-23", extension = "0.2.30", core = "0.2.10", chart = "0.1.57" },
 ]

@@ -516,6 +516,11 @@ Here we find which extension, core and chart a fresh install pulled on a given
 day, newest first; the number that moved that day is in bold.
 {: .goal }
 
+The table records what went out; nothing reads it at start-up. What a
+mismatch does is refuse with the remedy: a core that cannot open a session
+against the database stops and says whether to upgrade the runtime or the
+extension.
+
 @@released@@
 
 A row says these were published together, not that nothing else works. Nothing

@@ -32,6 +32,7 @@
 #     ALLOW_CACHED=1 ci/tour.sh   # on a machine that has images (ports from 5432 must be free)
 set -uo pipefail
 
+HERE=$(cd "$(dirname "$0")" && pwd)
 EXT_REPO=${EXT_REPO:-Percolation-Labs/percolate}
 RAW=https://raw.githubusercontent.com
 HARNESS_PATH=dev/tests/workflow/25-the-langgraph-article-runs.sql
@@ -61,7 +62,10 @@ if [ -z "${ALLOW_CACHED:-}" ] && docker image ls --format '{{.Repository}}' | gr
     fail "this machine already has a stack image cached; the run must start with none (ALLOW_CACHED=1 for a local run)"
 fi
 
-curl -fsSL "$RAW/$EXT_REPO/v$V/$HARNESS_PATH" -o harness.sql \
+# Through fetch-tag-file.py, which retries a 404 for about two minutes when the tag is under ten minutes old: on
+# the 2026-10-23 train this ran 6s after v0.2.30 was tagged and raw.githubusercontent.com did not serve it yet
+# (REM-1155). A file missing from an older tag still fails on the first answer.
+python3 "$HERE/fetch-tag-file.py" "$EXT_REPO" "v$V" "$HARNESS_PATH" harness.sql \
     || fail "the tour harness is not at $EXT_REPO v$V/$HARNESS_PATH"
 
 # One live block, its `-- ` prefix dropped, exactly as the harness's header says.

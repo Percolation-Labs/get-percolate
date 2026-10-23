@@ -45,12 +45,20 @@ begin
         return;
     end if;
 
-    insert into rbac.orgs (id, slug, name) values
-        ('d0000000-0000-0000-0000-00000000000a', 'meridian', 'Meridian Line'),
-        ('d0000000-0000-0000-0000-00000000000b', 'kestrel',  'Kestrel Shipping')
-    on conflict (id) do update
-        set slug = excluded.slug,
-            name = excluded.name;
+    -- THROUGH THE FUNCTIONS, NOT THE TABLES (REM-1082). These were inserts into
+    -- rbac.orgs, rbac.users and rbac.org_members, which skipped the audit event
+    -- and taught every reader that identity is something you write rows into.
+    -- From 0.2.30 the installer creates an org at a fixed id and a passwordless
+    -- person, and a replay converges, so the sample says it the way a reader
+    -- should. An extension between 0.1.4 and 0.2.30 has the tables and not the
+    -- functions, and is told which release it needs rather than half-loading.
+    if to_regprocedure('rbac.create_user(text,uuid)') is null then
+        raise exception 'the harbour sample needs extension 0.2.30 or newer: this database has rbac.orgs but not rbac.create_user(email, id)'
+            using hint = 'upgrade with: alter extension percolate update';
+    end if;
+
+    perform rbac.create_org('meridian', 'Meridian Line',    'd0000000-0000-0000-0000-00000000000a');
+    perform rbac.create_org('kestrel',  'Kestrel Shipping', 'd0000000-0000-0000-0000-00000000000b');
 
     -- AND SOMEBODY TO BE. An org on its own is not enough to read its rows:
     -- from 0.1.4 `rbac.current_org_ids()` intersects the `orgs` claim with real
@@ -69,10 +77,9 @@ begin
     -- So the sample ships its own reader rather than enrolling whoever happens
     -- to exist. Adding every user in the database to a demo's tenants would be
     -- a sample writing to identities that are not its own; a reader who wants
-    -- their OWN account scoped adds one row, and the graph page says so.
-    insert into rbac.users (id, email, status) values
-        ('e0000000-0000-0000-0000-00000000000a', 'harbour-reader@example.invalid', 'active')
-    on conflict (id) do update set status = 'active';
+    -- their OWN account scoped makes one rbac.add_org_member call, and the graph
+    -- page says so.
+    perform rbac.create_user('harbour-reader@example.invalid', 'e0000000-0000-0000-0000-00000000000a');
 
     -- MERIDIAN ONLY, and the omission is the point. This sample's argument is
     -- that two tenants share one table and cannot see each other -- cookbook
@@ -90,7 +97,5 @@ begin
     --     orgs:[A,B]    member of A,B   -> 11        (the isolation gone)
     --
     -- A sample's job is to be true when read, not only when tested.
-    insert into rbac.org_members (org_id, user_id) values
-        ('d0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a')
-    on conflict do nothing;
+    perform rbac.add_org_member('d0000000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a');
 end $$;

@@ -14,7 +14,7 @@ on:
   # publish.
   pull_request:
     paths: ["docs/**", "README.md", "versions.toml", "ci/versions.py",
-            ".github/workflows/docs.yml"]
+            "samples/**", ".github/workflows/docs.yml"]
   # A MERGE PUBLISHES NOTHING (REM-1098). This used to run on `push` to main
   # and on a quarter-hourly schedule that published any committed chart the
   # index lacked, so chart 0.1.51 went out the moment #74 merged, behind the
@@ -77,6 +77,18 @@ jobs:
 
       - name: The published pages hold the house voice
         run: python3 .specs/meta/skills/docs-writing/banned.py docs/src/*.md README.md
+
+      # IDENTITY GOES THROUGH ITS FUNCTIONS (REM-1082). A page or a sample that
+      # inserts into an rbac table skips the audit event and the authorization
+      # the function applies, and teaches the reader to do the same. Every such
+      # write has a function -- create_org, create_user, add_org_member,
+      # grant_role_by_email -- so the rule is exact and needs no exemptions.
+      - name: No page or sample writes an rbac table directly
+        run: |
+          if grep -rniE 'insert[[:space:]]+into[[:space:]]+rbac\.' docs/src samples README.md; then
+            echo "::error::write identity through rbac.create_org, rbac.create_user, rbac.add_org_member or rbac.grant_role_by_email, not an insert" >&2
+            exit 1
+          fi
 
       - name: versions.toml agrees with every file that repeats it
         run: python3 ci/versions.py --check

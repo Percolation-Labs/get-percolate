@@ -510,6 +510,20 @@ enforced.
 refusals</a></p>
 </details>
 
+### Which versions went out together
+
+Here we find which extension, core and chart a fresh install pulled on a given
+day, newest first; the number that moved that day is in bold.
+{: .goal }
+
+@@released@@
+
+A row says these were published together, not that nothing else works. Nothing
+refuses a pairing at start-up: the core probes the capabilities it needs and
+names the remedy when one is missing, which is the check above. Each release
+writes its row (`ci/versions.py --set`), and the docs build refuses a published
+version without one.
+
 ## Payload limits
 
 Task `input` and `output` are capped by `workflow.max_payload_bytes`, 64KB by

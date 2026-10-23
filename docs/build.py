@@ -113,8 +113,8 @@ def load_versions() -> dict:
     """
     import sys
     sys.path.insert(0, str(HERE.parent / "ci"))
-    from versions import load
-    return load()
+    from versions import placeholders
+    return placeholders()
 
 
 # @@name@@, NOT {{name}}. `{{...}}` is the workflow engine's own template

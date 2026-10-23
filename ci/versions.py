@@ -9,7 +9,8 @@ a README renders on GitHub. Those get real literals -- written here, and checked
 here.
 
     ci/versions.py --check          # CI gate: does everything still agree?
-    ci/versions.py --set core=0.1.7 # move a number and rewrite what repeats it
+    ci/versions.py --set core=0.1.7 # move a number and rewrite what repeats it,
+                                    # and append the pair it publishes to [history]
 
 This exists because the previous mechanism was a GitHub issue asking a person to
 go and find them. It did not work. Three pages claimed the dialect was 0.1.0 for
@@ -19,6 +20,7 @@ prose is indistinguishable from current prose at a glance.
 from __future__ import annotations
 
 import argparse
+import datetime
 import pathlib
 import re
 import sys
@@ -60,6 +62,39 @@ def load() -> dict:
         "core_min": v["requires"]["core"],
         "extension_min": v["requires"].get("extension", v["published"]["extension"]),
     }
+
+
+def released() -> list[dict]:
+    """Every published pair, oldest first: versions.toml's [history] released."""
+    with (ROOT / "versions.toml").open("rb") as fh:
+        return tomllib.load(fh).get("history", {}).get("released", [])
+
+
+def released_table() -> str:
+    """The pairs as a Markdown table, newest first, the number that moved in bold.
+
+    docs/build.py substitutes this for @@released@@. Built here rather than
+    there for load()'s reason: one reader of the file, so the page and the
+    check cannot disagree about what a row means.
+    """
+    rows = released()
+    out = ["| Published | Extension | Core | Chart | |", "|---|---|---|---|---|"]
+    for i in range(len(rows) - 1, -1, -1):
+        r, prev = rows[i], rows[i - 1] if i else {}
+        cell = lambda k: f"**{r[k]}**" if prev and r[k] != prev.get(k) else r[k]
+        out.append(f"| {r['on']} | {cell('extension')} | {cell('core')} | "
+                   f"{r['chart']} | {r.get('note', '')} |")
+    return "\n".join(out)
+
+
+def placeholders() -> dict:
+    """Every @@name@@ a page may ask for: the numbers, and @@released@@, a table.
+
+    The one list, for both readers that substitute -- docs/build.py and
+    ci/extract-runnable.py. Each built its own from load(), and the first
+    placeholder that was not a number reached one of them and not the other.
+    """
+    return {**load(), "released": released_table()}
 
 
 # Each rule is (file, regex with one capture group, which version it must equal).
@@ -117,6 +152,15 @@ def check(v: dict, pins: bool = True) -> list[str]:
     it. A check that cannot pass is one that gets bypassed the day it matters.
     """
     bad = []
+    # THE LAST RELEASED ROW IS WHAT IS PUBLISHED, or the table the docs render
+    # has fallen behind -- the way every hand-kept list of versions here did.
+    # --set writes both; a [published] edited by hand without its row stops here.
+    rows = released()
+    if pins and rows and (rows[-1]["extension"], rows[-1]["core"]) != (v["extension"], v["core"]):
+        bad.append(f"versions.toml [history]: the last released row is extension "
+                   f"{rows[-1]['extension']} with core {rows[-1]['core']}, but [published] "
+                   f"says {v['extension']} with {v['core']} -- move a published number "
+                   f"with --set, which appends the row")
     for path, pat, want, why in (rules(v) if pins else []):
         text = (ROOT / path).read_text()
         found = pat.findall(text)
@@ -258,6 +302,7 @@ def main() -> int:
         if not pat.search(text):
             print(f"error: no {table}.{name} in versions.toml", file=sys.stderr)
             return 2
+        before = load()
         path.write_text(pat.sub(rf"\g<1>{value}\g<2>", text))
         print(f"versions.toml: {table}.{name} -> {value}")
 
@@ -278,7 +323,11 @@ def main() -> int:
         #
         # This was the coupling stated in the comment that used to be here and
         # implemented for whichever key prompted it -- one rule, half enforced.
-        if (table, name) in (("published", "core"), ("published", "extension")):
+        # Only when the number MOVED: parser.yml re-runs this pin step on a
+        # retry, expecting "nothing to commit", and a bump on a no-op set gave
+        # it a commit renumbering a chart whose contents had not changed.
+        if (table, name) in (("published", "core"), ("published", "extension")) \
+                and before[name] != value:
             text = path.read_text()
             cur = re.search(r'^chart\s*=\s*"([0-9]+)\.([0-9]+)\.([0-9]+)"',
                             text, re.M)
@@ -291,6 +340,23 @@ def main() -> int:
                   f"({moved} moved, so the chart itself changed)")
 
         v = load()
+        # THE PAIR THIS PUBLISHES, appended to [history] -- only when it moved,
+        # so a re-run of the same release writes nothing.
+        if table == "published" and name in ("extension", "core") and before[name] != value:
+            text = path.read_text()
+            today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+            row = (f'  {{ on = "{today}", extension = "{v["extension"]}", '
+                   f'core = "{v["core"]}", chart = "{v["chart"]}" }},\n')
+            m = re.search(r"^released = \[\n.*?^\]$", text, re.M | re.S)
+            if not m:
+                print("error: no `released = [` ... `]` in versions.toml [history]",
+                      file=sys.stderr)
+                return 2
+            end = m.end() - 1
+            path.write_text(text[:end] + row + text[end:])
+            print(f"versions.toml: released {today} extension {v['extension']} "
+                  f"core {v['core']}")
+
         for rel, rpat, want, _ in rules(v):
             f = ROOT / rel
             before = f.read_text()

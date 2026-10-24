@@ -5,11 +5,18 @@ asking a question in different words. It takes about four minutes, needs no
 model key, and every block on it is run by CI against a fresh install, so it
 is what you should expect to see.
 
-Bring the stack up first, as [install](install.html#docker-compose) shows:
-fetch `docker-compose.yml`, then `docker compose up -d`. Every command below
-runs in the directory that holds that file, once `docker compose ps` shows the
-`db` service as `healthy`: the database installs itself on its first start, and
-a command sent before that is refused. If you already run a Postgres on
+Bring the stack up first, as [install](install.html#docker-compose) shows,
+but with `--wait`:
+
+```bash
+docker compose up -d --wait
+```
+
+`--wait` returns once the database has installed itself and the Content
+Server accepts uploads, which on a fresh volume takes about a minute; a
+command sent before then is refused, or its connection is reset. If the stack
+is already up, the same command returns as soon as it is ready. Every command
+below runs in the directory that holds `docker-compose.yml`. If you already run a Postgres on
 port 5432, or have installed Percolate before, the install page's notes on
 `P8_PG_PORT` and `COMPOSE_PROJECT_NAME` come first.
 

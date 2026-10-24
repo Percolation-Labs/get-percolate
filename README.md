@@ -45,6 +45,10 @@ Brings up Postgres 19 with the extensions, PostgREST, the outbound and
 ingestion workers, the Content Server, the Agent Runtime, the query MCP server and an S3 store
 (RustFS).
 
+Then [your first memory](https://percolation-labs.github.io/get-percolate/quickstart.html)
+signs you in, writes a note and finds it again by meaning, in about four minutes
+and with no key.
+
 ### Helm
 
 ```bash

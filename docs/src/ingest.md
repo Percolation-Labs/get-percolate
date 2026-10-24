@@ -119,20 +119,17 @@ curl -s http://localhost:8081/files \
 ```
 </div>
 
-**`x-p8-org` decides who can read the bytes back, and at @@extension@@ leaving
-it out exposes them.** A resource uploaded without one is stored with no org and
-`visibility = 'private'`, so the row itself is yours alone: another user's query
-of `content.resources` does not return it. `GET /files/{resource_id}` does not
-ask that question, though. It resolves the file through `content.resolve_file`,
-which at @@extension@@ checks only whether the caller may reach the resource's
-org — and a resource with no org is reachable by everybody — so the bytes go to
-an *unauthenticated* caller who has the id. That is a gap in the byte path
-rather than a design, and until it closes, uploads that belong to a tenant must
-say so:
+**`x-p8-org` decides who besides you can read the bytes back.** Without
+it, a resource is stored on the shared tier with `visibility = 'private'`, so
+it is yours alone: another user's query of `content.resources` does not return
+it, and `GET /files/{resource_id}` resolves it only for you. With it, the
+resource belongs to that org and every member of it may read it:
 
 ```
-  no x-p8-org       stored with org null, visibility private
-                    anonymous GET -> 200, the bytes
+  no x-p8-org       stored on the shared tier, visibility private
+                    anonymous GET -> 404 "no such file, or not yours"
+                    as another user -> 404, the same answer
+                    as you -> 200, the bytes
   x-p8-org: <a>     stored with org <a>, visibility org
                     anonymous GET -> 404 "no such file, or not yours"
                     as tenant <b> -> 404, the same answer

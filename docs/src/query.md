@@ -362,14 +362,16 @@ to `web_anon`, which holds no table grants and no `usage` on `aiq`, so
 `/rpc/query` answers `permission denied for schema aiq` with a 401. That is a
 different failure from the one below and it says so.
 
-**A token with no `orgs` claim** is the quiet one. It authenticates, RLS
-applies,
-and tenanted rows are simply not there — so the query succeeds, returns zero
-rows, and `LOOKUP` reports the name unresolved. Nothing distinguishes that from
-data you never loaded, which is why the claim is worth minting with care:
+**A token whose `orgs` claim names an org you are not a member of** is the
+quiet one. It authenticates, RLS applies, and that org's rows are simply not
+there — so the query succeeds, returns zero rows, and `LOOKUP` reports the name
+unresolved. Nothing distinguishes that from data you never loaded. The claim
+can only narrow what your memberships in `rbac.org_members` already grant, so a
+token with no `orgs` claim at all sees every org you belong to:
 
 ```bash
-percolate auth token --email you@example.com --orgs <org-uuid>
+percolate auth token --email you@example.com              # every org you are in
+percolate auth token --email you@example.com --orgs <org-uuid>   # just that one
 ```
 
 The fix in both cases is the identity, not a policy change.

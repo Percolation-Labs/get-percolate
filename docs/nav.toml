@@ -36,6 +36,11 @@ name = "Start"
   summary = "Docker Compose, Helm, or the extension in a Postgres 19 you already run."
 
   [[section.page]]
+  file = "quickstart.md"
+  title = "Your first memory"
+  summary = "From a running stack to a note you wrote and found again by meaning, in four minutes and with no model key."
+
+  [[section.page]]
   file = "agents.md"
   title = "Agents"
   summary = "An agent is a specification and the specification is a row: write it, save it, call it over REST."

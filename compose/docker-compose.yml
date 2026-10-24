@@ -342,6 +342,14 @@ services:
       db: {condition: service_healthy}
       minio: {condition: service_started}
     command: ["content", "serve"]
+    # So `docker compose up -d --wait` returns once uploads are accepted, not
+    # merely once the database is: the Content Server starts a few seconds
+    # after `db` is healthy, and a POST /files sent in that gap is reset.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
     environment:
       P8_DSN: postgres://authenticator:${P8_AUTHENTICATOR_PASSWORD:-authpass}@db:5432/percolate
       P8_S3_ENDPOINT: http://minio:9000

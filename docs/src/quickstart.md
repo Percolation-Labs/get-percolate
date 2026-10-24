@@ -7,7 +7,9 @@ is what you should expect to see.
 
 Bring the stack up first, as [install](install.html#docker-compose) shows:
 fetch `docker-compose.yml`, then `docker compose up -d`. Every command below
-runs in the directory that holds that file. If you already run a Postgres on
+runs in the directory that holds that file, once `docker compose ps` shows the
+`db` service as `healthy`: the database installs itself on its first start, and
+a command sent before that is refused. If you already run a Postgres on
 port 5432, or have installed Percolate before, the install page's notes on
 `P8_PG_PORT` and `COMPOSE_PROJECT_NAME` come first.
 

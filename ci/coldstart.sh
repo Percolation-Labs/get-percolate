@@ -278,6 +278,25 @@ TOKEN=$(bash -e -c "$token_block"$'\n''printf %s "$TOKEN"') \
     || fail "install.md's token block failed"
 [ "$(printf %s "$TOKEN" | tr -cd . | wc -c | tr -d ' ')" = 2 ] \
     || fail "install.md's token block printed no token: '$TOKEN'"
+say "quickstart.md: a note goes in and comes back by meaning"
+# The newcomer's page, run block by block as a reader would: its own token
+# (no orgs claim), the pipeline, the upload, then the recall, retried while the
+# ingest worker embeds the note. In a subshell so its TOKEN does not replace
+# install.md's for the stages below.
+(
+    qs_sql=$(page_block quickstart.md sql "install_ingest_workflow") || exit 1
+    printf '%s\n' "$qs_sql" | psql_ -f - >/dev/null || { echo "quickstart.md's pipeline block failed"; exit 1; }
+    qs_token=$(page_block quickstart.md shell "auth token --sub") || exit 1
+    qs_write=$(page_block quickstart.md shell "/files") || exit 1
+    qs_read=$(page_block quickstart.md shell "rpc/query") || exit 1
+    bash -e -c "$qs_token"$'\n'"$qs_write" || { echo "quickstart.md's upload failed"; exit 1; }
+    for _ in $(seq 1 30); do
+        out=$(bash -e -c "$qs_token"$'\n'"$qs_read" 2>&1) || true
+        case $out in *"berth 7 at Rotterdam"*) echo "recalled: $out"; exit 0 ;; esac
+        sleep 2
+    done
+    echo "quickstart.md's recall never returned the note; last answer: $out"; exit 1
+) || fail "quickstart.md does not work as written"
 sync_via_page() {   # <server>: run agents.md's own sync block for it, while the runtime starts
     local block out=""
     block=$(page_block agents.md shell "/tools/$1/sync") \

@@ -137,8 +137,8 @@ select * from percolate_build();
 ```
  component | version | installed_version | commit_sha | artifact                              | built_at             | stamp_current
 -----------+---------+-------------------+------------+---------------------------------------+----------------------+---------------
- parser    | 0.1.6   | 0.1.6   |            | v0.1.6, amd64 .so sha256:9c2f…, arm64 .so sha256:4be1… | 2026-09-03 16:04:00Z | t
- schema    | 0.1.6   | 0.1.6   | 9f832b1    |                                       | 2026-09-03 19:52:00Z | t
+ parser    | @@extension@@  | @@extension@@            |            | v@@extension@@, amd64 .so sha256:…, arm64 .so sha256:… | <build time>         | t
+ schema    | @@extension@@  | @@extension@@            | <commit>   |                                       | <build time>         | t
 ```
 
 **The two rows answer differently, because the two halves are made
@@ -434,14 +434,12 @@ the permissions the system actually checks, and makes the first `user_roles`
 row — and it **refuses to run once any role has been granted to anyone**, which
 is what keeps it a bootstrap rather than a back door.
 
-Use it rather than writing the `insert` statements yourself, because a wrong
-verb in one is invisible. `role_permissions.action` is free text compared with
-`=`, so a bad value is not an error anywhere: it inserts, the role looks
-populated, and every policy that consults it returns false. Granting
-`workflow_runs`/`read` where the RLS policies ask for `select` gives you an
-administrator who sees **zero rows** in `workflow.runs_api`, with no way to tell
-that from "my workflow never ran". The vocabulary is derived in one place inside
-the extension for this reason — prose that repeats it can drift away from it.
+Use it rather than writing the `insert` statements yourself. A grant names a
+`(resource, action)` pair, and only the pairs some policy or function checks
+are accepted: `rbac.role_permissions` references `rbac.permission_kinds`, so
+granting `workflow_runs`/`read` where the policies ask for `select` is refused
+by a foreign key at the insert, rather than giving you an administrator who
+sees zero rows. `select * from rbac.permission_kinds` lists every pair.
 
 Then the token. The core image the stack runs carries the `percolate` CLI and
 the stack's signing secret, so it signs one for you: nothing to install, and no
@@ -455,9 +453,11 @@ export TOKEN=$(docker compose exec -T content percolate auth token --sub "$uid" 
                  --orgs d0000000-0000-0000-0000-00000000000a)
 ```
 
-`--orgs` names the sample's first tenant: tenanted rows carry an org, and a
-token without it sees only the shared tier: its queries return no tenant rows,
-and no error says why. The token lasts an hour; run the block again for a new
+`--orgs` narrows the token to the sample's first tenant, which the
+[sample](#the-sample-which-nothing-loads-for-you) makes you a member of. A
+token without `--orgs` sees every org you belong to; one naming an org you do
+not belong to sees none of its rows, and no error says why, so leave it out
+until you have loaded the sample. The token lasts an hour; run the block again for a new
 one. Without the compose stack, `percolate auth token --sub <uid>` from
 `pip install percolate-core`, with `P8_JWT_SECRET` set to your secret, signs
 the same token.

@@ -289,7 +289,7 @@ say "quickstart.md: a note goes in and comes back by meaning"
     qs_token=$(page_block quickstart.md shell "auth token --sub") || exit 1
     qs_write=$(page_block quickstart.md shell "/files") || exit 1
     qs_read=$(page_block quickstart.md shell "rpc/query") || exit 1
-    bash -e -c "$qs_token"$'\n'"$qs_write" || { echo "quickstart.md's upload failed"; exit 1; }
+    bash -e -c "$qs_token"$'\n'"$qs_write" > qs_upload.json || { echo "quickstart.md's upload failed"; exit 1; }
     for _ in $(seq 1 30); do
         out=$(bash -e -c "$qs_token"$'\n'"$qs_read" 2>&1) || true
         case $out in *"berth 7 at Rotterdam"*) echo "recalled: $out"; exit 0 ;; esac
@@ -297,6 +297,28 @@ say "quickstart.md: a note goes in and comes back by meaning"
     done
     echo "quickstart.md's recall never returned the note; last answer: $out"; exit 1
 ) || fail "quickstart.md does not work as written"
+say "ingest.md and install.md: the refusals they describe happen"
+# ingest.md: an upload sent without x-p8-org is its owner's alone. The
+# quickstart's note is one; anonymous and another user both get the 404 the
+# page shows. It said the bytes went to anybody until 0.2.30 was measured
+# (REM-1170), so this is the line that keeps the table honest.
+qs_rid=$("$PY_BIN" -c 'import json,sys; print(json.load(open(sys.argv[1]))["resource_id"])' qs_upload.json) \
+    || fail "the quickstart's upload printed no resource_id"
+[ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8081/files/$qs_rid")" = 404 ] \
+    || fail "ingest.md: an anonymous GET of an upload without x-p8-org was not refused"
+other=$(psql_ -Atc "select rbac.create_user('someone-else@example.com')")
+other_token=$(docker compose exec -T content percolate auth token --sub "$other")
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $other_token" \
+      "http://localhost:8081/files/$qs_rid")" = 404 ] \
+    || fail "ingest.md: another user's GET of an upload without x-p8-org was not refused"
+# install.md: a grant naming a verb no policy checks is refused at the insert.
+psql_ -q <<'SQL' || fail "install.md: a grant of an unchecked verb was accepted"
+do $$ begin
+    insert into rbac.role_permissions (role, resource, action) values ('admin', 'workflow_runs', 'read');
+    raise exception 'a grant of workflow_runs/read was accepted';
+exception when foreign_key_violation then null;
+end $$;
+SQL
 sync_via_page() {   # <server>: run agents.md's own sync block for it, while the runtime starts
     local block out=""
     block=$(page_block agents.md shell "/tools/$1/sync") \

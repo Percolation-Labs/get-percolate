@@ -84,6 +84,11 @@ begin
             ('api_viewer',    'nologin',         null),
             ('web_anon',      'nologin',         null),
             ('authenticated', 'nologin',         null),
+            -- The Content Server's role (REM-1118): the one caller that has read
+            -- the bytes it registers, so the one the database lets say where they
+            -- are stored. Reached from authenticator by SET ROLE, and
+            -- authenticated besides, so it acts as the person it serves.
+            ('content_server', 'nologin',        null),
             -- noinherit: authenticator holds web_anon and authenticated but
             -- must not USE their privileges except by SET ROLE, which is what
             -- makes per-request identity switching mean anything.
@@ -140,6 +145,8 @@ commit;
 grant api_viewer    to app_owner;      -- so app_owner can hand it the views
 grant web_anon      to authenticator;
 grant authenticated to authenticator;
+grant authenticated to content_server;
+grant content_server to authenticator;
 -- From 0.2.0 a workflow step runs as the person who started its run, through
 -- api_viewer, which therefore needs what a signed-in person holds. The 0.2.0
 -- extension refuses to install or upgrade without it, and names this line.

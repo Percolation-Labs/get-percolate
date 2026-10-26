@@ -485,6 +485,11 @@ jobs:
         env: {V: "${{ inputs.version }}"}
         run: |
           mkdir -p out && find assets -type f -exec cp -n {} out/ \;
+          # Only the upgrade paths INTO this version: install.sh and image-postgres.yml read
+          # percolate*--<old>--$V.sql and nothing else, and the parser's every-pair paths grew
+          # quadratically -- 297 of 0.2.31's 352 assets, whose upload hit GitHub's secondary
+          # rate limit twice on 26 Oct.
+          find out -name '*--*--*.sql' ! -name "*--$V.sql" -delete
           cp repo/bootstrap.sql out/
           ls -la out/
           # install.sh downloads by exact name -- it reads the version out of

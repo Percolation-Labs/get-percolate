@@ -12,7 +12,8 @@
 #
 # The tour is not copied here. Its canonical copy is the extension repository's
 # dev/tests/workflow/25-the-langgraph-article-runs.sql, fetched at the release
-# tag under test, and it is two halves:
+# under test -- the commit parser.yml built when it passes REF, else the tag --
+# and it is two halves:
 #
 #   live blocks   the reader's shell, between `-- live: <name>` and `-- /live`.
 #                 This runs the first three as written -- stack (mkdir, curl,
@@ -29,6 +30,7 @@
 #
 #     ci/tour.sh              # the release versions.toml on main names
 #     ci/tour.sh 0.2.27       # must be the release main's compose file pins
+#     REF=<sha> ci/tour.sh 0.2.27 # the tour from that commit instead of v0.2.27
 #     ALLOW_CACHED=1 ci/tour.sh   # on a machine that has images (ports from 5432 must be free)
 set -uo pipefail
 
@@ -47,6 +49,10 @@ if [ -z "$V" ]; then
         | sed -n 's/^extension *= *"\([0-9.]*\)".*/\1/p' | head -1)
     [ -n "$V" ] || fail "could not read published.extension from get-percolate's versions.toml on main"
 fi
+# Where the tour is read from. The extension's release tags last, after the build parser.yml runs, so the tag does
+# not exist yet when parser.yml dispatches this run: on the 2026-10-28 train the tour asked at 15:41:41Z and v0.2.33
+# was tagged at 15:43:41Z (REM-1226). parser.yml passes the commit it built, which is the one the tag lands on.
+HARNESS_REF=${REF:-v$V}
 
 # The empty directory. Everything below happens inside it; the tour's own first
 # block makes the directory the stack lives in.
@@ -54,7 +60,7 @@ WORK=$(mktemp -d)
 cd "$WORK" || fail "no work directory"
 trap '[ -d "$WORK/langgraph-tour" ] && (cd "$WORK/langgraph-tour" && docker compose down -v >/dev/null 2>&1); rm -rf "$WORK"' EXIT
 
-say "under test: extension $V, the tour at $EXT_REPO v$V"
+say "under test: extension $V, the tour at $EXT_REPO $HARNESS_REF"
 # A hosted runner starts with no image of ours. Said, so a cache somebody adds
 # later is a red run rather than a quiet return to the crutch this replaces.
 if [ -z "${ALLOW_CACHED:-}" ] && docker image ls --format '{{.Repository}}' | grep -qiE 'percolat|minio|rustfs|postgrest'; then
@@ -65,8 +71,8 @@ fi
 # Through fetch-tag-file.py, which retries a 404 for about two minutes when the tag is under ten minutes old: on
 # the 2026-10-23 train this ran 6s after v0.2.30 was tagged and raw.githubusercontent.com did not serve it yet
 # (REM-1155). A file missing from an older tag still fails on the first answer.
-python3 "$HERE/fetch-tag-file.py" "$EXT_REPO" "v$V" "$HARNESS_PATH" harness.sql \
-    || fail "the tour harness is not at $EXT_REPO v$V/$HARNESS_PATH"
+python3 "$HERE/fetch-tag-file.py" "$EXT_REPO" "$HARNESS_REF" "$HARNESS_PATH" harness.sql \
+    || fail "the tour harness is not at $EXT_REPO $HARNESS_REF/$HARNESS_PATH"
 
 # One live block, its `-- ` prefix dropped, exactly as the harness's header says.
 live_block() {
@@ -83,7 +89,7 @@ live_block() {
     echo 'trap '"'"'[ $? -eq 0 ] || echo "FAIL: the block printed last stopped the reader" >&2'"'"' EXIT'
     for b in "${FIRST_BLOCKS[@]}"; do
         body=$(live_block "$b")
-        [ -n "$body" ] || { echo "echo 'the harness at v$V has no live block named $b' >&2; exit 1"; continue; }
+        [ -n "$body" ] || { echo "echo 'the harness at $HARNESS_REF has no live block named $b' >&2; exit 1"; continue; }
         printf '\necho; echo "=== live: %s"\n' "$b"
         printf 'cat <<'"'"'__BLOCK__'"'"'\n%s\n__BLOCK__\n' "$body"
         # -e for the block: a command that fails in it is one the reader sees fail.
@@ -123,7 +129,7 @@ if [ -f sql.log ] && [ $rc -ne 0 ]; then
     if [ -n "$line" ]; then
         start=$(awk -v n="$line" 'NR <= n && /^-- (block: |§)/ { s = NR } END { print s + 0 }' harness.sql)
         [ "$start" -gt 0 ] || start=1
-        say "the failing block, harness.sql lines $start-$line at v$V"
+        say "the failing block, harness.sql lines $start-$line at $HARNESS_REF"
         sed -n "${start},${line}p" harness.sql
     fi
 fi

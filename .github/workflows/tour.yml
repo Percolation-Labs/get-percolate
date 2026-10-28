@@ -20,6 +20,13 @@ on:
           names, which is the one main's compose file pins.
         required: false
         default: ''
+      ref:
+        description: >-
+          The extension repository's commit to read the tour from. parser.yml
+          passes the commit it built, which the release tags only after this
+          run starts (REM-1226). Empty means the tag v<version>.
+        required: false
+        default: ''
   pull_request:
     paths:
       - 'ci/tour.sh'
@@ -49,4 +56,5 @@ jobs:
       - name: Install from the published compose file and run the tour
         env:
           VERSION: ${{ inputs.version }}
+          REF: ${{ inputs.ref }}
         run: ci/tour.sh

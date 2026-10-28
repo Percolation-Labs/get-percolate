@@ -662,11 +662,13 @@ jobs:
       # A STRANGER'S INSTALL OF WHAT WAS JUST PUBLISHED (REM-1014): tour.yml
       # downloads the compose file from main, so it starts only once the pin
       # above is there. Dispatched, not awaited: it reports on its own run and
-      # does not hold the release.
+      # does not hold the release. The tour is read at the commit this run built,
+      # not at v<version>: the extension's release tags only after this workflow
+      # returns, so the tag does not exist yet when the tour starts (REM-1226).
       - name: Run the LangGraph tour on a fresh install of ${{ inputs.version }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run tour.yml --repo "$GITHUB_REPOSITORY" --ref main -f version=${{ inputs.version }}
+        run: gh workflow run tour.yml --repo "$GITHUB_REPOSITORY" --ref main -f version=${{ inputs.version }} -f ref=${{ inputs.ref }}
 
       # THE CHART THIS COMMIT RENUMBERED, PUBLISHED (REM-241). The push above is
       # made with GITHUB_TOKEN, and GitHub starts no workflow for a push by that

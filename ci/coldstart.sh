@@ -25,6 +25,11 @@ trap 'pkill -f "$WORK/ui-home" 2>/dev/null; cd "$WORK" && docker compose down -v
 say() { printf '\n=== %s\n' "$*"; }
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
+    # THE STACK'S OWN LOGS, BEFORE THE TRAP TEARS IT DOWN. The workflow's "What
+    # the stack said" step runs after this script exits, and by then the EXIT
+    # trap has run `compose down -v`, so it always printed nothing (REM-1290).
+    ( cd "$WORK" 2>/dev/null && docker compose -p percolate logs --no-color --tail=150 \
+          worker agent ingest-worker 2>&1 | sed 's/^/  stack| /' >&2 ) || true
     # The commonest cause, said once, at the point it matters. Without this the
     # run ends on `function rbac.bootstrap_admin does not exist` and reads as a
     # broken install guide rather than an unshipped release.

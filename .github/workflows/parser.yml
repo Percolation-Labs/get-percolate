@@ -377,7 +377,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/pg
-          key: pg-src-${{ runner.os }}-${{ steps.pins.outputs.pg }}
+          # matrix.os, not runner.os: a server built on macos-14 points pg_config at
+          # that image's SDK, and bindgen on macos-15 then cannot find assert.h.
+          key: pg-src-${{ matrix.os }}-${{ steps.pins.outputs.pg }}
 
       - name: Build PG from source for the headers
         # Only on a miss. It exists to produce pg_config and headers, not a
@@ -414,7 +416,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             extension/percolate_parser/target
-          key: pgrx-${{ runner.os }}-${{ steps.pins.outputs.pgrx }}-${{ hashFiles('extension/percolate_parser/Cargo.lock') }}
+          key: pgrx-${{ matrix.os }}-${{ steps.pins.outputs.pgrx }}-${{ hashFiles('extension/percolate_parser/Cargo.lock') }}
           restore-keys: pgrx-${{ runner.os }}-${{ steps.pins.outputs.pgrx }}-
 
       - name: cargo-pgrx

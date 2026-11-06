@@ -38,7 +38,6 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 EXT_REPO=${EXT_REPO:-Percolation-Labs/percolate}
 RAW=https://raw.githubusercontent.com
 HARNESS_PATH=dev/tests/workflow/25-the-langgraph-article-runs.sql
-FIRST_BLOCKS=(stack venv shell)
 
 say()  { printf '\n=== %s\n' "$*"; }
 fail() { printf '\nFAIL: %s\n' "$*" >&2; exit 1; }
@@ -74,6 +73,11 @@ fi
 python3 "$HERE/fetch-tag-file.py" "$EXT_REPO" "$HARNESS_REF" "$HARNESS_PATH" harness.sql \
     || fail "the tour harness is not at $EXT_REPO $HARNESS_REF/$HARNESS_PATH"
 
+# The reader's first blocks. Since percolate a0f5b9cd (REM-1309, 6 Nov) the tour opens with one `setup` block that
+# does what stack, venv and shell did; a tour at an older tag still has the three. Read the names from the harness,
+# because a hard-coded list went red on the first train after the rename ("no live block named stack").
+if grep -qx -- '-- live: setup' harness.sql; then FIRST_BLOCKS=(setup); else FIRST_BLOCKS=(stack venv shell); fi
+
 # One live block, its `-- ` prefix dropped, exactly as the harness's header says.
 live_block() {
     awk -v name="$1" '
@@ -94,8 +98,8 @@ live_block() {
         printf 'cat <<'"'"'__BLOCK__'"'"'\n%s\n__BLOCK__\n' "$body"
         # -e for the block: a command that fails in it is one the reader sees fail.
         printf 'set -e\n%s\nset +e\n' "$body"
-        case $b in
-            stack)
+        # setup carries both checks: it is stack and shell in one block.
+        case $b in stack|setup)
                 # The image a stranger got is the release under test, or this
                 # run is testing a release nobody downloads today.
                 printf '%s\n' \
@@ -105,11 +109,16 @@ live_block() {
                   "  echo \"FAIL: the compose file on main pins \$pin, not 19-$V\" >&2; exit 1" \
                   "fi" \
                   "docker compose ps --format '{{.Service}} {{.State}} {{.Health}}'" ;;
-            shell)
+        esac
+        # The old shell block exported P8_USER_ID; setup signs in with the token alone and never sets it.
+        case $b in shell)
                 printf '%s\n' \
                   '[ -n "$P8_USER_ID" ] || { echo "FAIL: bootstrap_admin left no me@example.com" >&2; exit 1; }' \
-                  '[ -n "$TOKEN" ] || { echo "FAIL: percolate auth token printed nothing" >&2; exit 1; }' \
                   'echo "signed in as $P8_USER_ID"' ;;
+        esac
+        case $b in shell|setup)
+                printf '%s\n' \
+                  '[ -n "$TOKEN" ] || { echo "FAIL: percolate auth token printed nothing" >&2; exit 1; }' ;;
         esac
     done
     # The SQL half, in the reader's psql, against the stack the blocks above made.

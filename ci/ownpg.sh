@@ -172,12 +172,17 @@ say "  $jobs workflow job(s), all scheduler-owned"
 
 say "the first administrator and the README's first workflow"
 psql_ -qc "select rbac.bootstrap_admin('you@example.com', 'a long passphrase')" >/dev/null
-psql_ -qc "select workflow.define_yaml(\$\$
-name: hello
+# From 0.2.39 a sql step runs on a worker unless its workflow says mode inline
+# (REM-1316), and this container has no worker: without the line the run stays
+# 'running'. workflow.inline_mode_line() is that line on a release that knows it.
+psql_ -qc "do \$d\$ declare m text := ''; begin
+  if to_regprocedure('workflow.inline_mode_line()') is not null then execute 'select workflow.inline_mode_line()' into m; end if;
+  perform workflow.define_yaml(m || E'\\n' || \$y\$name: hello
 steps:
   - id: now
     sql: {function: p8ql, args: ['SELECT now()']}
-\$\$)" >/dev/null
+\$y\$);
+end \$d\$" >/dev/null
 # Two statements: a run started inside the query that reads it is invisible to
 # that query's snapshot.
 run=$(psql_ -tAc "select workflow.start_workflow('hello', '{}'::jsonb)")

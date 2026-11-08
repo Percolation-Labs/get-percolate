@@ -17,9 +17,9 @@
 # What a reader can actually pull today. These move when a release publishes,
 # never before: docs that name a version ahead of its artifact send people to
 # a `docker pull` that 404s.
-extension = "0.2.41"   # percolate + percolate_parser, and the :19-<v> image tag
+extension = "0.2.42"   # percolate + percolate_parser, and the :19-<v> image tag
 core      = "0.2.20"   # percolate-core on PyPI and Docker Hub
-chart     = "0.1.78"   # the Helm chart's own version, not what it deploys
+chart     = "0.1.79"   # the Helm chart's own version, not what it deploys
 
 [not_ours]
 # THREE-PART NUMBERS IN docs/src THAT LOOK LIKE OURS AND ARE NOT.
@@ -161,4 +161,5 @@ released = [
   { on = "2026-11-08", extension = "0.2.40", core = "0.2.19", chart = "0.1.76" },
   { on = "2026-11-08", extension = "0.2.40", core = "0.2.20", chart = "0.1.77" },
   { on = "2026-11-08", extension = "0.2.41", core = "0.2.20", chart = "0.1.78" },
+  { on = "2026-11-08", extension = "0.2.42", core = "0.2.20", chart = "0.1.79" },
 ]

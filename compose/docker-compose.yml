@@ -125,6 +125,16 @@ services:
       - shared_buffers=512MB
       - -c
       - maintenance_work_mem=256MB
+      # P8_DECIDER, THE ONE SWITCH FOR WHICH DECISION MODEL PERCOLATE DECIDES
+      # WITH: a name in the database's claims.deciders, `jev` or `standin`.
+      # A server setting, because the database is where the deciding happens:
+      # every workflow that asks a decider (the walk, a fact's question) is
+      # installed against this one by default, and when it is set, dream hands
+      # the judgement queue to it. Empty, the queue waits for an agent or a
+      # person and the install functions default to jev. The worker below
+      # holds each decider's credential; standin/standin.py is the stand-in.
+      - -c
+      - percolate.decider=${P8_DECIDER:-}
     # /dev/shm, AND THIS WAS MISSING FROM THE FILE USERS ACTUALLY RUN. Docker's
     # default is 64MB and maintenance_work_mem above is 256MB; pgvector sizes a
     # parallel HNSW build's shared-memory segment from the latter, so an index
@@ -203,6 +213,9 @@ services:
     restart: unless-stopped
     depends_on: {db: {condition: service_healthy}}
     command: ["worker", "--queue", "http"]
+    # host.docker.internal on Linux as well as Docker Desktop, for the stand-in.
+    extra_hosts:
+      - host.docker.internal:host-gateway
     # THE VALUES A WORKFLOW USES, kept out of .env on purpose. .env holds the
     # policy -- P8_TEMPLATE_ENV says what a template may read and
     # P8_CREDENTIAL_ORIGINS where a credential may go -- and worker.env, beside
@@ -241,11 +254,27 @@ services:
       # endpoint on any host and receive the worker's key as a bearer token.
       # Add a provider's origin here when LLM_API_KEY is meant for it. Read by
       # nothing before 0.1.9, so it is harmless on the image pinned above.
-      P8_CREDENTIAL_ORIGINS: ${P8_CREDENTIAL_ORIGINS:-{"LLM_API_KEY":["https://api.openai.com"]}}
+      #
+      # THE DECIDERS' KEYS AND ORIGINS, for P8_DECIDER (the db service). A
+      # claims.deciders row names its credential, and this worker sends it:
+      # JEV_API_KEY only to Jev, STANDIN_API_KEY only to the stand-in on this
+      # machine. The stand-in's key is any string you choose; standin.py
+      # refuses a caller without it, because Docker's host address is open to
+      # every container here. Set both in .env, not worker.env: an entry here
+      # wins over worker.env, so an empty one would hide a key put there.
+      JEV_API_KEY: ${JEV_API_KEY:-}
+      STANDIN_API_KEY: ${STANDIN_API_KEY:-}
+      P8_CREDENTIAL_ORIGINS: ${P8_CREDENTIAL_ORIGINS:-{"LLM_API_KEY":["https://api.openai.com"],"JEV_API_KEY":["https://api.typesafe.ai"],"STANDIN_API_KEY":["http://host.docker.internal:8790"]}}
+      # WHERE THE STAND-IN LISTENS, as the worker reaches it. Named so that the
+      # egress guard lets the worker reach this one address on the host, which
+      # it refuses for any other: P8_TEMPLATE_ENV below lists it. It must be
+      # the origin of the standin row's endpoint in claims.deciders.
+      P8_STANDIN_URL: ${P8_STANDIN_URL:-http://host.docker.internal:8790}
       # WHICH VARIABLES `{{env.X}}` MAY READ beyond P8_AGENT_URL and LLM_URL,
       # comma-separated, from .env. Unset, `url: '{{env.BANK_API}}/x'` fails
       # with `template {{env.BANK_API}} is not readable by a workflow`.
-      P8_TEMPLATE_ENV: ${P8_TEMPLATE_ENV:-}
+      # P8_STANDIN_URL is always among them, for the reason above.
+      P8_TEMPLATE_ENV: P8_STANDIN_URL${P8_TEMPLATE_ENV:+,${P8_TEMPLATE_ENV}}
       # WHERE AN `agent:` STEP SENDS ITS CALL. The compiler emits
       # `POST {{env.P8_AGENT_URL}}/v1/chat/completions` rather than making the
       # author write a deployment fact into a document that outlives it -- so

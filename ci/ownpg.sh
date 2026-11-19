@@ -46,6 +46,13 @@ say "a plain $PG_IMAGE, with pgvector and pg_cron from PGDG"
 docker run -d --name "$NAME" -e POSTGRES_PASSWORD=pw "$PG_IMAGE" >/dev/null
 for _ in $(seq 1 30); do in_pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
 in_pg bash -c 'apt-get update -qq && apt-get install -y -qq postgresql-19-pgvector postgresql-19-cron curl openssl' >/dev/null
+# PGDG's pgvector and pg_cron now depend on postgresql-19 newer than the image's
+# rc1, so the install upgrades the server package under the running rc1 process,
+# which then fails to load the new plpgsql.so ("undefined symbol"; red daily from
+# 13 Nov). Restart so the server that runs is the one on disk.
+docker restart "$NAME" >/dev/null
+for _ in $(seq 1 30); do in_pg pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; done
+in_pg psql -U postgres -tAc 'select version()' | cut -d' ' -f1-2
 
 AUTH_PW=$(openssl rand -hex 24); WORKER_PW=$(openssl rand -hex 24); PROV_PW=$(openssl rand -hex 24)
 docker cp "$ROOT/install.sh" "$NAME:/tmp/install.sh"

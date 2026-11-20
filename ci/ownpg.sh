@@ -21,7 +21,7 @@
 # installed first, into a database of its own, and updated in place at the end.
 #
 #     ci/ownpg.sh
-#     PG_IMAGE=postgres:19rc1-bookworm ci/ownpg.sh
+#     PG_IMAGE=postgres:19.0-bookworm ci/ownpg.sh
 #
 # THE SERVER IS THE ONE PGDG's pgvector WAS BUILT FOR. While 19 is pre-release,
 # PGDG rebuilds postgresql-19-pgvector against its newest beta or rc, and an
@@ -33,7 +33,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 NAME=p8ownpg-$$
-PG_IMAGE=${PG_IMAGE:-postgres:19rc1-bookworm}
+PG_IMAGE=${PG_IMAGE:-postgres:19.0-bookworm}
 REPO=${REPO:-Percolation-Labs/get-percolate}
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true' EXIT
 
